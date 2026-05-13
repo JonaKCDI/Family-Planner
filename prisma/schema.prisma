@@ -1,0 +1,302 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserStatus {
+  ACTIVE
+  DISABLED
+}
+
+enum FamilyRole {
+  ADMIN
+  MEMBER
+}
+
+enum MemberStatus {
+  ACTIVE
+  INVITED
+  DISABLED
+}
+
+enum Scope {
+  PRIVATE
+  FAMILY
+}
+
+enum CategoryType {
+  EXPENSE
+  TASK
+  CONTRACT
+}
+
+enum TaskStatus {
+  OPEN
+  IN_PROGRESS
+  DONE
+  ARCHIVED
+}
+
+enum TaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+enum BillingInterval {
+  MONTHLY
+  YEARLY
+  QUARTERLY
+  ONCE
+  OTHER
+}
+
+enum ContractStatus {
+  ACTIVE
+  CANCELLED
+  EXPIRED
+  DRAFT
+}
+
+enum DocumentReferenceType {
+  SYNOLOGY_HTTPS
+  WEBDAV_HTTPS
+  EXTERNAL_URL
+}
+
+enum LinkedEntityType {
+  EXPENSE
+  TASK
+  CONTRACT
+  CALENDAR_EVENT
+  GENERAL
+}
+
+enum CalendarProvider {
+  OUTLOOK
+  ICLOUD
+  CALDAV
+  MANUAL
+}
+
+enum CalendarVisibility {
+  PRIVATE
+  BUSY_ONLY
+  TITLE_ONLY
+  FAMILY
+}
+
+enum CalendarSource {
+  MANUAL
+  OUTLOOK
+  ICLOUD
+  CALDAV
+}
+
+model User {
+  id           String         @id @default(cuid())
+  name         String         @unique
+  passwordHash String
+  status       UserStatus     @default(ACTIVE)
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  memberships  FamilyMember[]
+  sessions     Session[]
+  categories   Category[]
+  expenses     Expense[]      @relation("ExpenseOwner")
+  tasks         Task[]         @relation("TaskOwner")
+  assignedTasks Task[]         @relation("TaskAssignee")
+  contracts     Contract[]
+  documents     DocumentReference[]
+  calendarIntegrations CalendarIntegration[]
+  calendarEvents       CalendarEvent[]
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Family {
+  id        String   @id @default(cuid())
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  members   FamilyMember[]
+  categories Category[]
+  expenses   Expense[]
+  tasks      Task[]
+  contracts  Contract[]
+  documents  DocumentReference[]
+  calendarIntegrations CalendarIntegration[]
+  calendarEvents       CalendarEvent[]
+}
+
+model FamilyMember {
+  id        String       @id @default(cuid())
+  familyId  String
+  userId    String
+  role      FamilyRole   @default(MEMBER)
+  status    MemberStatus @default(ACTIVE)
+  createdAt DateTime     @default(now())
+  family    Family       @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([familyId, userId])
+  @@index([userId])
+}
+
+model Category {
+  id          String       @id @default(cuid())
+  familyId    String
+  ownerUserId String?
+  type        CategoryType
+  name        String
+  color       String       @default("#2f6fed")
+  icon        String       @default("tag")
+  scope       Scope        @default(FAMILY)
+  family      Family       @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  owner       User?        @relation(fields: [ownerUserId], references: [id], onDelete: SetNull)
+  expenses    Expense[]
+
+  @@index([familyId, type])
+}
+
+model Expense {
+  id          String   @id @default(cuid())
+  familyId    String
+  ownerUserId String
+  amountCents Int
+  currency    String   @default("EUR")
+  date        DateTime
+  categoryId  String?
+  description String
+  scope       Scope    @default(FAMILY)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  family      Family   @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  owner       User     @relation("ExpenseOwner", fields: [ownerUserId], references: [id], onDelete: Cascade)
+  category    Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+
+  @@index([familyId, date])
+  @@index([ownerUserId])
+}
+
+model Task {
+  id               String       @id @default(cuid())
+  familyId         String
+  ownerUserId      String
+  assignedToUserId String?
+  title            String
+  description      String?
+  status           TaskStatus   @default(OPEN)
+  priority         TaskPriority @default(MEDIUM)
+  dueDate          DateTime?
+  scope            Scope        @default(FAMILY)
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+  family           Family       @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  owner            User         @relation("TaskOwner", fields: [ownerUserId], references: [id], onDelete: Cascade)
+  assignee         User?        @relation("TaskAssignee", fields: [assignedToUserId], references: [id], onDelete: SetNull)
+
+  @@index([familyId, status])
+  @@index([assignedToUserId])
+}
+
+model Contract {
+  id                     String          @id @default(cuid())
+  familyId               String
+  ownerUserId            String
+  provider               String
+  contractType           String
+  description            String?
+  costCents              Int
+  currency               String          @default("EUR")
+  billingInterval        BillingInterval @default(MONTHLY)
+  startDate              DateTime
+  endDate                DateTime?
+  cancellationNoticeDays Int?
+  nextCancellationDate   DateTime?
+  status                 ContractStatus  @default(ACTIVE)
+  scope                  Scope           @default(FAMILY)
+  createdAt              DateTime        @default(now())
+  updatedAt              DateTime        @updatedAt
+  family                 Family          @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  owner                  User            @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
+
+  @@index([familyId, status])
+  @@index([nextCancellationDate])
+}
+
+model DocumentReference {
+  id               String                @id @default(cuid())
+  familyId         String
+  ownerUserId      String
+  linkedEntityType LinkedEntityType      @default(GENERAL)
+  linkedEntityId   String?
+  title            String
+  referenceType    DocumentReferenceType
+  url              String
+  description      String?
+  scope            Scope                 @default(FAMILY)
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+  family           Family                @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  owner            User                  @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
+
+  @@index([familyId, linkedEntityType, linkedEntityId])
+}
+
+model CalendarIntegration {
+  id                 String             @id @default(cuid())
+  familyId           String
+  userId             String
+  provider           CalendarProvider
+  displayName        String
+  syncEnabled        Boolean            @default(false)
+  visibilityToFamily CalendarVisibility @default(PRIVATE)
+  lastSyncAt         DateTime?
+  status             String             @default("prepared")
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+  family             Family             @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  user               User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  events             CalendarEvent[]
+
+  @@index([familyId, provider])
+}
+
+model CalendarEvent {
+  id              String             @id @default(cuid())
+  familyId        String
+  integrationId   String?
+  ownerUserId     String
+  externalEventId String?
+  title           String
+  description     String?
+  startAt         DateTime
+  endAt           DateTime
+  timezone        String             @default("Europe/Berlin")
+  location        String?
+  visibility      CalendarVisibility @default(FAMILY)
+  source          CalendarSource     @default(MANUAL)
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+  family          Family             @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  owner           User               @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
+  integration     CalendarIntegration? @relation(fields: [integrationId], references: [id], onDelete: SetNull)
+
+  @@index([familyId, startAt])
+  @@index([integrationId])
+}

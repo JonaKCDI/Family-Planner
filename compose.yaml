@@ -1,0 +1,27 @@
+name: family-app
+
+services:
+  app:
+    build: .
+    depends_on:
+      - db
+    environment:
+      DATABASE_URL: postgresql://family_app:${POSTGRES_PASSWORD}@db:5432/family_app?schema=public
+      SESSION_COOKIE_NAME: family_app_session
+      APP_URL: ${APP_URL:-http://localhost:3000}
+    ports:
+      - "${APP_PORT:-3000}:3000"
+    restart: unless-stopped
+
+  db:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_DB: family_app
+      POSTGRES_USER: family_app
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - family_app_postgres:/var/lib/postgresql/data
+    restart: unless-stopped
+
+volumes:
+  family_app_postgres:
