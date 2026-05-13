@@ -26,7 +26,9 @@ export default async function DashboardPage() {
   const budget = categories.reduce((sum, category) => sum + category.monthlyBudgetCents, 0);
   const budgetLeft = budget - spending;
   const saldo = income - spending;
-  const openTasks = tasks.filter((task) => task.status === "OPEN" || task.status === "IN_PROGRESS");
+  const openTasks = tasks
+    .filter((task) => task.status === "OPEN" || task.status === "IN_PROGRESS")
+    .sort((a, b) => taskRank(b) - taskRank(a));
   const urgentTasks = openTasks.filter((task) => task.priority === "HIGH" || task.priority === "URGENT");
   const nextContracts = contracts
     .filter((contract) => contract.status === "ACTIVE" && contract.nextCancellationDate)
@@ -35,15 +37,11 @@ export default async function DashboardPage() {
 
   return (
     <div className="dashboard">
-      <header className="dashboard-hero">
+      <header className="dashboard-hero compact-hero">
         <div>
           <span className="eyebrow">{longDateFormatter.format(today)}</span>
           <h1>Guten Abend, {session.user.name}</h1>
           <p>Alles Wichtige für {session.family.name}: Aufgaben, Finanzen, Verträge und Dokumente an einem Ort.</p>
-        </div>
-        <div className="hero-actions">
-          <Link className="button secondary" href="/aufgaben#aufgabe-erfassen">Aufgabe erstellen</Link>
-          <Link className="button" href="/ausgaben#eintrag-erfassen">Eintrag erfassen</Link>
         </div>
       </header>
 
@@ -185,6 +183,13 @@ function isSameMonth(date: Date, compare: Date) {
 
 function sumByKind(entries: Awaited<ReturnType<typeof getVisibleExpenses>>, kind: "EXPENSE" | "INCOME") {
   return entries.filter((entry) => entry.kind === kind).reduce((sum, entry) => sum + entry.amountCents, 0);
+}
+
+function taskRank(task: Awaited<ReturnType<typeof getVisibleTasks>>[number]) {
+  const priority = { LOW: 5, MEDIUM: 18, HIGH: 34, URGENT: 50 }[task.priority];
+  const status = task.status === "IN_PROGRESS" ? 100 : 50;
+  const due = task.dueDate ? Math.max(0, 40 - Math.floor((new Date(task.dueDate).getTime() - Date.now()) / 86400000)) : 0;
+  return status + priority + due;
 }
 
 function buildFinanceBars(entries: Awaited<ReturnType<typeof getVisibleExpenses>>) {

@@ -1,88 +1,194 @@
-﻿import { createTask, updateTaskStatus } from "@/lib/actions";
+import { updateTask } from "@/lib/actions";
 import { requireSession } from "@/lib/auth";
-import { formatDate } from "@/lib/format";
+import { formatDate, toDateInputValue } from "@/lib/format";
 import { getFamilyMembers, getVisibleTasks } from "@/lib/queries";
+import { ActionModal } from "@/components/action-modal";
+import { TaskStatusControl } from "@/components/task-status-control";
 import { EmptyState, PageHeader, ScopeSelect } from "@/components/ui";
 
-export default async function TasksPage() {
+type TasksPageProps = {
+  searchParams: Promise<{ q?: string }>;
+};
+
+export default async function TasksPage({ searchParams }: TasksPageProps) {
   const session = await requireSession();
+  const params = await searchParams;
+  const query = normalizeSearch(params.q);
   const [tasks, members] = await Promise.all([
     getVisibleTasks(session.family.id, session.user.id),
     getFamilyMembers(session.family.id)
   ]);
+  const searchedTasks = query ? tasks.filter((task) => matchesTask(task, query)) : tasks;
+  const sortedTasks = [...searchedTasks].sort((a, b) => taskRank(b) - taskRank(a));
+  const activeTasks = sortedTasks.filter((task) => task.status === "IN_PROGRESS" || task.status === "OPEN");
+  const completedTasks = sortedTasks.filter((task) => task.status === "DONE" || task.status === "ARCHIVED");
 
   return (
     <>
-      <PageHeader title="Aufgaben" description="Actionliste für dich und die Familie mit Priorität, Deadline und Status." />
-      <div className="grid two">
-        <section className="panel" id="aufgabe-erfassen">
-          <h2 className="section-title">Aufgabe erfassen</h2>
-          <form action={createTask} className="form">
-            <label>
-              Titel
-              <input name="title" required />
-            </label>
-            <label>
-              Beschreibung
-              <textarea name="description" />
-            </label>
-            <label>
-              Zuweisen an
-              <select name="assignedToUserId" defaultValue="">
-                <option value="">Nicht zugewiesen</option>
-                {members.map((member) => (
-                  <option value={member.userId} key={member.id}>{member.user.name}</option>
-                ))}
-              </select>
-            </label>
-            <label>
-              Deadline
-              <input name="dueDate" type="date" />
-            </label>
-            <label>
-              Priorität
-              <select name="priority" defaultValue="MEDIUM">
-                <option value="LOW">Niedrig</option>
-                <option value="MEDIUM">Mittel</option>
-                <option value="HIGH">Hoch</option>
-                <option value="URGENT">Dringend</option>
-              </select>
-            </label>
-            <ScopeSelect />
-            <button className="button" type="submit">Speichern</button>
-          </form>
-        </section>
-        <section className="panel">
-          <h2 className="section-title">Offene und laufende Aufgaben</h2>
-          <div className="list">
-            {tasks.length === 0 ? <EmptyState>Noch keine Aufgaben erfasst.</EmptyState> : null}
-            {tasks.map((task) => (
-              <article className="card" key={task.id}>
-                <div className="row">
-                  <div>
-                    <strong>{task.title}</strong>
-                    <span className="muted">
-                      {task.assignee?.name ?? "Nicht zugewiesen"} · Fällig: {formatDate(task.dueDate)} · {task.priority}
-                    </span>
-                    {task.description ? <p>{task.description}</p> : null}
-                    <span className="badge">{task.scope === "FAMILY" ? "Familie" : "Privat"}</span>
-                  </div>
-                  <form action={updateTaskStatus} className="form">
-                    <input type="hidden" name="id" value={task.id} />
-                    <select name="status" defaultValue={task.status}>
-                      <option value="OPEN">Offen</option>
-                      <option value="IN_PROGRESS">In Arbeit</option>
-                      <option value="DONE">Erledigt</option>
-                      <option value="ARCHIVED">Archiv</option>
-                    </select>
-                    <button className="button secondary" type="submit">Aktualisieren</button>
-                  </form>
-                </div>
-              </article>
-            ))}
+      <PageHeader title="Aufgaben" description="Automatisch nach Status, Wichtigkeit und Deadline sortiert." />
+
+      <form className="search-bar">
+        <label>
+          <span>Aufgaben durchsuchen</span>
+          <input name="q" type="search" defaultValue={params.q ?? ""} placeholder="Titel, Beschreibung, Person ..." />
+        </label>
+        <button className="button secondary" type="submit">Suchen</button>
+        {query ? <a className="button secondary" href="/aufgaben">Zurücksetzen</a> : null}
+      </form>
+
+      <section className="stats">
+        <div className="stat"><span>In Arbeit</span><strong>{activeTasks.filter((task) => task.status === "IN_PROGRESS").length}</strong></div>
+        <div className="stat"><span>Offen</span><strong>{activeTasks.filter((task) => task.status === "OPEN").length}</strong></div>
+        <div className="stat"><span>Heute / überfällig</span><strong>{activeTasks.filter((task) => daysUntil(task.dueDate) <= 0).length}</strong></div>
+        <div className="stat"><span>Erledigt</span><strong>{completedTasks.length}</strong></div>
+      </section>
+
+      <section className="panel">
+        <div className="section-head">
+          <div>
+            <h2 className="section-title">Priorisierte Aufgaben</h2>
+            <p className="muted">In Arbeit zuerst, dann offene Aufgaben nach Dringlichkeit und Priorität.</p>
           </div>
-        </section>
-      </div>
+        </div>
+        <div className="task-priority-list">
+          {activeTasks.length === 0 ? <EmptyState>{query ? "Keine passenden offenen Aufgaben." : "Keine offenen Aufgaben."}</EmptyState> : null}
+          {activeTasks.map((task) => <TaskCard task={task} members={members} key={task.id} />)}
+        </div>
+      </section>
+
+      <details className="panel spacing-top">
+        <summary className="section-title">Erledigte Aufgaben</summary>
+        <div className="task-priority-list">
+          {completedTasks.length === 0 ? <EmptyState>{query ? "Keine passenden erledigten Aufgaben." : "Noch keine erledigten Aufgaben."}</EmptyState> : null}
+          {completedTasks.map((task) => <TaskCard task={task} members={members} completed key={task.id} />)}
+        </div>
+      </details>
     </>
   );
 }
+
+function TaskCard({ task, members, completed = false }: { task: TaskLike; members: MemberLike[]; completed?: boolean }) {
+  const urgency = taskUrgency(task);
+  return (
+    <article className={`priority-task ${completed ? "task-completed" : urgency.className}`}>
+      <span className="priority-task-accent" />
+      <div className="priority-task-body">
+        <div>
+          <div className="task-title-row">
+            <strong>{task.title}</strong>
+          </div>
+          <span className="muted">
+            {task.assignee?.name ?? "Nicht zugewiesen"} · Fällig: {formatDate(task.dueDate)} · {priorityLabels[task.priority]}
+          </span>
+          {task.description ? <p>{task.description}</p> : null}
+          <div className="badge-row">
+            <span className="badge">{task.scope === "FAMILY" ? "Familie" : "Privat"}</span>
+            {!completed ? <span className={`status-chip ${urgency.chipClass}`}>{urgency.label}</span> : null}
+          </div>
+        </div>
+        <div className="task-actions">
+          <TaskStatusControl taskId={task.id} initialStatus={task.status} />
+          <ActionModal title="Aufgabe bearbeiten" trigger="Bearbeiten">
+            <form action={updateTask} className="form form-grid modal-form">
+              <input type="hidden" name="id" value={task.id} />
+              <label>Titel<input name="title" defaultValue={task.title} required /></label>
+              <label>
+                Zuweisen an
+                <select name="assignedToUserId" defaultValue={task.assignedToUserId ?? ""}>
+                  <option value="">Nicht zugewiesen</option>
+                  {members.map((member) => <option value={member.userId} key={member.id}>{member.user.name}</option>)}
+                </select>
+              </label>
+              <label>Deadline<input name="dueDate" type="date" defaultValue={toDateInputValue(task.dueDate)} /></label>
+              <label>
+                Priorität
+                <select name="priority" defaultValue={task.priority}>
+                  <option value="LOW">Niedrig</option>
+                  <option value="MEDIUM">Mittel</option>
+                  <option value="HIGH">Hoch</option>
+                  <option value="URGENT">Dringend</option>
+                </select>
+              </label>
+              <label>Beschreibung<textarea name="description" defaultValue={task.description ?? ""} /></label>
+              <ScopeSelect defaultValue={task.scope} />
+              <button className="button full-span" type="submit">Änderungen speichern</button>
+            </form>
+          </ActionModal>
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function taskRank(task: TaskLike) {
+  const statusWeight = task.status === "IN_PROGRESS" ? 100 : task.status === "OPEN" ? 50 : -100;
+  return statusWeight + priorityWeight[task.priority] + dueDateWeight(task.dueDate);
+}
+
+function dueDateWeight(date: Date | string | null) {
+  if (!date) return 0;
+  const days = daysUntil(date);
+  if (days < 0) return 60;
+  if (days === 0) return 52;
+  if (days <= 2) return 42;
+  if (days <= 7) return 26;
+  if (days <= 14) return 14;
+  return 4;
+}
+
+function daysUntil(date: Date | string | null | undefined) {
+  if (!date) return 999;
+  const today = startOfDay(new Date());
+  const due = startOfDay(new Date(date));
+  return Math.ceil((due.getTime() - today.getTime()) / 86400000);
+}
+
+function taskUrgency(task: TaskLike) {
+  const days = daysUntil(task.dueDate);
+  if (days < 0) return { label: "Überfällig", className: "task-critical", chipClass: "danger-chip" };
+  if (days === 0 || task.priority === "URGENT") return { label: "Dringend", className: "task-critical", chipClass: "danger-chip" };
+  if (days <= 3 || task.priority === "HIGH") return { label: "Bald wichtig", className: "task-warning", chipClass: "warning-chip" };
+  return { label: "Planbar", className: "task-calm", chipClass: "calm-chip" };
+}
+
+function taskStatusTone(status: TaskLike["status"]) {
+  if (status === "IN_PROGRESS") return { label: "In Arbeit", className: "status-progress" };
+  if (status === "DONE" || status === "ARCHIVED") return { label: "Erledigt", className: "status-done" };
+  return { label: "Offen", className: "status-open" };
+}
+
+function matchesTask(task: TaskLike, query: string) {
+  return [
+    task.title,
+    task.description,
+    task.assignee?.name,
+    task.owner.name,
+    priorityLabels[task.priority],
+    taskStatusTone(task.status).label
+  ].some((value) => normalizeSearch(value).includes(query));
+}
+
+function normalizeSearch(value: unknown) {
+  return String(value ?? "").trim().toLowerCase();
+}
+
+function startOfDay(date: Date) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+const priorityWeight = {
+  LOW: 5,
+  MEDIUM: 18,
+  HIGH: 34,
+  URGENT: 50
+};
+
+const priorityLabels = {
+  LOW: "Niedrig",
+  MEDIUM: "Mittel",
+  HIGH: "Hoch",
+  URGENT: "Dringend"
+};
+
+type TaskLike = Awaited<ReturnType<typeof getVisibleTasks>>[number];
+type MemberLike = Awaited<ReturnType<typeof getFamilyMembers>>[number];

@@ -116,6 +116,7 @@ model User {
   sessions     Session[]
   categories   Category[]
   expenses     Expense[]      @relation("ExpenseOwner")
+  expenseLabels ExpenseLabel[]
   tasks         Task[]         @relation("TaskOwner")
   assignedTasks Task[]         @relation("TaskAssignee")
   contracts     Contract[]
@@ -143,6 +144,7 @@ model Family {
   members   FamilyMember[]
   categories Category[]
   expenses   Expense[]
+  expenseLabels ExpenseLabel[]
   tasks      Task[]
   contracts  Contract[]
   documents  DocumentReference[]
@@ -181,6 +183,23 @@ model Category {
   @@index([familyId, type])
 }
 
+model ExpenseLabel {
+  id          String   @id @default(cuid())
+  familyId    String
+  ownerUserId String
+  name        String
+  color       String   @default("#16776f")
+  budgetCents Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  family      Family   @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  owner       User     @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
+  expenses    Expense[]
+
+  @@unique([ownerUserId, name])
+  @@index([familyId, ownerUserId])
+}
+
 model Expense {
   id          String   @id @default(cuid())
   familyId    String
@@ -189,7 +208,9 @@ model Expense {
   amountCents Int
   currency    String   @default("EUR")
   date        DateTime
+  paymentMethod String  @default("Nicht angegeben")
   categoryId  String?
+  labelId     String?
   description String
   scope       Scope    @default(FAMILY)
   createdAt   DateTime @default(now())
@@ -197,10 +218,12 @@ model Expense {
   family      Family   @relation(fields: [familyId], references: [id], onDelete: Cascade)
   owner       User     @relation("ExpenseOwner", fields: [ownerUserId], references: [id], onDelete: Cascade)
   category    Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  label       ExpenseLabel? @relation(fields: [labelId], references: [id], onDelete: SetNull)
 
   @@index([familyId, date])
   @@index([familyId, kind])
   @@index([ownerUserId])
+  @@index([labelId])
 }
 
 model Task {

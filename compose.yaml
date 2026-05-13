@@ -4,23 +4,59 @@ services:
   app:
     build: .
     depends_on:
-      - db
+      db:
+        condition: service_healthy
     environment:
       DATABASE_URL: postgresql://family_app:${POSTGRES_PASSWORD}@db:5432/family_app?schema=public
       SESSION_COOKIE_NAME: family_app_session
       APP_URL: ${APP_URL:-http://localhost:3000}
+      CALENDAR_SECRET: ${CALENDAR_SECRET}
+      EXPENSE_CSV_PATH: ${EXPENSE_CSV_PATH:-/data/expenses/expenses.csv}
     ports:
       - "${APP_PORT:-3000}:3000"
+    volumes:
+      - ${EXPENSE_CSV_DIR:-./data/expenses}:/data/expenses
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/login >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
     restart: unless-stopped
 
   db:
-    image: postgres:18-alpine
+    image: postgres:16.4-alpine
     environment:
       POSTGRES_DB: family_app
       POSTGRES_USER: family_app
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
       - family_app_postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U family_app -d family_app"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  backup:
+    image: postgres:16.4-alpine
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      POSTGRES_DB: family_app
+      POSTGRES_USER: family_app
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_HOST: db
+      POSTGRES_PORT: 5432
+      BACKUP_DIR: /backups
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-30}
+      BACKUP_INTERVAL_SECONDS: ${BACKUP_INTERVAL_SECONDS:-86400}
+    volumes:
+      - ./scripts/backup-postgres.sh:/usr/local/bin/backup-postgres.sh:ro
+      - ${BACKUP_DIR:-./data/backups}:/backups
+    command: ["sh", "/usr/local/bin/backup-postgres.sh"]
     restart: unless-stopped
 
 volumes:

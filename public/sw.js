@@ -1,7 +1,10 @@
-const CACHE_NAME = "family-app-v2";
+const CACHE_NAME = "family-app-v3";
 const STATIC_ASSETS = [
   "/",
   "/manifest.webmanifest",
+  "/dashboard",
+  "/ausgaben",
+  "/aufgaben",
   "/icon.svg",
   "/icon-192.png",
   "/icon-512.png",
@@ -42,7 +45,7 @@ self.addEventListener("fetch", (event) => {
   }
 
   if (request.mode === "navigate") {
-    event.respondWith(networkFirst(request));
+    event.respondWith(networkFirst(request, true));
   }
 });
 
@@ -55,13 +58,15 @@ async function cacheFirst(request) {
   return response;
 }
 
-async function networkFirst(request) {
+async function networkFirst(request, ignoreSearch = false) {
   try {
     const response = await fetch(request);
-    const cache = await caches.open(CACHE_NAME);
-    cache.put(request, response.clone());
+    if (response.ok) {
+      const cache = await caches.open(CACHE_NAME);
+      cache.put(request, response.clone());
+    }
     return response;
   } catch {
-    return caches.match(request);
+    return caches.match(request, { ignoreSearch }) || caches.match("/dashboard") || caches.match("/");
   }
 }

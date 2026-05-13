@@ -24,11 +24,17 @@ export async function getVisibleExpenses(familyId: string, userId: string) {
   return db.expense.findMany({
     where: {
       familyId,
-      ...visibleScopeWhere(userId)
+      ownerUserId: userId
     },
-    include: { category: true, owner: true },
-    orderBy: { date: "desc" },
-    take: 100
+    include: { category: true, owner: true, label: true },
+    orderBy: { date: "desc" }
+  });
+}
+
+export async function getExpenseLabels(familyId: string, userId: string) {
+  return db.expenseLabel.findMany({
+    where: { familyId, ownerUserId: userId },
+    orderBy: { name: "asc" }
   });
 }
 

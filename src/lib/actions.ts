@@ -1,5 +1,7 @@
 ﻿"use server";
 
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { dirname } from "node:path";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
@@ -63,6 +65,7 @@ export async function logout() {
 export async function createExpense(formData: FormData) {
   const session = await requireSession();
   const categoryId = optionalText(formData, "categoryId");
+  const labelId = optionalText(formData, "labelId");
 
   const expense = await db.expense.create({
     data: {
@@ -72,9 +75,11 @@ export async function createExpense(formData: FormData) {
       amountCents: parseEuroToCents(formData.get("amount")),
       currency: "EUR",
       date: new Date(requiredText(formData, "date")),
+      paymentMethod: paymentMethodValue(formData),
       categoryId: categoryId || null,
+      labelId: labelId || null,
       description: requiredText(formData, "description"),
-      scope: scopeValue(formData)
+      scope: "PRIVATE"
     }
   });
 
@@ -86,6 +91,173 @@ export async function createExpense(formData: FormData) {
     scope: expense.scope
   });
 
+  revalidatePath("/ausgaben");
+}
+
+export async function createExpenseLabel(formData: FormData) {
+  const session = await requireSession();
+  const name = requiredText(formData, "name");
+  const submittedColor = optionalText(formData, "color");
+  const existingLabels = await db.expenseLabel.count({
+    where: { familyId: session.family.id, ownerUserId: session.user.id }
+  });
+
+  await db.expenseLabel.upsert({
+    where: {
+      ownerUserId_name: {
+        ownerUserId: session.user.id,
+        name
+      }
+    },
+    create: {
+      familyId: session.family.id,
+      ownerUserId: session.user.id,
+      name,
+      color: chooseCategoryColor(name, existingLabels, submittedColor),
+      budgetCents: parseOptionalEuroToCents(formData.get("budget"))
+    },
+    update: {
+      color: chooseCategoryColor(name, existingLabels, submittedColor),
+      budgetCents: parseOptionalEuroToCents(formData.get("budget"))
+    }
+  });
+
+  revalidatePath("/ausgaben");
+}
+
+export async function importExpensesFromCsv() {
+  const session = await requireSession();
+  const csvPath = process.env.EXPENSE_CSV_PATH;
+  if (!csvPath) throw new Error("EXPENSE_CSV_PATH ist nicht gesetzt.");
+
+  await importExpenseCsvContent(session.family.id, session.user.id, await readFile(csvPath, "utf8"));
+  revalidatePath("/ausgaben");
+  revalidatePath("/dashboard");
+}
+
+async function importExpenseCsvContent(familyId: string, userId: string, content: string) {
+  const rows = normalizeWrappedCsvRows(parseCsv(content));
+  const header = rows.shift()?.map(normalizeCsvHeader) ?? [];
+  const indexes = csvColumnIndexes(header);
+  const required = ["id", "kind", "amountCents", "currency", "date", "category", "label", "description"] as const;
+  const missing = required.filter((field) => indexes[field] < 0);
+  if (missing.length > 0) {
+    throw new Error(`CSV braucht die Spalten: ${required.join(", ")}. Gefunden wurden: ${header.join(", ") || "keine Kopfzeile"}`);
+  }
+
+  for (const row of rows) {
+    if (row.length === 0 || row.every((cell) => !cell.trim())) continue;
+    const categoryName = row[indexes.category]?.trim();
+    const labelName = row[indexes.label]?.trim();
+    const categoryId = categoryName ? await findOrCreateExpenseCategory(familyId, userId, categoryName) : null;
+    const labelId = labelName ? await findOrCreateExpenseLabel(familyId, userId, labelName) : null;
+    const id = row[indexes.id]?.trim();
+    const data = {
+      familyId,
+      ownerUserId: userId,
+      kind: normalizeTransactionKind(row[indexes.kind]),
+      amountCents: parseCsvAmountCents(row[indexes.amountCents]),
+      currency: row[indexes.currency]?.trim() || "EUR",
+      date: new Date(row[indexes.date] ?? new Date()),
+      paymentMethod: row[indexes.paymentMethod]?.trim() || "Nicht angegeben",
+      categoryId,
+      labelId,
+      description: row[indexes.description]?.trim() || "CSV Import",
+      scope: "PRIVATE" as const
+    };
+
+    if (id) {
+      const existing = await db.expense.findFirst({
+        where: { id, familyId, ownerUserId: userId }
+      });
+      if (existing) {
+        await db.expense.update({ where: { id }, data });
+      } else {
+        await db.expense.create({ data: { id, ...data } });
+      }
+    } else {
+      await db.expense.create({ data });
+    }
+  }
+}
+
+export async function importExpensesFromUploadedCsv(formData: FormData) {
+  const session = await requireSession();
+  const file = formData.get("csvFile");
+  if (!(file instanceof File) || file.size === 0) {
+    throw new Error("Bitte eine CSV-Datei auswählen.");
+  }
+
+  await importExpenseCsvContent(session.family.id, session.user.id, await file.text());
+  revalidatePath("/ausgaben");
+  revalidatePath("/dashboard");
+}
+
+export async function updateExpense(formData: FormData) {
+  const session = await requireSession();
+  const categoryId = optionalText(formData, "categoryId");
+  const labelId = optionalText(formData, "labelId");
+
+  const updated = await db.expense.updateMany({
+    where: {
+      id: requiredText(formData, "id"),
+      familyId: session.family.id,
+      ownerUserId: session.user.id
+    },
+    data: {
+      kind: enumValue(formData, "kind", ["EXPENSE", "INCOME"] as const, "EXPENSE"),
+      amountCents: parseEuroToCents(formData.get("amount")),
+      currency: "EUR",
+      date: new Date(requiredText(formData, "date")),
+      paymentMethod: paymentMethodValue(formData),
+      categoryId: categoryId || null,
+      labelId: labelId || null,
+      description: requiredText(formData, "description"),
+      scope: "PRIVATE"
+    }
+  });
+
+  if (updated.count > 0) {
+    await syncLinkedDocumentFromForm(formData, {
+      familyId: session.family.id,
+      ownerUserId: session.user.id,
+      linkedEntityType: "EXPENSE",
+      linkedEntityId: requiredText(formData, "id"),
+      scope: "PRIVATE"
+    });
+  }
+
+  revalidatePath("/ausgaben");
+  revalidatePath("/dashboard");
+}
+
+export async function exportExpensesToCsv() {
+  const session = await requireSession();
+  const csvPath = process.env.EXPENSE_CSV_PATH;
+  if (!csvPath) throw new Error("EXPENSE_CSV_PATH ist nicht gesetzt.");
+
+  const expenses = await db.expense.findMany({
+    where: { familyId: session.family.id, ownerUserId: session.user.id },
+    include: { category: true, label: true },
+    orderBy: { date: "desc" }
+  });
+  const rows = [
+    ["id", "kind", "amountCents", "currency", "date", "paymentMethod", "category", "label", "description"],
+    ...expenses.map((expense) => [
+      expense.id,
+      expense.kind,
+      String(expense.amountCents),
+      expense.currency,
+      expense.date.toISOString().slice(0, 10),
+      expense.paymentMethod,
+      expense.category?.name ?? "",
+      expense.label?.name ?? "",
+      expense.description
+    ])
+  ];
+
+  await mkdir(dirname(csvPath), { recursive: true });
+  await writeFile(csvPath, stringifyCsv(rows), "utf8");
   revalidatePath("/ausgaben");
 }
 
@@ -110,7 +282,7 @@ export async function createCategory(formData: FormData) {
       color: chooseCategoryColor(name, existingCategories, submittedColor),
       icon: optionalText(formData, "icon") ?? "tag",
       monthlyBudgetCents: parseOptionalEuroToCents(formData.get("monthlyBudget")),
-      scope: scopeValue(formData)
+      scope: type === "EXPENSE" ? "PRIVATE" : scopeValue(formData)
     }
   });
 
@@ -191,6 +363,35 @@ export async function updateTaskStatus(formData: FormData) {
   revalidatePath("/aufgaben");
 }
 
+export async function updateTask(formData: FormData) {
+  const session = await requireSession();
+  const assignedToUserId = optionalText(formData, "assignedToUserId");
+  const dueDate = optionalText(formData, "dueDate");
+  const status = formData.has("status")
+    ? enumValue(formData, "status", ["OPEN", "IN_PROGRESS", "DONE", "ARCHIVED"] as const, "OPEN")
+    : undefined;
+
+  await db.task.updateMany({
+    where: {
+      id: requiredText(formData, "id"),
+      familyId: session.family.id,
+      OR: [{ ownerUserId: session.user.id }, { assignedToUserId: session.user.id }]
+    },
+    data: {
+      assignedToUserId: assignedToUserId || null,
+      title: requiredText(formData, "title"),
+      description: optionalText(formData, "description"),
+      ...(status ? { status } : {}),
+      priority: enumValue(formData, "priority", ["LOW", "MEDIUM", "HIGH", "URGENT"] as const, "MEDIUM"),
+      dueDate: dueDate ? new Date(dueDate) : null,
+      scope: scopeValue(formData)
+    }
+  });
+
+  revalidatePath("/aufgaben");
+  revalidatePath("/dashboard");
+}
+
 export async function createContract(formData: FormData) {
   const session = await requireSession();
   const endDate = optionalText(formData, "endDate");
@@ -227,6 +428,48 @@ export async function createContract(formData: FormData) {
   revalidatePath("/vertraege");
 }
 
+export async function updateContract(formData: FormData) {
+  const session = await requireSession();
+  const endDate = optionalText(formData, "endDate");
+  const noticeDays = optionalNumber(formData, "cancellationNoticeDays");
+  const nextCancellationDate = calculateCancellationDate(endDate, noticeDays);
+
+  const updated = await db.contract.updateMany({
+    where: {
+      id: requiredText(formData, "id"),
+      familyId: session.family.id,
+      ...(session.role === "ADMIN" ? {} : { ownerUserId: session.user.id })
+    },
+    data: {
+      provider: requiredText(formData, "provider"),
+      contractType: requiredText(formData, "contractType"),
+      description: optionalText(formData, "description"),
+      costCents: parseEuroToCents(formData.get("cost")),
+      currency: "EUR",
+      billingInterval: enumValue(formData, "billingInterval", ["MONTHLY", "YEARLY", "QUARTERLY", "ONCE", "OTHER"] as const, "MONTHLY"),
+      startDate: new Date(requiredText(formData, "startDate")),
+      endDate: endDate ? new Date(endDate) : null,
+      cancellationNoticeDays: noticeDays,
+      nextCancellationDate,
+      status: enumValue(formData, "status", ["ACTIVE", "CANCELLED", "EXPIRED", "DRAFT"] as const, "ACTIVE"),
+      scope: scopeValue(formData)
+    }
+  });
+
+  if (updated.count > 0) {
+    await syncLinkedDocumentFromForm(formData, {
+      familyId: session.family.id,
+      ownerUserId: session.user.id,
+      linkedEntityType: "CONTRACT",
+      linkedEntityId: requiredText(formData, "id"),
+      scope: scopeValue(formData)
+    });
+  }
+
+  revalidatePath("/vertraege");
+  revalidatePath("/dashboard");
+}
+
 export async function createDocumentReference(formData: FormData) {
   const session = await requireSession();
   const url = requiredText(formData, "url");
@@ -241,7 +484,7 @@ export async function createDocumentReference(formData: FormData) {
       linkedEntityType: enumValue(formData, "linkedEntityType", ["EXPENSE", "TASK", "CONTRACT", "CALENDAR_EVENT", "GENERAL"] as const, "GENERAL"),
       linkedEntityId: optionalText(formData, "linkedEntityId") || null,
       title: requiredText(formData, "title"),
-      referenceType: enumValue(formData, "referenceType", ["SYNOLOGY_HTTPS", "WEBDAV_HTTPS", "EXTERNAL_URL"] as const, "SYNOLOGY_HTTPS"),
+      referenceType: enumValue(formData, "referenceType", ["SYNOLOGY_HTTPS", "WEBDAV_HTTPS", "EXTERNAL_URL"] as const, "EXTERNAL_URL"),
       url,
       description: optionalText(formData, "description"),
       scope: scopeValue(formData)
@@ -249,6 +492,49 @@ export async function createDocumentReference(formData: FormData) {
   });
 
   revalidatePath("/dokumente");
+}
+
+export async function updateDocumentReference(formData: FormData) {
+  const session = await requireSession();
+  const url = requiredText(formData, "url");
+  if (!url.startsWith("https://")) {
+    throw new Error("Dokumentverweise müssen als HTTPS-Link gespeichert werden.");
+  }
+
+  await db.documentReference.updateMany({
+    where: {
+      id: requiredText(formData, "id"),
+      familyId: session.family.id,
+      ...(session.role === "ADMIN" ? {} : { ownerUserId: session.user.id })
+    },
+    data: {
+      linkedEntityType: enumValue(formData, "linkedEntityType", ["EXPENSE", "TASK", "CONTRACT", "CALENDAR_EVENT", "GENERAL"] as const, "GENERAL"),
+      linkedEntityId: optionalText(formData, "linkedEntityId") || null,
+      title: requiredText(formData, "title"),
+      referenceType: "EXTERNAL_URL",
+      url,
+      description: optionalText(formData, "description"),
+      scope: scopeValue(formData)
+    }
+  });
+
+  revalidatePath("/dokumente");
+  revalidatePath("/dashboard");
+}
+
+export async function deleteDocumentReference(formData: FormData) {
+  const session = await requireSession();
+
+  await db.documentReference.deleteMany({
+    where: {
+      id: requiredText(formData, "id"),
+      familyId: session.family.id,
+      ...(session.role === "ADMIN" ? {} : { ownerUserId: session.user.id })
+    }
+  });
+
+  revalidatePath("/dokumente");
+  revalidatePath("/dashboard");
 }
 
 export async function createCalendarEvent(formData: FormData) {
@@ -484,8 +770,67 @@ async function createLinkedDocumentIfPresent(
       ...data,
       title,
       url,
-      referenceType: enumValue(formData, "documentReferenceType", ["SYNOLOGY_HTTPS", "WEBDAV_HTTPS", "EXTERNAL_URL"] as const, "SYNOLOGY_HTTPS"),
+      referenceType: enumValue(formData, "documentReferenceType", ["SYNOLOGY_HTTPS", "WEBDAV_HTTPS", "EXTERNAL_URL"] as const, "EXTERNAL_URL"),
       description: optionalText(formData, "documentDescription")
+    }
+  });
+}
+
+async function syncLinkedDocumentFromForm(
+  formData: FormData,
+  data: {
+    familyId: string;
+    ownerUserId: string;
+    linkedEntityType: "EXPENSE" | "CONTRACT";
+    linkedEntityId: string;
+    scope: "PRIVATE" | "FAMILY";
+  }
+) {
+  const documentId = optionalText(formData, "documentId");
+  const title = optionalText(formData, "documentTitle");
+  const url = optionalText(formData, "documentUrl");
+
+  if (!title && !url) {
+    if (documentId) {
+      await db.documentReference.deleteMany({
+        where: {
+          id: documentId,
+          familyId: data.familyId,
+          linkedEntityType: data.linkedEntityType,
+          linkedEntityId: data.linkedEntityId
+        }
+      });
+    }
+    return;
+  }
+
+  if (!title || !url) throw new Error("Dokumenttitel und HTTPS-Link müssen gemeinsam angegeben werden.");
+  if (!url.startsWith("https://")) throw new Error("Dokumentverweise müssen als HTTPS-Link gespeichert werden.");
+
+  if (documentId) {
+    await db.documentReference.updateMany({
+      where: {
+        id: documentId,
+        familyId: data.familyId,
+        linkedEntityType: data.linkedEntityType,
+        linkedEntityId: data.linkedEntityId
+      },
+      data: {
+        title,
+        url,
+        referenceType: "EXTERNAL_URL",
+        scope: data.scope
+      }
+    });
+    return;
+  }
+
+  await db.documentReference.create({
+    data: {
+      ...data,
+      title,
+      url,
+      referenceType: "EXTERNAL_URL"
     }
   });
 }
@@ -509,6 +854,10 @@ function optionalNumber(formData: FormData, key: string) {
 function parseOptionalEuroToCents(value: FormDataEntryValue | null) {
   const text = String(value ?? "").trim();
   return text ? parseEuroToCents(text) : 0;
+}
+
+function paymentMethodValue(formData: FormData) {
+  return optionalText(formData, "paymentMethod") ?? "Nicht angegeben";
 }
 
 function chooseCategoryColor(name: string, existingCount: number, submittedColor: string | null) {
@@ -536,6 +885,153 @@ function scopeWhereForCategoryColor(userId: string) {
       { ownerUserId: userId }
     ]
   };
+}
+
+async function findOrCreateExpenseCategory(familyId: string, ownerUserId: string, name: string) {
+  const existing = await db.category.findFirst({
+    where: {
+      familyId,
+      ownerUserId,
+      type: "EXPENSE",
+      name
+    }
+  });
+  if (existing) return existing.id;
+
+  const count = await db.category.count({ where: { familyId, ownerUserId, type: "EXPENSE" } });
+  const category = await db.category.create({
+    data: {
+      familyId,
+      ownerUserId,
+      type: "EXPENSE",
+      name,
+      color: chooseCategoryColor(name, count, null),
+      icon: "tag",
+      scope: "PRIVATE"
+    }
+  });
+  return category.id;
+}
+
+async function findOrCreateExpenseLabel(familyId: string, ownerUserId: string, name: string) {
+  const existing = await db.expenseLabel.findUnique({
+    where: {
+      ownerUserId_name: {
+        ownerUserId,
+        name
+      }
+    }
+  });
+  if (existing) return existing.id;
+
+  const count = await db.expenseLabel.count({ where: { familyId, ownerUserId } });
+  const label = await db.expenseLabel.create({
+    data: {
+      familyId,
+      ownerUserId,
+      name,
+      color: chooseCategoryColor(name, count, null)
+    }
+  });
+  return label.id;
+}
+
+function parseCsv(content: string) {
+  const delimiter = detectCsvDelimiter(content);
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let cell = "";
+  let quoted = false;
+
+  for (let index = 0; index < content.length; index += 1) {
+    const char = content[index];
+    const next = content[index + 1];
+    if (char === "\"" && quoted && next === "\"") {
+      cell += "\"";
+      index += 1;
+    } else if (char === "\"") {
+      quoted = !quoted;
+    } else if (char === delimiter && !quoted) {
+      row.push(cell);
+      cell = "";
+    } else if ((char === "\n" || char === "\r") && !quoted) {
+      if (char === "\r" && next === "\n") index += 1;
+      row.push(cell);
+      rows.push(row);
+      row = [];
+      cell = "";
+    } else {
+      cell += char;
+    }
+  }
+
+  if (cell || row.length > 0) {
+    row.push(cell);
+    rows.push(row);
+  }
+  return rows;
+}
+
+function normalizeWrappedCsvRows(rows: string[][]) {
+  if (!rows[0] || rows[0].length !== 1 || !rows[0][0].includes(",")) return rows;
+  return rows.map((row) => {
+    if (row.length !== 1) return row;
+    const reparsed = parseCsv(row[0]);
+    return reparsed[0] ?? row;
+  });
+}
+
+function detectCsvDelimiter(content: string) {
+  const firstLine = content.split(/\r?\n/, 1)[0] ?? "";
+  const candidates = [",", ";", "\t"];
+  return candidates
+    .map((delimiter) => ({ delimiter, count: firstLine.split(delimiter).length }))
+    .sort((a, b) => b.count - a.count)[0]?.delimiter ?? ",";
+}
+
+function normalizeCsvHeader(value: string) {
+  return value
+    .replace(/^\uFEFF/, "")
+    .trim()
+    .replace(/^"|"$/g, "")
+    .toLowerCase();
+}
+
+function csvColumnIndexes(header: string[]) {
+  return {
+    id: findCsvColumn(header, ["id", "expenseid", "expense_id", "eintragsid"]),
+    kind: findCsvColumn(header, ["kind", "type", "art", "typ"]),
+    amountCents: findCsvColumn(header, ["amountcents", "amount_cents", "betragcent", "betragcents", "betrag_cent", "betrag_cents", "amount", "betrag"]),
+    currency: findCsvColumn(header, ["currency", "währung", "waehrung"]),
+    date: findCsvColumn(header, ["date", "datum"]),
+    paymentMethod: findCsvColumn(header, ["paymentmethod", "payment_method", "bezahlart", "zahlungsart", "zahlungsmethode"]),
+    category: findCsvColumn(header, ["category", "kategorie"]),
+    label: findCsvColumn(header, ["label", "projekt", "project"]),
+    description: findCsvColumn(header, ["description", "beschreibung", "notiz", "notes"])
+  };
+}
+
+function findCsvColumn(header: string[], names: string[]) {
+  return header.findIndex((field) => names.includes(field.replace(/[\s-]/g, "")));
+}
+
+function normalizeTransactionKind(value: string | undefined) {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  return ["income", "einnahme", "in"].includes(normalized) ? "INCOME" as const : "EXPENSE" as const;
+}
+
+function parseCsvAmountCents(value: string | undefined) {
+  const text = String(value ?? "0").trim();
+  if (!text.includes(",") && !text.includes(".") && /^-?\d+$/.test(text)) {
+    return Number(text);
+  }
+  return parseEuroToCents(text);
+}
+
+function stringifyCsv(rows: string[][]) {
+  return rows
+    .map((row) => row.map((cell) => `"${String(cell).replace(/"/g, "\"\"")}"`).join(","))
+    .join("\n");
 }
 
 function scopeValue(formData: FormData) {
