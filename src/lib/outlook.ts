@@ -78,6 +78,23 @@ export async function syncOutlookIntegration(integrationId: string, userId: stri
     const to = new Date(now);
     to.setDate(to.getDate() + 365);
     const events = await fetchOutlookEvents(accessToken, from, to);
+    const sourceVisibility = await db.calendarSourceVisibility.upsert({
+      where: {
+        integrationId_sourceCalendarId: {
+          integrationId: integration.id,
+          sourceCalendarId: "primary"
+        }
+      },
+      create: {
+        integrationId: integration.id,
+        sourceCalendarId: "primary",
+        sourceCalendarName: "Outlook",
+        visibilityToFamily: integration.visibilityToFamily
+      },
+      update: {
+        sourceCalendarName: "Outlook"
+      }
+    });
 
     for (const event of events.filter((item) => !item.isCancelled)) {
       const startAt = parseGraphDate(event.start);
@@ -95,23 +112,27 @@ export async function syncOutlookIntegration(integrationId: string, userId: stri
           integrationId: integration.id,
           ownerUserId: integration.userId,
           externalEventId: event.id,
+          sourceCalendarId: "primary",
+          sourceCalendarName: "Outlook",
           title: event.subject || "Ohne Titel",
           description: event.bodyPreview || null,
           startAt,
           endAt,
           timezone: event.start?.timeZone || "Europe/Berlin",
           location: event.location?.displayName || null,
-          visibility: integration.visibilityToFamily,
+          visibility: sourceVisibility.visibilityToFamily,
           source: "OUTLOOK"
         },
         update: {
           title: event.subject || "Ohne Titel",
+          sourceCalendarId: "primary",
+          sourceCalendarName: "Outlook",
           description: event.bodyPreview || null,
           startAt,
           endAt,
           timezone: event.start?.timeZone || "Europe/Berlin",
           location: event.location?.displayName || null,
-          visibility: integration.visibilityToFamily,
+          visibility: sourceVisibility.visibilityToFamily,
           source: "OUTLOOK"
         }
       });

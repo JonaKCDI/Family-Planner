@@ -611,7 +611,8 @@ textarea {
 
 .calendar-pill,
 .more-events {
-  display: block;
+  display: grid;
+  gap: 0.05rem;
   overflow: hidden;
   border-left: 3px solid var(--accent);
   border-radius: 5px;
@@ -622,6 +623,17 @@ textarea {
   white-space: nowrap;
   font-size: 0.76rem;
   font-weight: 700;
+}
+
+.calendar-pill small {
+  min-width: 0;
+  overflow: hidden;
+  color: inherit;
+  font-size: 0.66rem;
+  font-weight: 500;
+  opacity: 0.78;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .source-icloud {
@@ -787,6 +799,48 @@ textarea {
   padding: 0.75rem;
 }
 
+.inline-control {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.inline-control label {
+  display: grid;
+  gap: 0.25rem;
+  color: #34383d;
+  font-size: 0.86rem;
+}
+
+.inline-control select,
+.source-row select {
+  min-width: 0;
+  border: 1px solid #cfc9bd;
+  border-radius: 7px;
+  background: #fff;
+  padding: 0.48rem 0.55rem;
+}
+
+.source-list {
+  display: grid;
+  gap: 0.45rem;
+  border-top: 1px solid var(--line);
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+}
+
+.source-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(120px, 160px) auto;
+  gap: 0.45rem;
+  align-items: center;
+}
+
+.source-row span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-weight: 700;
+}
+
 @media (min-width: 820px) {
   .topbar {
     padding-inline: 1.5rem;
@@ -930,6 +984,10 @@ textarea {
 
   .week-day {
     min-height: 0;
+  }
+
+  .source-row {
+    grid-template-columns: 1fr;
   }
 
   .fab-menu {

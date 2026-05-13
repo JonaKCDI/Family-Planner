@@ -1,5 +1,12 @@
 import Link from "next/link";
-import { createCalendarEvent, createCalendarIntegration, deleteCalendarIntegration, syncCalendarIntegration } from "@/lib/actions";
+import {
+  createCalendarEvent,
+  createCalendarIntegration,
+  deleteCalendarIntegration,
+  syncCalendarIntegration,
+  updateCalendarIntegrationVisibility,
+  updateCalendarSourceVisibility
+} from "@/lib/actions";
 import { requireSession } from "@/lib/auth";
 import { formatDate } from "@/lib/format";
 import { getCalendarIntegrations, getVisibleCalendarEvents } from "@/lib/queries";
@@ -54,18 +61,25 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
             <summary aria-label="Kalender-Einstellungen">Menü</summary>
             <div className="config-panel">
               <h2 className="section-title" id="kalender-verbinden">Kalender verbinden</h2>
-              <form action="/api/outlook/start" className="form outlook-connect" method="get">
-                <label>
-                  Outlook-Sichtbarkeit
-                  <select name="visibilityToFamily" defaultValue="BUSY_ONLY">
-                    <option value="PRIVATE">Privat</option>
-                    <option value="BUSY_ONLY">Nur beschäftigt</option>
-                    <option value="TITLE_ONLY">Nur Titel</option>
-                    <option value="FAMILY">Voll sichtbar</option>
-                  </select>
-                </label>
-                <button className="button" type="submit">Outlook verbinden</button>
-              </form>
+              {process.env.OUTLOOK_CLIENT_ID && process.env.OUTLOOK_CLIENT_SECRET ? (
+                <form action="/api/outlook/start" className="form outlook-connect" method="get">
+                  <label>
+                    Outlook-Sichtbarkeit
+                    <select name="visibilityToFamily" defaultValue="BUSY_ONLY">
+                      <option value="PRIVATE">Privat</option>
+                      <option value="BUSY_ONLY">Nur beschäftigt</option>
+                      <option value="TITLE_ONLY">Nur Titel</option>
+                      <option value="FAMILY">Voll sichtbar</option>
+                    </select>
+                  </label>
+                  <button className="button" type="submit">Mit Microsoft anmelden</button>
+                </form>
+              ) : (
+                <div className="outlook-connect">
+                  <strong>Microsoft-Login noch nicht konfiguriert</strong>
+                  <p className="muted">Trage zuerst OUTLOOK_CLIENT_ID und OUTLOOK_CLIENT_SECRET in .env ein.</p>
+                </div>
+              )}
               <p className="muted">
                 Outlook wird per Microsoft-Login verbunden. Dein Firmenpasswort wird nicht in dieser App gespeichert.
               </p>
@@ -131,6 +145,32 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
                       </div>
                       <IntegrationActions id={integration.id} provider={integration.provider} />
                     </div>
+                    <form action={updateCalendarIntegrationVisibility} className="inline-control spacing-top">
+                      <input type="hidden" name="id" value={integration.id} />
+                      <label>
+                        Sichtbarkeit dieses Users
+                        <select name="visibilityToFamily" defaultValue={integration.visibilityToFamily}>
+                          <VisibilityOptions />
+                        </select>
+                      </label>
+                      <button className="button secondary" type="submit">Übernehmen</button>
+                    </form>
+                    {integration.sourceVisibilityOverrides.length > 0 ? (
+                      <div className="source-list">
+                        {integration.sourceVisibilityOverrides.map((source) => (
+                          <form action={updateCalendarSourceVisibility} className="source-row" key={source.id}>
+                            <input type="hidden" name="integrationId" value={integration.id} />
+                            <input type="hidden" name="sourceCalendarId" value={source.sourceCalendarId} />
+                            <input type="hidden" name="sourceCalendarName" value={source.sourceCalendarName} />
+                            <span>{source.sourceCalendarName}</span>
+                            <select name="visibilityToFamily" defaultValue={source.visibilityToFamily} aria-label={`Sichtbarkeit ${source.sourceCalendarName}`}>
+                              <VisibilityOptions />
+                            </select>
+                            <button className="button secondary" type="submit">OK</button>
+                          </form>
+                        ))}
+                      </div>
+                    ) : null}
                     {integration.lastSyncError ? <p className="negative">{integration.lastSyncError}</p> : null}
                   </article>
                 ))}
@@ -204,6 +244,17 @@ function IntegrationActions({ id, provider }: { id: string; provider: keyof type
   );
 }
 
+function VisibilityOptions() {
+  return (
+    <>
+      <option value="PRIVATE">Privat</option>
+      <option value="BUSY_ONLY">Nur beschäftigt</option>
+      <option value="TITLE_ONLY">Nur Titel</option>
+      <option value="FAMILY">Voll sichtbar</option>
+    </>
+  );
+}
+
 function MonthView({ date, events }: { date: Date; events: CalendarEvent[] }) {
   const days = monthGridDays(date);
   const rows = chunk(days, 7);
@@ -273,6 +324,7 @@ function CalendarPill({ event }: { event: CalendarEvent }) {
   return (
     <span className={`calendar-pill source-${event.source.toLowerCase()}`}>
       {timeFormatter.format(event.startAt)} {eventTitle(event)}
+      {event.sourceCalendarName ? <small>{event.sourceCalendarName}</small> : null}
     </span>
   );
 }
@@ -291,7 +343,7 @@ function CalendarEventCard({ event, detailed = false }: { event: CalendarEvent; 
     <article className="calendar-event-card">
       <span className="calendar-event-time">{timeFormatter.format(event.startAt)} - {timeFormatter.format(event.endAt)}</span>
       <strong>{eventTitle(event)}</strong>
-      <span className="muted">{event.owner.name} · {event.source} · {visibilityLabels[event.visibility]}</span>
+      <span className="muted">{event.owner.name} · {event.sourceCalendarName ?? event.source} · {visibilityLabels[event.visibility]}</span>
       {detailed && event.visibility === "FAMILY" && event.location ? <span>{event.location}</span> : null}
       {detailed && event.visibility === "FAMILY" && event.description ? <p>{event.description}</p> : null}
     </article>

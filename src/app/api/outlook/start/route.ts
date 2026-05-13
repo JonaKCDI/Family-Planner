@@ -6,7 +6,12 @@ import { outlookConfig } from "@/lib/outlook";
 
 export async function GET(request: Request) {
   await requireSession();
-  const config = outlookConfig();
+  let config;
+  try {
+    config = outlookConfig();
+  } catch {
+    return NextResponse.redirect(new URL("/kalender?outlook=missing-config", request.url));
+  }
   const url = new URL(request.url);
   const visibility = visibilityValue(url.searchParams.get("visibilityToFamily"));
   const state = randomBytes(24).toString("base64url");

@@ -288,6 +288,7 @@ model CalendarIntegration {
   family             Family             @relation(fields: [familyId], references: [id], onDelete: Cascade)
   user               User               @relation(fields: [userId], references: [id], onDelete: Cascade)
   events             CalendarEvent[]
+  sourceVisibilityOverrides CalendarSourceVisibility[]
 
   @@index([familyId, provider])
 }
@@ -298,6 +299,8 @@ model CalendarEvent {
   integrationId   String?
   ownerUserId     String
   externalEventId String?
+  sourceCalendarId String?
+  sourceCalendarName String?
   title           String
   description     String?
   startAt         DateTime
@@ -315,4 +318,18 @@ model CalendarEvent {
   @@index([familyId, startAt])
   @@index([integrationId])
   @@unique([integrationId, externalEventId])
+}
+
+model CalendarSourceVisibility {
+  id                 String             @id @default(cuid())
+  integrationId      String
+  sourceCalendarId   String
+  sourceCalendarName String
+  visibilityToFamily CalendarVisibility
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+  integration        CalendarIntegration @relation(fields: [integrationId], references: [id], onDelete: Cascade)
+
+  @@unique([integrationId, sourceCalendarId])
+  @@index([integrationId])
 }

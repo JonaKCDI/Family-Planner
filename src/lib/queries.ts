@@ -101,7 +101,12 @@ export async function getCalendarIntegrations(familyId: string, userId: string) 
       familyId,
       userId
     },
-    include: { user: true },
+    include: {
+      user: true,
+      sourceVisibilityOverrides: {
+        orderBy: { sourceCalendarName: "asc" }
+      }
+    },
     orderBy: { createdAt: "desc" }
   });
 }

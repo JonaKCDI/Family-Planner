@@ -305,6 +305,71 @@ export async function syncCalendarIntegration(formData: FormData) {
   revalidatePath("/kalender");
 }
 
+export async function updateCalendarIntegrationVisibility(formData: FormData) {
+  const session = await requireSession();
+  const id = requiredText(formData, "id");
+  const visibilityToFamily = enumValue(formData, "visibilityToFamily", ["PRIVATE", "BUSY_ONLY", "TITLE_ONLY", "FAMILY"] as const, "BUSY_ONLY");
+  const integration = await db.calendarIntegration.findFirst({
+    where: { id, familyId: session.family.id, userId: session.user.id },
+    include: { sourceVisibilityOverrides: true }
+  });
+  if (!integration) return;
+
+  await db.calendarIntegration.update({
+    where: { id },
+    data: { visibilityToFamily }
+  });
+
+  const overrideIds = integration.sourceVisibilityOverrides.map((source) => source.sourceCalendarId);
+  await db.calendarEvent.updateMany({
+    where: {
+      integrationId: id,
+      ...(overrideIds.length > 0 ? { sourceCalendarId: { notIn: overrideIds } } : {})
+    },
+    data: { visibility: visibilityToFamily }
+  });
+
+  revalidatePath("/kalender");
+}
+
+export async function updateCalendarSourceVisibility(formData: FormData) {
+  const session = await requireSession();
+  const integrationId = requiredText(formData, "integrationId");
+  const sourceCalendarId = requiredText(formData, "sourceCalendarId");
+  const sourceCalendarName = requiredText(formData, "sourceCalendarName");
+  const visibilityToFamily = enumValue(formData, "visibilityToFamily", ["PRIVATE", "BUSY_ONLY", "TITLE_ONLY", "FAMILY"] as const, "BUSY_ONLY");
+  const integration = await db.calendarIntegration.findFirst({
+    where: { id: integrationId, familyId: session.family.id, userId: session.user.id }
+  });
+  if (!integration) return;
+
+  await db.calendarSourceVisibility.upsert({
+    where: {
+      integrationId_sourceCalendarId: {
+        integrationId,
+        sourceCalendarId
+      }
+    },
+    create: {
+      integrationId,
+      sourceCalendarId,
+      sourceCalendarName,
+      visibilityToFamily
+    },
+    update: {
+      sourceCalendarName,
+      visibilityToFamily
+    }
+  });
+
+  await db.calendarEvent.updateMany({
+    where: { integrationId, sourceCalendarId },
+    data: { visibility: visibilityToFamily }
+  });
+
+  revalidatePath("/kalender");
+}
+
 export async function createUser(formData: FormData) {
   const session = await requireSession();
   if (session.role !== "ADMIN") return;
