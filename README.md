@@ -1,4 +1,4 @@
-# Familien-App
+# Family Planner
 
 Self-hosted Familien- und Alltagsorganisations-App als mobile-first Next.js/PWA. V1 konzentriert sich auf echte Nutzer, Familien-/Privat-Sichtbarkeit, Ausgaben, Aufgaben, Vertraege, manuelle Kalendertermine und HTTPS-Dokumentverweise auf Synology oder externe Quellen.
 
