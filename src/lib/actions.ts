@@ -117,6 +117,30 @@ export async function createCategory(formData: FormData) {
   revalidatePath("/ausgaben");
 }
 
+export async function updateCategory(formData: FormData) {
+  const session = await requireSession();
+  const id = requiredText(formData, "id");
+  const name = requiredText(formData, "name");
+  const color = optionalText(formData, "color") ?? "#16776f";
+
+  await db.category.updateMany({
+    where: {
+      id,
+      familyId: session.family.id,
+      ...(session.role === "ADMIN" ? {} : { ownerUserId: session.user.id })
+    },
+    data: {
+      name,
+      color,
+      monthlyBudgetCents: parseOptionalEuroToCents(formData.get("monthlyBudget")),
+      scope: scopeValue(formData)
+    }
+  });
+
+  revalidatePath("/ausgaben");
+  revalidatePath("/dashboard");
+}
+
 export async function deleteExpense(formData: FormData) {
   const session = await requireSession();
   const id = requiredText(formData, "id");

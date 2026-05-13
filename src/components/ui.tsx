@@ -15,11 +15,11 @@ export function EmptyState({ children }: { children: ReactNode }) {
   return <div className="empty">{children}</div>;
 }
 
-export function ScopeSelect() {
+export function ScopeSelect({ defaultValue = "FAMILY" }: { defaultValue?: "PRIVATE" | "FAMILY" }) {
   return (
     <label>
       Sichtbarkeit
-      <select name="scope" defaultValue="FAMILY">
+      <select name="scope" defaultValue={defaultValue}>
         <option value="FAMILY">Familie</option>
         <option value="PRIVATE">Privat</option>
       </select>

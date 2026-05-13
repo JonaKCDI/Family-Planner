@@ -4,7 +4,6 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const defaults = [
-  { href: "/kalender#termin-erfassen", label: "Termin" },
   { href: "/ausgaben#eintrag-erfassen", label: "Eintrag" },
   { href: "/aufgaben#aufgabe-erfassen", label: "Aufgabe" },
   { href: "/vertraege#vertrag-erfassen", label: "Vertrag" },
@@ -13,10 +12,6 @@ const defaults = [
 
 const byPath: Record<string, { href: string; label: string }[]> = {
   "/dashboard": defaults,
-  "/kalender": [
-    { href: "/kalender#termin-erfassen", label: "Termin erstellen" },
-    { href: "/kalender#kalender-verbinden", label: "Kalender verbinden" }
-  ],
   "/ausgaben": [
     { href: "/ausgaben#eintrag-erfassen", label: "Eintrag erfassen" },
     { href: "/ausgaben#kategorie-erfassen", label: "Kategorie" }

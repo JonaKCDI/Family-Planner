@@ -32,7 +32,6 @@ export default async function DocumentsPage() {
                 <option value="EXPENSE">Ausgabe</option>
                 <option value="TASK">Aufgabe</option>
                 <option value="CONTRACT">Vertrag</option>
-                <option value="CALENDAR_EVENT">Kalendertermin</option>
               </select>
             </label>
             <label>Bezugs-ID optional<input name="linkedEntityId" /></label>

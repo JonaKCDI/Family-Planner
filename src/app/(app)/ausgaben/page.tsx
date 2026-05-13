@@ -1,4 +1,4 @@
-﻿import { createCategory, createExpense, deleteExpense } from "@/lib/actions";
+import { createCategory, createExpense, deleteExpense, updateCategory } from "@/lib/actions";
 import { requireSession } from "@/lib/auth";
 import { formatDate, formatMoney, toDateInputValue } from "@/lib/format";
 import { getDocumentsForLinkedEntities, getVisibleCategories, getVisibleExpenses } from "@/lib/queries";
@@ -27,21 +27,22 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
   );
   const documentsByExpense = groupBy(documents, (document) => document.linkedEntityId ?? "");
   const selectedEntries = expenses.filter((entry) => isInRange(entry.date, range.from, range.to));
+  const currentYearEntries = expenses.filter((entry) => new Date(entry.date).getFullYear() === new Date().getFullYear());
 
   const income = sumByKind(selectedEntries, "INCOME");
   const spending = sumByKind(selectedEntries, "EXPENSE");
   const saldo = income - spending;
   const rangeBudget = budgetForRange(categories, range.from, range.to);
   const budgetDelta = rangeBudget - spending;
-  const currentYearEntries = expenses.filter((entry) => new Date(entry.date).getFullYear() === new Date().getFullYear());
   const categoryRows = buildCategoryRows(selectedEntries, categories, spending, range);
   const monthlyRows = buildPeriodRows(selectedEntries, categories, "month");
   const yearlyRows = buildPeriodRows(expenses, categories, "year");
 
   return (
     <>
-      <PageHeader title="Ausgaben & Einnahmen" description="Erfassen, kategorisieren und auswerten: Zeitraum, Kategorien, Verteilung und Saldo." />
-      <section className="panel">
+      <PageHeader title="Ausgaben & Einnahmen" description="Kompakt erfassen, Budget prüfen und Kategorien sauber pflegen." />
+
+      <section className="panel filter-panel">
         <form className="inline-form">
           <label>
             Von
@@ -66,7 +67,7 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
         </div>
       </section>
 
-      <div className="grid two">
+      <div className="finance-layout">
         <section className="panel" id="eintrag-erfassen">
           <h2 className="section-title">Eintrag erfassen</h2>
           <form action={createExpense} className="form">
@@ -124,6 +125,27 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
             <ScopeSelect />
             <button className="button secondary" type="submit">Kategorie speichern</button>
           </form>
+
+          <h2 className="section-title spacing-top">Kategorien bearbeiten</h2>
+          <div className="category-editor-list">
+            {categories.map((category) => (
+              <details className="category-editor" key={category.id}>
+                <summary>
+                  <span className="color-dot" style={{ background: category.color }} />
+                  <span>{category.name}</span>
+                  <strong>{formatMoney(category.monthlyBudgetCents)}</strong>
+                </summary>
+                <form action={updateCategory} className="form compact">
+                  <input type="hidden" name="id" value={category.id} />
+                  <label>Name<input name="name" defaultValue={category.name} required /></label>
+                  <label>Monatsbudget in EUR<input name="monthlyBudget" inputMode="decimal" defaultValue={formatEuroInput(category.monthlyBudgetCents)} /></label>
+                  <label>Farbe<input name="color" type="color" defaultValue={category.color} /></label>
+                  <ScopeSelect defaultValue={category.scope} />
+                  <button className="button secondary" type="submit">Änderungen speichern</button>
+                </form>
+              </details>
+            ))}
+          </div>
         </section>
 
         <section className="panel">
@@ -164,40 +186,47 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
         </section>
       </div>
 
-      <section className="panel spacing-top">
-        <h2 className="section-title">Letzte Einträge</h2>
-        <p className="muted">Jahressaldo aktuell: {formatMoney(sumByKind(currentYearEntries, "INCOME") - sumByKind(currentYearEntries, "EXPENSE"))}</p>
-        <div className="list">
+      <section className="panel spacing-top expense-section">
+        <div className="section-head">
+          <div>
+            <h2 className="section-title">Einträge</h2>
+            <p className="muted">Chronologisch kompakt. Antippen öffnet Details, Dokumente und Aktionen.</p>
+          </div>
+          <span className="badge">Jahressaldo {formatMoney(sumByKind(currentYearEntries, "INCOME") - sumByKind(currentYearEntries, "EXPENSE"))}</span>
+        </div>
+        <div className="expense-list">
           {expenses.length === 0 ? <EmptyState>Noch keine Einträge erfasst.</EmptyState> : null}
           {expenses.map((expense) => {
             const linkedDocuments = documentsByExpense[expense.id] ?? [];
             return (
-              <article className="card row" key={expense.id}>
-                <div>
-                  <strong>{expense.description}</strong>
-                  <span className="muted">
-                    {formatDate(expense.date)} · {expense.category?.name ?? "Ohne Kategorie"} · {expense.owner.name}
-                  </span>
+              <details className="expense-row" key={expense.id}>
+                <summary>
+                  <span>{formatDate(expense.date)}</span>
+                  <span>{expense.category?.name ?? "Ohne Kategorie"}</span>
+                  <strong className={expense.kind === "INCOME" ? "positive" : "negative"}>
+                    {expense.kind === "INCOME" ? "+" : "-"}{formatMoney(expense.amountCents, expense.currency)}
+                  </strong>
+                </summary>
+                <div className="expense-detail">
+                  <div>
+                    <strong>{expense.description}</strong>
+                    <span className="muted">{expense.owner.name} · {expense.scope === "FAMILY" ? "Familie" : "Privat"}</span>
+                  </div>
                   <div className="badge-row">
                     <span className="badge">{expense.kind === "INCOME" ? "Einnahme" : "Ausgabe"}</span>
-                    <span className="badge">{expense.scope === "FAMILY" ? "Familie" : "Privat"}</span>
+                    {linkedDocuments.length === 0 ? <span className="badge">Kein Dokument</span> : null}
                     {linkedDocuments.map((document) => (
                       <a className="badge link-badge" href={document.url} key={document.id} target="_blank" rel="noreferrer">
                         {document.title}
                       </a>
                     ))}
                   </div>
-                </div>
-                <div className="amount-column">
-                  <strong className={expense.kind === "INCOME" ? "positive" : "negative"}>
-                    {expense.kind === "INCOME" ? "+" : "-"}{formatMoney(expense.amountCents, expense.currency)}
-                  </strong>
                   <form action={deleteExpense}>
                     <input type="hidden" name="id" value={expense.id} />
                     <button className="button secondary" type="submit">Löschen</button>
                   </form>
                 </div>
-              </article>
+              </details>
             );
           })}
         </div>
@@ -351,6 +380,11 @@ function groupBy<T>(items: T[], getKey: (item: T) => string) {
     groups[key] = [...(groups[key] ?? []), item];
     return groups;
   }, {});
+}
+
+function formatEuroInput(amountCents: number) {
+  if (amountCents === 0) return "";
+  return (amountCents / 100).toFixed(2).replace(".", ",");
 }
 
 type ExpenseLike = Awaited<ReturnType<typeof getVisibleExpenses>>[number];

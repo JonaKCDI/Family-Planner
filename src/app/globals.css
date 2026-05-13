@@ -135,6 +135,11 @@ textarea {
   grid-template-columns: minmax(0, 1fr);
 }
 
+.finance-layout {
+  display: grid;
+  gap: 1rem;
+}
+
 .panel,
 .card {
   min-width: 0;
@@ -186,6 +191,7 @@ textarea {
 .form input,
 .form select,
 .form textarea {
+  min-width: 0;
   width: 100%;
   border: 1px solid #cfc9bd;
   border-radius: 7px;
@@ -216,6 +222,7 @@ textarea {
 }
 
 .inline-form input {
+  min-width: 0;
   border: 1px solid #cfc9bd;
   border-radius: 7px;
   background: #fff;
@@ -388,6 +395,103 @@ textarea {
 .analysis-grid {
   display: grid;
   gap: 1rem;
+}
+
+.section-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.8rem;
+}
+
+.section-head .section-title,
+.section-head p {
+  margin-bottom: 0;
+}
+
+.category-editor-list,
+.expense-list {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.category-editor,
+.expense-row {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.category-editor summary,
+.expense-row summary {
+  display: grid;
+  min-width: 0;
+  cursor: pointer;
+  list-style: none;
+}
+
+.category-editor summary::-webkit-details-marker,
+.expense-row summary::-webkit-details-marker {
+  display: none;
+}
+
+.category-editor summary {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 0.55rem;
+  align-items: center;
+  padding: 0.7rem;
+}
+
+.category-editor summary span:nth-child(2),
+.expense-row summary span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.color-dot {
+  width: 12px;
+  height: 12px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+}
+
+.category-editor form {
+  border-top: 1px solid var(--line);
+  padding: 0.8rem;
+}
+
+.expense-row summary {
+  grid-template-columns: minmax(82px, 0.8fr) minmax(0, 1.4fr) minmax(96px, auto);
+  gap: 0.5rem;
+  align-items: center;
+  padding: 0.7rem;
+}
+
+.expense-row summary strong {
+  justify-self: end;
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+
+.expense-row[open] summary {
+  border-bottom: 1px solid var(--line);
+  background: #fbfaf6;
+}
+
+.expense-detail {
+  display: grid;
+  gap: 0.65rem;
+  padding: 0.75rem;
+}
+
+.expense-detail > div:first-child {
+  display: grid;
+  gap: 0.15rem;
 }
 
 .analysis-grid h3 {
@@ -984,6 +1088,11 @@ textarea {
 
   .grid.two {
     grid-template-columns: 360px minmax(0, 1fr);
+    align-items: start;
+  }
+
+  .finance-layout {
+    grid-template-columns: minmax(320px, 380px) minmax(0, 1fr);
     align-items: start;
   }
 
@@ -1625,7 +1734,7 @@ body {
   }
 
   .nav {
-    grid-template-columns: repeat(7, minmax(0, 1fr));
+    grid-template-columns: repeat(6, minmax(0, 1fr));
     background: rgba(255, 255, 255, 0.96);
     backdrop-filter: blur(14px);
   }
@@ -1641,7 +1750,7 @@ body {
   }
 
   .nav a strong {
-    font-size: 0.58rem;
+    font-size: 0.62rem;
   }
 
   .dashboard-mini-grid,
@@ -1677,6 +1786,47 @@ body {
   .mini-table-head span:nth-child(4),
   .mini-table-row span:nth-child(4) {
     display: none;
+  }
+
+  .filter-panel,
+  .panel,
+  .card {
+    padding: 0.85rem;
+  }
+
+  .form,
+  .inline-form {
+    gap: 0.65rem;
+  }
+
+  .form label,
+  .inline-form label {
+    min-width: 0;
+  }
+
+  .form input,
+  .form select,
+  .form textarea,
+  .inline-form input,
+  .inline-control select,
+  .source-row select {
+    min-height: 44px;
+  }
+
+  .expense-row summary {
+    grid-template-columns: 74px minmax(0, 1fr) minmax(90px, auto);
+    gap: 0.4rem;
+    padding: 0.65rem;
+    font-size: 0.88rem;
+  }
+
+  .category-editor summary {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .category-editor summary strong {
+    grid-column: 2;
+    font-size: 0.86rem;
   }
 
   .task-check {
