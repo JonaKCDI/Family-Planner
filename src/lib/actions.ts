@@ -7,6 +7,7 @@ import { createSession, destroySession, hashPassword, requireSession, verifyPass
 import { syncCalDavIntegration } from "@/lib/caldav";
 import { db } from "@/lib/db";
 import { parseEuroToCents } from "@/lib/format";
+import { syncOutlookIntegration } from "@/lib/outlook";
 import { encryptSecret } from "@/lib/secrets";
 
 const passwordSchema = z.string().min(6, "Das Passwort braucht mindestens 6 Zeichen.");
@@ -291,7 +292,13 @@ export async function deleteCalendarIntegration(formData: FormData) {
 export async function syncCalendarIntegration(formData: FormData) {
   const session = await requireSession();
   try {
-    await syncCalDavIntegration(requiredText(formData, "id"), session.user.id);
+    const id = requiredText(formData, "id");
+    const integration = await db.calendarIntegration.findFirst({ where: { id, familyId: session.family.id, userId: session.user.id } });
+    if (integration?.provider === "OUTLOOK") {
+      await syncOutlookIntegration(id, session.user.id);
+    } else {
+      await syncCalDavIntegration(id, session.user.id);
+    }
   } catch {
     // Der Sync-Fehler wird an der Kalenderquelle gespeichert und in der UI angezeigt.
   }

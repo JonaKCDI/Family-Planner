@@ -274,6 +274,10 @@ model CalendarIntegration {
   calendarUrl        String?
   username           String?
   encryptedPassword  String?
+  encryptedAccessToken  String?
+  encryptedRefreshToken String?
+  tokenExpiresAt        DateTime?
+  externalAccountEmail  String?
   syncEnabled        Boolean            @default(false)
   visibilityToFamily CalendarVisibility @default(PRIVATE)
   lastSyncAt         DateTime?

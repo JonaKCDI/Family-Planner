@@ -57,7 +57,7 @@ Die App ist kein Datei-Proxy. Synology bleibt Single Source of Truth und kontrol
 
 ## Kalender
 
-Die App unterstützt manuelle Termine und lokalen iCloud/CalDAV-Sync. Die App läuft lokal, aber iCloud bleibt eine Apple-Cloud-Datenquelle.
+Die App unterstützt manuelle Termine, lokalen iCloud/CalDAV-Sync und Outlook-Sync über Microsoft Graph. Die App läuft lokal, aber iCloud und Outlook bleiben externe Kalenderquellen.
 
 ### iCloud praktisch einrichten
 
@@ -67,9 +67,28 @@ Die App unterstützt manuelle Termine und lokalen iCloud/CalDAV-Sync. Die App l�
 4. Öffne in der App den Tab **Kalender**.
 5. Wähle als Anbieter **iCloud**.
 6. Trage einen Anzeigenamen ein, zum Beispiel `Privat iCloud`.
-7. Lasse die Kalender-URL leer. Die App nutzt dann `https://caldav.icloud.com/` und sucht den ersten passenden Kalender.
+7. Lasse die Kalender-URL leer. Die App nutzt dann `https://caldav.icloud.com/` und synchronisiert die gefundenen iCloud-Kalender.
 8. Trage als Benutzername deine Apple-ID/E-Mail-Adresse ein.
 9. Trage als Passwort das App-spezifische Passwort ein, nicht dein normales Apple-ID-Passwort.
 10. Speichere die Quelle und klicke danach auf **Sync**.
 
 Die Zugangsdaten werden mit `CALENDAR_SECRET` lokal verschlüsselt in PostgreSQL gespeichert. Setze `CALENDAR_SECRET` auf der Synology unbedingt auf einen langen eigenen Wert.
+
+### Outlook praktisch einrichten
+
+1. Öffne im Microsoft Entra Admin Center eine neue **App registration**.
+2. Setze als Redirect URI `http://localhost:3000/api/outlook/callback` für lokale Tests. Auf der Synology später entsprechend deine HTTPS-Adresse verwenden.
+3. Erstelle unter **Certificates & secrets** ein Client Secret.
+4. Erlaube Microsoft Graph Delegated Permissions: `User.Read`, `Calendars.Read` und `offline_access`.
+5. Trage in `.env` ein:
+
+```powershell
+OUTLOOK_CLIENT_ID="..."
+OUTLOOK_CLIENT_SECRET="..."
+OUTLOOK_TENANT="common"
+OUTLOOK_REDIRECT_URI="http://localhost:3000/api/outlook/callback"
+```
+
+6. Starte die App neu, öffne **Kalender > Menü** und klicke **Outlook verbinden**.
+
+Die App speichert kein Outlook-Passwort. Access- und Refresh-Tokens werden mit `CALENDAR_SECRET` lokal verschlüsselt gespeichert.

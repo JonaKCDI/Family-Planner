@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { logout } from "@/lib/actions";
 import { requireSession } from "@/lib/auth";
+import { FabMenu } from "@/components/fab-menu";
 import { Nav } from "@/components/nav";
 
 export const dynamic = "force-dynamic";
@@ -21,16 +22,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       </header>
       <Nav />
       <main className="content">{children}</main>
-      <details className="fab-menu">
-        <summary aria-label="Neu erstellen">+</summary>
-        <div className="fab-options">
-          <Link href="/kalender#termin-erfassen">Termin</Link>
-          <Link href="/ausgaben#eintrag-erfassen">Ausgabe</Link>
-          <Link href="/aufgaben">Aufgabe</Link>
-          <Link href="/vertraege">Vertrag</Link>
-          <Link href="/dokumente">Dokument</Link>
-        </div>
-      </details>
+      <FabMenu />
     </div>
   );
 }

@@ -110,7 +110,7 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
           </form>
 
           <h2 className="section-title spacing-top">Kategorie hinzufügen</h2>
-          <form action={createCategory} className="form compact">
+          <form action={createCategory} className="form compact" id="kategorie-erfassen">
             <input type="hidden" name="type" value="EXPENSE" />
             <label>Name<input name="name" placeholder="Schule, Urlaub, Kindergeld ..." required /></label>
             <label>Farbe<input name="color" type="color" defaultValue="#2f6fed" /></label>

@@ -53,14 +53,28 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
           <details className="config-menu">
             <summary aria-label="Kalender-Einstellungen">Menü</summary>
             <div className="config-panel">
-              <h2 className="section-title">Kalender verbinden</h2>
+              <h2 className="section-title" id="kalender-verbinden">Kalender verbinden</h2>
+              <form action="/api/outlook/start" className="form outlook-connect" method="get">
+                <label>
+                  Outlook-Sichtbarkeit
+                  <select name="visibilityToFamily" defaultValue="BUSY_ONLY">
+                    <option value="PRIVATE">Privat</option>
+                    <option value="BUSY_ONLY">Nur beschäftigt</option>
+                    <option value="TITLE_ONLY">Nur Titel</option>
+                    <option value="FAMILY">Voll sichtbar</option>
+                  </select>
+                </label>
+                <button className="button" type="submit">Outlook verbinden</button>
+              </form>
+              <p className="muted">
+                Outlook wird per Microsoft-Login verbunden. Dein Firmenpasswort wird nicht in dieser App gespeichert.
+              </p>
               <form action={createCalendarIntegration} className="form">
                 <label>
                   Anbieter
                   <select name="provider" defaultValue="ICLOUD">
                     <option value="ICLOUD">iCloud</option>
                     <option value="CALDAV">CalDAV</option>
-                    <option value="OUTLOOK">Outlook</option>
                     <option value="MANUAL">Manueller Kalender</option>
                   </select>
                 </label>
@@ -95,7 +109,7 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
                 <button className="button" type="submit">Verbinden und syncen</button>
               </form>
               <p className="muted">
-                iCloud nutzt ein Apple App-spezifisches Passwort. Outlook braucht wegen Microsoft OAuth noch einen separaten, sicheren Verbindungsweg.
+                iCloud nutzt ein Apple App-spezifisches Passwort. CalDAV ist für andere lokale oder private Kalender gedacht.
               </p>
 
               <h2 className="section-title spacing-top">Verbundene Kalender</h2>
@@ -112,7 +126,7 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
                         <div className="badge-row">
                           <span className="badge">{integration.syncEnabled ? "Sync aktiv" : "Ohne Sync"}</span>
                           {integration.lastSyncAt ? <span className="badge">Zuletzt: {formatDate(integration.lastSyncAt)}</span> : null}
-                          <span className="badge">{integration.user.name}</span>
+                          <span className="badge">{integration.externalAccountEmail ?? integration.user.name}</span>
                         </div>
                       </div>
                       <IntegrationActions id={integration.id} provider={integration.provider} />
@@ -176,7 +190,7 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
 function IntegrationActions({ id, provider }: { id: string; provider: keyof typeof providerLabels }) {
   return (
     <div className="action-stack">
-      {provider === "CALDAV" || provider === "ICLOUD" ? (
+      {provider === "CALDAV" || provider === "ICLOUD" || provider === "OUTLOOK" ? (
         <form action={syncCalendarIntegration}>
           <input type="hidden" name="id" value={id} />
           <button className="button" type="submit">Sync</button>

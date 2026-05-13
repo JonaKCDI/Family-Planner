@@ -22,6 +22,7 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
   -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
 }
 
 a {
@@ -73,8 +74,9 @@ textarea {
 
 .nav {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.35rem;
-  overflow-x: auto;
+  overflow: visible;
   border-bottom: 1px solid var(--line);
   background: #ede9df;
   padding: 0.55rem 0.8rem;
@@ -110,6 +112,7 @@ textarea {
   width: min(1120px, 100%);
   margin: 0 auto;
   padding: 1rem;
+  overflow-x: hidden;
 }
 
 .grid {
@@ -399,16 +402,25 @@ textarea {
   overflow: hidden;
   border: 1px solid var(--line);
   border-radius: 8px;
+  min-width: 0;
 }
 
 .mini-table-head,
 .mini-table-row {
   display: grid;
-  grid-template-columns: 1.05fr 1fr 1fr 1fr;
+  grid-template-columns: minmax(0, 1.05fr) repeat(3, minmax(0, 1fr));
   gap: 0.35rem;
   align-items: center;
   padding: 0.55rem;
   font-size: 0.82rem;
+  min-width: 0;
+}
+
+.mini-table-head span,
+.mini-table-row span,
+.mini-table-row strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .mini-table-head {
@@ -540,8 +552,7 @@ textarea {
 
 .calendar-month {
   display: grid;
-  grid-template-columns: 54px repeat(7, minmax(108px, 1fr));
-  overflow-x: auto;
+  grid-template-columns: 54px repeat(7, minmax(0, 1fr));
 }
 
 .calendar-week-head,
@@ -566,6 +577,7 @@ textarea {
   display: grid;
   align-content: start;
   gap: 0.35rem;
+  min-width: 0;
   min-height: 118px;
   border-right: 1px solid var(--line);
   border-bottom: 1px solid var(--line);
@@ -639,15 +651,15 @@ textarea {
 
 .week-grid {
   display: grid;
-  grid-template-columns: repeat(7, minmax(180px, 1fr));
+  grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 0.65rem;
-  overflow-x: auto;
 }
 
 .week-day {
   display: grid;
   align-content: start;
   gap: 0.65rem;
+  min-width: 0;
   min-height: 300px;
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -767,6 +779,14 @@ textarea {
   background: #f7f5ee;
 }
 
+.outlook-connect {
+  border: 1px solid #cfe1de;
+  border-radius: 8px;
+  background: #f1faf8;
+  margin-bottom: 0.75rem;
+  padding: 0.75rem;
+}
+
 @media (min-width: 820px) {
   .topbar {
     padding-inline: 1.5rem;
@@ -873,11 +893,43 @@ textarea {
   }
 
   .calendar-month {
-    grid-template-columns: 44px repeat(7, minmax(92px, 1fr));
+    grid-template-columns: 34px repeat(7, minmax(0, 1fr));
   }
 
   .calendar-cell {
-    min-height: 104px;
+    min-height: 76px;
+    padding: 0.35rem;
+  }
+
+  .calendar-week-head,
+  .kw-cell {
+    padding: 0.35rem 0.2rem;
+    font-size: 0.68rem;
+  }
+
+  .kw-cell {
+    align-items: center;
+    word-break: break-word;
+  }
+
+  .calendar-date {
+    width: 24px;
+    height: 24px;
+    font-size: 0.82rem;
+  }
+
+  .calendar-pill,
+  .more-events {
+    padding: 0.15rem 0.2rem;
+    font-size: 0.62rem;
+  }
+
+  .week-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .week-day {
+    min-height: 0;
   }
 
   .fab-menu {

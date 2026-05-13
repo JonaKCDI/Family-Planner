@@ -87,13 +87,26 @@ export async function syncCalDavIntegration(integrationId: string, userId: strin
 async function fetchCalDavEvents(integration: CalendarIntegration) {
   const password = decryptSecret(integration.encryptedPassword ?? "");
   const auth = `Basic ${Buffer.from(`${integration.username}:${password}`).toString("base64")}`;
-  const url = await resolveCalendarUrl(integration, auth);
+  const urls = await resolveCalendarUrls(integration, auth);
   const now = new Date();
   const from = new Date(now);
   from.setDate(from.getDate() - 60);
   const to = new Date(now);
   to.setDate(to.getDate() + 365);
 
+  const events = [];
+  for (const url of urls) {
+    const calendarEvents = await fetchCalDavEventsFromUrl(url, auth, from, to);
+    events.push(...calendarEvents.map((event) => ({
+      ...event,
+      uid: `${url}#${event.uid}`
+    })));
+  }
+
+  return events.filter((event) => event.startAt < to && event.endAt > from);
+}
+
+async function fetchCalDavEventsFromUrl(url: string, auth: string, from: Date, to: Date) {
   const body = `<?xml version="1.0" encoding="utf-8" ?>
 <c:calendar-query xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav">
   <d:prop>
@@ -124,13 +137,13 @@ async function fetchCalDavEvents(integration: CalendarIntegration) {
   }
 
   const xml = await response.text();
-  return extractCalendarData(xml).flatMap(parseIcsEvents).filter((event) => event.startAt < to && event.endAt > from);
+  return extractCalendarData(xml).flatMap(parseIcsEvents);
 }
 
-async function resolveCalendarUrl(integration: CalendarIntegration, authorization: string) {
+async function resolveCalendarUrls(integration: CalendarIntegration, authorization: string) {
   const configuredUrl = normalizeCalendarUrl(integration.calendarUrl ?? "");
   if (integration.provider !== "ICLOUD" || !isICloudRoot(configuredUrl)) {
-    return configuredUrl;
+    return [configuredUrl];
   }
 
   const principalXml = await propfind(configuredUrl, authorization, `<?xml version="1.0" encoding="utf-8" ?>
@@ -162,7 +175,7 @@ async function resolveCalendarUrl(integration: CalendarIntegration, authorizatio
   const preferred = calendars.find((calendar) =>
     calendar.name.toLocaleLowerCase("de-DE") === integration.displayName.toLocaleLowerCase("de-DE")
   );
-  return preferred?.url ?? calendars[0].url;
+  return preferred ? [preferred.url] : calendars.map((calendar) => calendar.url);
 }
 
 async function propfind(url: string, authorization: string, body: string, depth = "0") {
