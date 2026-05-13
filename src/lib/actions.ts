@@ -7,6 +7,7 @@ import { createSession, destroySession, hashPassword, requireSession, verifyPass
 import { syncCalDavIntegration } from "@/lib/caldav";
 import { db } from "@/lib/db";
 import { parseEuroToCents } from "@/lib/format";
+import { syncIcsIntegration } from "@/lib/ics";
 import { syncOutlookIntegration } from "@/lib/outlook";
 import { encryptSecret } from "@/lib/secrets";
 
@@ -237,17 +238,21 @@ export async function createCalendarEvent(formData: FormData) {
 
 export async function createCalendarIntegration(formData: FormData) {
   const session = await requireSession();
-  const provider = enumValue(formData, "provider", ["OUTLOOK", "ICLOUD", "CALDAV", "MANUAL"] as const, "MANUAL");
+  const provider = enumValue(formData, "provider", ["OUTLOOK", "ICLOUD", "CALDAV", "ICS", "MANUAL"] as const, "MANUAL");
   const calendarUrl = optionalText(formData, "calendarUrl");
   const username = optionalText(formData, "username");
   const password = optionalText(formData, "password");
   const isCalDavLike = provider === "CALDAV" || provider === "ICLOUD";
+  const isIcs = provider === "ICS";
 
   if (isCalDavLike && (!username || !password)) {
     throw new Error("Für iCloud/CalDAV sind Benutzername und Passwort erforderlich.");
   }
   if (provider === "CALDAV" && !calendarUrl) {
     throw new Error("Für generisches CalDAV ist die Kalender-URL erforderlich.");
+  }
+  if (isIcs && !calendarUrl) {
+    throw new Error("Für ICS ist die Kalender-URL erforderlich.");
   }
 
   const integration = await db.calendarIntegration.create({
@@ -256,12 +261,12 @@ export async function createCalendarIntegration(formData: FormData) {
       userId: session.user.id,
       provider,
       displayName: requiredText(formData, "displayName"),
-      calendarUrl: provider === "ICLOUD" ? calendarUrl ?? "https://caldav.icloud.com/" : isCalDavLike ? calendarUrl : null,
+      calendarUrl: provider === "ICLOUD" ? calendarUrl ?? "https://caldav.icloud.com/" : isCalDavLike || isIcs ? calendarUrl : null,
       username: isCalDavLike ? username : null,
       encryptedPassword: isCalDavLike && password ? encryptSecret(password) : null,
-      syncEnabled: isCalDavLike,
+      syncEnabled: isCalDavLike || isIcs,
       visibilityToFamily: enumValue(formData, "visibilityToFamily", ["PRIVATE", "BUSY_ONLY", "TITLE_ONLY", "FAMILY"] as const, "BUSY_ONLY"),
-      status: isCalDavLike ? "verbunden" : "manuell"
+      status: isCalDavLike || isIcs ? "verbunden" : "manuell"
     }
   });
 
@@ -270,6 +275,13 @@ export async function createCalendarIntegration(formData: FormData) {
       await syncCalDavIntegration(integration.id, session.user.id);
     } catch {
       // syncCalDavIntegration speichert die konkrete Fehlermeldung an der Quelle.
+    }
+  }
+  if (isIcs) {
+    try {
+      await syncIcsIntegration(integration.id, session.user.id);
+    } catch {
+      // syncIcsIntegration speichert die konkrete Fehlermeldung an der Quelle.
     }
   }
 
@@ -296,6 +308,8 @@ export async function syncCalendarIntegration(formData: FormData) {
     const integration = await db.calendarIntegration.findFirst({ where: { id, familyId: session.family.id, userId: session.user.id } });
     if (integration?.provider === "OUTLOOK") {
       await syncOutlookIntegration(id, session.user.id);
+    } else if (integration?.provider === "ICS") {
+      await syncIcsIntegration(id, session.user.id);
     } else {
       await syncCalDavIntegration(id, session.user.id);
     }

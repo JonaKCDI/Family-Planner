@@ -648,6 +648,12 @@ textarea {
   color: #422a66;
 }
 
+.source-ics {
+  border-left-color: #b7791f;
+  background: #fff2d6;
+  color: #68430d;
+}
+
 .more-events {
   border-left-color: #9a958c;
   background: #f0ede5;

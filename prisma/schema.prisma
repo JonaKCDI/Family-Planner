@@ -86,6 +86,7 @@ enum CalendarProvider {
   OUTLOOK
   ICLOUD
   CALDAV
+  ICS
   MANUAL
 }
 
@@ -101,6 +102,7 @@ enum CalendarSource {
   OUTLOOK
   ICLOUD
   CALDAV
+  ICS
 }
 
 model User {

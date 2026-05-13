@@ -16,6 +16,7 @@ const providerLabels = {
   OUTLOOK: "Outlook",
   ICLOUD: "iCloud",
   CALDAV: "CalDAV",
+  ICS: "ICS-Abo",
   MANUAL: "Manuell"
 };
 
@@ -70,6 +71,7 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
                   <select name="provider" defaultValue="ICLOUD">
                     <option value="ICLOUD">iCloud</option>
                     <option value="CALDAV">CalDAV</option>
+                    <option value="ICS">ICS-Link</option>
                     <option value="MANUAL">Manueller Kalender</option>
                   </select>
                 </label>
@@ -81,7 +83,7 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
                   <legend>Sync-Zugang</legend>
                   <label>
                     Kalender-URL
-                    <input name="calendarUrl" type="url" placeholder="Bei iCloud leer lassen; bei CalDAV Kalender-URL eintragen" />
+                    <input name="calendarUrl" type="url" placeholder="iCloud leer lassen; CalDAV- oder ICS-URL eintragen" />
                   </label>
                   <label>
                     Benutzername
@@ -104,7 +106,7 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
                 <button className="button" type="submit">Verbinden und syncen</button>
               </form>
               <p className="muted">
-                iCloud nutzt ein Apple App-spezifisches Passwort. CalDAV ist für andere lokale oder private Kalender gedacht.
+                iCloud nutzt ein Apple App-spezifisches Passwort. ICS-Links funktionieren ohne Microsoft-Rechte, sofern Outlook oder ein anderer Anbieter einen Abo-Link bereitstellt.
               </p>
 
               <h2 className="section-title spacing-top">Verbundene Kalender</h2>
@@ -211,7 +213,7 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
 function IntegrationActions({ id, provider }: { id: string; provider: keyof typeof providerLabels }) {
   return (
     <div className="action-stack">
-      {provider === "CALDAV" || provider === "ICLOUD" || provider === "OUTLOOK" ? (
+      {provider === "CALDAV" || provider === "ICLOUD" || provider === "OUTLOOK" || provider === "ICS" ? (
         <form action={syncCalendarIntegration}>
           <input type="hidden" name="id" value={id} />
           <button className="button" type="submit">Sync</button>

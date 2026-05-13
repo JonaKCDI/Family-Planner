@@ -57,7 +57,7 @@ Die App ist kein Datei-Proxy. Synology bleibt Single Source of Truth und kontrol
 
 ## Kalender
 
-Die App unterstützt manuelle Termine, lokalen iCloud/CalDAV-Sync und Outlook-Sync über Microsoft Graph. Die App läuft lokal, aber iCloud und Outlook bleiben externe Kalenderquellen.
+Die App unterstützt manuelle Termine, lokalen iCloud/CalDAV-Sync, ICS-Abos und Outlook-Sync über Microsoft Graph. Die App läuft lokal, aber iCloud, ICS-Quellen und Outlook bleiben externe Kalenderquellen.
 
 ### iCloud praktisch einrichten
 
@@ -73,6 +73,16 @@ Die App unterstützt manuelle Termine, lokalen iCloud/CalDAV-Sync und Outlook-Sy
 10. Speichere die Quelle und klicke danach auf **Sync**.
 
 Die Zugangsdaten werden mit `CALENDAR_SECRET` lokal verschlüsselt in PostgreSQL gespeichert. Setze `CALENDAR_SECRET` auf der Synology unbedingt auf einen langen eigenen Wert.
+
+### ICS-Link abonnieren
+
+1. Erzeuge in Outlook, iCloud oder einem anderen Kalender einen privaten ICS-/Abo-Link.
+2. Öffne in der App **Kalender > Menü**.
+3. Wähle als Anbieter **ICS-Link**.
+4. Trage einen Anzeigenamen und die ICS-URL ein.
+5. Wähle die Familiensichtbarkeit und speichere.
+
+ICS-Links sind geheime Leselinks. Wer den Link kennt, kann den Kalender je nach Freigabe lesen. Teile ihn deshalb nicht öffentlich.
 
 ### Outlook praktisch einrichten
 
