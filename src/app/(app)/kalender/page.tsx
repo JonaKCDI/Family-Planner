@@ -50,17 +50,17 @@ export default async function CalendarPage() {
               <input name="displayName" placeholder="Jona Arbeit, Familie iCloud, Schule ..." required />
             </label>
             <fieldset className="fieldset">
-              <legend>CalDAV lokal synchronisieren</legend>
+              <legend>iCloud oder CalDAV synchronisieren</legend>
               <label>
-                CalDAV-Kalender-URL
-                <input name="calendarUrl" type="url" placeholder="https://deine-synology.example/caldav/..." />
+                Kalender-URL
+                <input name="calendarUrl" type="url" placeholder="iCloud leer lassen oder CalDAV-URL eintragen" />
               </label>
               <label>
                 Benutzername
                 <input name="username" autoComplete="username" />
               </label>
               <label>
-                Passwort oder App-Passwort
+                Passwort oder App-spezifisches Passwort
                 <input name="password" type="password" autoComplete="current-password" />
               </label>
             </fieldset>
@@ -76,7 +76,7 @@ export default async function CalendarPage() {
             <button className="button" type="submit">Quelle vorbereiten</button>
           </form>
           <p className="muted">
-            Echter lokaler Sync ist für CalDAV vorgesehen, idealerweise Synology Calendar. Outlook und iCloud bleiben Cloud-Anbieter und werden hier nicht automatisch verbunden.
+            iCloud wird über CalDAV mit einem Apple App-spezifischen Passwort synchronisiert. Outlook bleibt wegen Microsoft OAuth ein eigener nächster Schritt.
           </p>
         </section>
 
@@ -99,7 +99,7 @@ export default async function CalendarPage() {
                   {integration.lastSyncError ? <p className="negative">{integration.lastSyncError}</p> : null}
                 </div>
                 <div className="action-stack">
-                  {integration.provider === "CALDAV" ? (
+                  {integration.provider === "CALDAV" || integration.provider === "ICLOUD" ? (
                     <form action={syncCalendarIntegration}>
                       <input type="hidden" name="id" value={integration.id} />
                       <button className="button" type="submit">Sync</button>

@@ -57,4 +57,19 @@ Die App ist kein Datei-Proxy. Synology bleibt Single Source of Truth und kontrol
 
 ## Kalender
 
-V1 enthält manuelle Kalendertermine und vorbereitetes Datenmodell für Outlook, iCloud und CalDAV. Echter Sync ist absichtlich ein späteres Modul.
+Die App unterstützt manuelle Termine und lokalen iCloud/CalDAV-Sync. Die App läuft lokal, aber iCloud bleibt eine Apple-Cloud-Datenquelle.
+
+### iCloud praktisch einrichten
+
+1. Stelle sicher, dass Zwei-Faktor-Authentifizierung für deine Apple-ID aktiv ist.
+2. Öffne `https://account.apple.com`.
+3. Gehe zu **Anmeldung und Sicherheit** und erstelle ein **App-spezifisches Passwort**.
+4. Öffne in der App den Tab **Kalender**.
+5. Wähle als Anbieter **iCloud**.
+6. Trage einen Anzeigenamen ein, zum Beispiel `Privat iCloud`.
+7. Lasse die Kalender-URL leer. Die App nutzt dann `https://caldav.icloud.com/` und sucht den ersten passenden Kalender.
+8. Trage als Benutzername deine Apple-ID/E-Mail-Adresse ein.
+9. Trage als Passwort das App-spezifische Passwort ein, nicht dein normales Apple-ID-Passwort.
+10. Speichere die Quelle und klicke danach auf **Sync**.
+
+Die Zugangsdaten werden mit `CALENDAR_SECRET` lokal verschlüsselt in PostgreSQL gespeichert. Setze `CALENDAR_SECRET` auf der Synology unbedingt auf einen langen eigenen Wert.

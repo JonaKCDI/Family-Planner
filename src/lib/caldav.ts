@@ -16,15 +16,16 @@ export async function syncCalDavIntegration(integrationId: string, userId: strin
     where: {
       id: integrationId,
       userId,
-      provider: "CALDAV"
+      provider: { in: ["CALDAV", "ICLOUD"] }
     }
   });
-  if (!integration) throw new Error("CalDAV-Quelle nicht gefunden.");
+  if (!integration) throw new Error("iCloud/CalDAV-Quelle nicht gefunden.");
   if (!integration.calendarUrl || !integration.username || !integration.encryptedPassword) {
-    throw new Error("CalDAV-URL, Benutzername und Passwort sind erforderlich.");
+    throw new Error("Kalender-URL, Benutzername und Passwort sind erforderlich.");
   }
 
   try {
+    const source = integration.provider === "ICLOUD" ? "ICLOUD" : "CALDAV";
     const events = await fetchCalDavEvents(integration);
     for (const event of events) {
       await db.calendarEvent.upsert({
@@ -46,7 +47,7 @@ export async function syncCalDavIntegration(integrationId: string, userId: strin
           timezone: "Europe/Berlin",
           location: event.location,
           visibility: integration.visibilityToFamily,
-          source: "CALDAV"
+          source
         },
         update: {
           title: event.title,
@@ -55,7 +56,7 @@ export async function syncCalDavIntegration(integrationId: string, userId: strin
           endAt: event.endAt,
           location: event.location,
           visibility: integration.visibilityToFamily,
-          source: "CALDAV"
+          source
         }
       });
     }
@@ -85,7 +86,8 @@ export async function syncCalDavIntegration(integrationId: string, userId: strin
 
 async function fetchCalDavEvents(integration: CalendarIntegration) {
   const password = decryptSecret(integration.encryptedPassword ?? "");
-  const url = normalizeCalendarUrl(integration.calendarUrl ?? "");
+  const auth = `Basic ${Buffer.from(`${integration.username}:${password}`).toString("base64")}`;
+  const url = await resolveCalendarUrl(integration, auth);
   const now = new Date();
   const from = new Date(now);
   from.setDate(from.getDate() - 60);
@@ -110,7 +112,7 @@ async function fetchCalDavEvents(integration: CalendarIntegration) {
   const response = await fetch(url, {
     method: "REPORT",
     headers: {
-      Authorization: `Basic ${Buffer.from(`${integration.username}:${password}`).toString("base64")}`,
+      Authorization: auth,
       Depth: "1",
       "Content-Type": "application/xml; charset=utf-8"
     },
@@ -125,12 +127,99 @@ async function fetchCalDavEvents(integration: CalendarIntegration) {
   return extractCalendarData(xml).flatMap(parseIcsEvents).filter((event) => event.startAt < to && event.endAt > from);
 }
 
+async function resolveCalendarUrl(integration: CalendarIntegration, authorization: string) {
+  const configuredUrl = normalizeCalendarUrl(integration.calendarUrl ?? "");
+  if (integration.provider !== "ICLOUD" || !isICloudRoot(configuredUrl)) {
+    return configuredUrl;
+  }
+
+  const principalXml = await propfind(configuredUrl, authorization, `<?xml version="1.0" encoding="utf-8" ?>
+<d:propfind xmlns:d="DAV:">
+  <d:prop><d:current-user-principal /></d:prop>
+</d:propfind>`);
+  const principalHref = tagValue(principalXml, "current-user-principal");
+  const principalUrl = resolveHref(configuredUrl, principalHref);
+
+  const homeXml = await propfind(principalUrl, authorization, `<?xml version="1.0" encoding="utf-8" ?>
+<d:propfind xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav">
+  <d:prop><c:calendar-home-set /></d:prop>
+</d:propfind>`);
+  const homeHref = tagValue(homeXml, "calendar-home-set");
+  const homeUrl = resolveHref(principalUrl, homeHref);
+
+  const calendarsXml = await propfind(homeUrl, authorization, `<?xml version="1.0" encoding="utf-8" ?>
+<d:propfind xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav">
+  <d:prop>
+    <d:displayname />
+    <d:resourcetype />
+  </d:prop>
+</d:propfind>`, "1");
+  const calendars = calendarCollections(calendarsXml, homeUrl);
+  if (calendars.length === 0) {
+    throw new Error("Keine iCloud-Kalender gefunden.");
+  }
+
+  const preferred = calendars.find((calendar) =>
+    calendar.name.toLocaleLowerCase("de-DE") === integration.displayName.toLocaleLowerCase("de-DE")
+  );
+  return preferred?.url ?? calendars[0].url;
+}
+
+async function propfind(url: string, authorization: string, body: string, depth = "0") {
+  const response = await fetch(url, {
+    method: "PROPFIND",
+    headers: {
+      Authorization: authorization,
+      Depth: depth,
+      "Content-Type": "application/xml; charset=utf-8"
+    },
+    body
+  });
+
+  if (!response.ok) {
+    throw new Error(`CalDAV-Discovery antwortet mit HTTP ${response.status}.`);
+  }
+
+  return response.text();
+}
+
 function normalizeCalendarUrl(value: string) {
   const url = new URL(value);
   if (url.protocol !== "https:" && url.hostname !== "localhost" && url.hostname !== "127.0.0.1") {
     throw new Error("CalDAV-Sync erlaubt nur HTTPS-URLs, außer localhost für Entwicklung.");
   }
   return url.toString();
+}
+
+function isICloudRoot(value: string) {
+  const url = new URL(value);
+  return url.hostname === "caldav.icloud.com" && (url.pathname === "/" || url.pathname === "");
+}
+
+function tagValue(xml: string, tagName: string) {
+  const tagMatch = xml.match(new RegExp(`<[^>]*${tagName}[^>]*>([\\s\\S]*?)<\\/[^>]*${tagName}>`, "i"));
+  if (!tagMatch) throw new Error(`CalDAV-Discovery konnte ${tagName} nicht finden.`);
+  const hrefMatch = tagMatch[1].match(/<[^>]*href[^>]*>([\s\S]*?)<\/[^>]*href>/i);
+  return decodeXml((hrefMatch?.[1] ?? tagMatch[1]).trim());
+}
+
+function resolveHref(base: string, href: string) {
+  return new URL(href, base).toString();
+}
+
+function calendarCollections(xml: string, baseUrl: string) {
+  const responses = [...xml.matchAll(/<[^>]*response[^>]*>([\s\S]*?)<\/[^>]*response>/gi)];
+  return responses.flatMap((response) => {
+    const content = response[1] ?? "";
+    if (!/<[^>]*calendar\s*\/?>/i.test(content)) return [];
+    const href = content.match(/<[^>]*href[^>]*>([\s\S]*?)<\/[^>]*href>/i)?.[1];
+    if (!href) return [];
+    const displayName = content.match(/<[^>]*displayname[^>]*>([\s\S]*?)<\/[^>]*displayname>/i)?.[1];
+    return [{
+      name: decodeXml(displayName?.trim() || "Kalender"),
+      url: resolveHref(baseUrl, decodeXml(href.trim()))
+    }];
+  });
 }
 
 function formatCalDavDate(date: Date) {

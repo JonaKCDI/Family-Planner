@@ -240,10 +240,13 @@ export async function createCalendarIntegration(formData: FormData) {
   const calendarUrl = optionalText(formData, "calendarUrl");
   const username = optionalText(formData, "username");
   const password = optionalText(formData, "password");
-  const isCalDav = provider === "CALDAV";
+  const isCalDavLike = provider === "CALDAV" || provider === "ICLOUD";
 
-  if (isCalDav && (!calendarUrl || !username || !password)) {
-    throw new Error("Für CalDAV sind URL, Benutzername und Passwort erforderlich.");
+  if (isCalDavLike && (!username || !password)) {
+    throw new Error("Für iCloud/CalDAV sind Benutzername und Passwort erforderlich.");
+  }
+  if (provider === "CALDAV" && !calendarUrl) {
+    throw new Error("Für generisches CalDAV ist die Kalender-URL erforderlich.");
   }
 
   await db.calendarIntegration.create({
@@ -252,12 +255,12 @@ export async function createCalendarIntegration(formData: FormData) {
       userId: session.user.id,
       provider,
       displayName: requiredText(formData, "displayName"),
-      calendarUrl: isCalDav ? calendarUrl : null,
-      username: isCalDav ? username : null,
-      encryptedPassword: isCalDav && password ? encryptSecret(password) : null,
-      syncEnabled: isCalDav,
+      calendarUrl: provider === "ICLOUD" ? calendarUrl ?? "https://caldav.icloud.com/" : isCalDavLike ? calendarUrl : null,
+      username: isCalDavLike ? username : null,
+      encryptedPassword: isCalDavLike && password ? encryptSecret(password) : null,
+      syncEnabled: isCalDavLike,
       visibilityToFamily: enumValue(formData, "visibilityToFamily", ["PRIVATE", "BUSY_ONLY", "TITLE_ONLY", "FAMILY"] as const, "BUSY_ONLY"),
-      status: isCalDav ? "ready" : "prepared"
+      status: isCalDavLike ? "ready" : "prepared"
     }
   });
 
