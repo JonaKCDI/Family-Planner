@@ -232,6 +232,36 @@ export async function createCalendarEvent(formData: FormData) {
   revalidatePath("/kalender");
 }
 
+export async function createCalendarIntegration(formData: FormData) {
+  const session = await requireSession();
+  await db.calendarIntegration.create({
+    data: {
+      familyId: session.family.id,
+      userId: session.user.id,
+      provider: enumValue(formData, "provider", ["OUTLOOK", "ICLOUD", "CALDAV", "MANUAL"] as const, "MANUAL"),
+      displayName: requiredText(formData, "displayName"),
+      syncEnabled: false,
+      visibilityToFamily: enumValue(formData, "visibilityToFamily", ["PRIVATE", "BUSY_ONLY", "TITLE_ONLY", "FAMILY"] as const, "BUSY_ONLY"),
+      status: "prepared"
+    }
+  });
+
+  revalidatePath("/kalender");
+}
+
+export async function deleteCalendarIntegration(formData: FormData) {
+  const session = await requireSession();
+  await db.calendarIntegration.deleteMany({
+    where: {
+      id: requiredText(formData, "id"),
+      familyId: session.family.id,
+      userId: session.user.id
+    }
+  });
+
+  revalidatePath("/kalender");
+}
+
 export async function createUser(formData: FormData) {
   const session = await requireSession();
   if (session.role !== "ADMIN") return;

@@ -94,3 +94,14 @@ export async function getVisibleCalendarEvents(familyId: string, userId: string)
     take: 100
   });
 }
+
+export async function getCalendarIntegrations(familyId: string, userId: string) {
+  return db.calendarIntegration.findMany({
+    where: {
+      familyId,
+      userId
+    },
+    include: { user: true },
+    orderBy: { createdAt: "desc" }
+  });
+}
