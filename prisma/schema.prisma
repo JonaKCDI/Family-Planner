@@ -172,6 +172,7 @@ model Category {
   name        String
   color       String       @default("#2f6fed")
   icon        String       @default("tag")
+  monthlyBudgetCents Int   @default(0)
   scope       Scope        @default(FAMILY)
   family      Family       @relation(fields: [familyId], references: [id], onDelete: Cascade)
   owner       User?        @relation(fields: [ownerUserId], references: [id], onDelete: SetNull)

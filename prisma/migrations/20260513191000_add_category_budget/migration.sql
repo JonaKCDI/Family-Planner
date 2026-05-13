@@ -1,0 +1,1 @@
+ALTER TABLE "Category" ADD COLUMN "monthlyBudgetCents" INTEGER NOT NULL DEFAULT 0;

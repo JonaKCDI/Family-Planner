@@ -103,6 +103,10 @@ async function fetchIcsEvents(integration: CalendarIntegration) {
   });
   if (!response.ok) throw new Error(`ICS-Kalender antwortet mit HTTP ${response.status}.`);
   const ics = await response.text();
+  if (!looksLikeIcs(ics)) {
+    const contentType = response.headers.get("content-type") ?? "unbekannter Inhaltstyp";
+    throw new Error(`Der Link liefert keinen ICS-Kalender (${contentType}). Bitte einen echten .ics-, webcal- oder Outlook-Veröffentlichungslink eintragen.`);
+  }
 
   const now = new Date();
   const from = new Date(now);
@@ -110,6 +114,10 @@ async function fetchIcsEvents(integration: CalendarIntegration) {
   const to = new Date(now);
   to.setDate(to.getDate() + 365);
   return parseIcsEvents(ics, from, to);
+}
+
+function looksLikeIcs(value: string) {
+  return /BEGIN:VCALENDAR/i.test(value) && /BEGIN:VEVENT/i.test(value);
 }
 
 function normalizeIcsUrl(value: string) {

@@ -32,7 +32,7 @@ export default async function ContractsPage() {
         <div className="stat"><span>Nächste Frist</span><strong>{formatDate(contracts.find((contract) => contract.nextCancellationDate)?.nextCancellationDate)}</strong></div>
       </section>
       <div className="grid two">
-        <section className="panel">
+        <section className="panel" id="vertrag-erfassen">
           <h2 className="section-title">Vertrag erfassen</h2>
           <form action={createContract} className="form">
             <label>Anbieter<input name="provider" required /></label>

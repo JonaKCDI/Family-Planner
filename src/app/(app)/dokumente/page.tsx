@@ -12,7 +12,7 @@ export default async function DocumentsPage() {
     <>
       <PageHeader title="Dokumente" description="HTTPS-Verweise auf Synology oder externe Quellen. Dateien bleiben außerhalb der App." />
       <div className="grid two">
-        <section className="panel">
+        <section className="panel" id="dokument-erfassen">
           <h2 className="section-title">Dokumentverweis speichern</h2>
           <form action={createDocumentReference} className="form">
             <label>Titel<input name="title" required /></label>

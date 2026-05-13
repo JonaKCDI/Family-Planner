@@ -15,7 +15,7 @@ export default async function TasksPage() {
     <>
       <PageHeader title="Aufgaben" description="Actionliste für dich und die Familie mit Priorität, Deadline und Status." />
       <div className="grid two">
-        <section className="panel">
+        <section className="panel" id="aufgabe-erfassen">
           <h2 className="section-title">Aufgabe erfassen</h2>
           <form action={createTask} className="form">
             <label>

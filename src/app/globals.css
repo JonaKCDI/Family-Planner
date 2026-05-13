@@ -16,6 +16,17 @@
   box-sizing: border-box;
 }
 
+html {
+  overflow-x: hidden;
+}
+
+img,
+svg,
+canvas,
+video {
+  max-width: 100%;
+}
+
 body {
   margin: 0;
   background: var(--background);
@@ -126,6 +137,7 @@ textarea {
 
 .panel,
 .card {
+  min-width: 0;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--panel);
@@ -227,6 +239,7 @@ textarea {
 
 .button {
   display: inline-flex;
+  max-width: 100%;
   min-height: 42px;
   align-items: center;
   justify-content: center;
@@ -237,6 +250,8 @@ textarea {
   cursor: pointer;
   padding: 0.58rem 0.9rem;
   font-weight: 700;
+  text-align: center;
+  overflow-wrap: anywhere;
 }
 
 .button.secondary {
@@ -260,10 +275,15 @@ textarea {
   align-items: flex-start;
   justify-content: space-between;
   gap: 0.8rem;
+  min-width: 0;
 }
 
 .row strong {
   display: block;
+}
+
+.row > * {
+  min-width: 0;
 }
 
 .badge {
@@ -301,6 +321,10 @@ textarea {
   justify-items: end;
   gap: 0.55rem;
   min-width: 130px;
+}
+
+.amount-column strong {
+  overflow-wrap: anywhere;
 }
 
 .action-stack {
@@ -397,6 +421,27 @@ textarea {
   min-width: 3px;
 }
 
+.bar-stack {
+  display: grid;
+  gap: 0.3rem;
+  min-width: 0;
+}
+
+.budget-bar {
+  height: 6px;
+  opacity: 0.55;
+}
+
+.compact-amount {
+  gap: 0.15rem;
+  min-width: 110px;
+}
+
+.compact-amount small,
+.stat small {
+  font-size: 0.78rem;
+}
+
 .mini-table {
   display: grid;
   overflow: hidden;
@@ -408,7 +453,7 @@ textarea {
 .mini-table-head,
 .mini-table-row {
   display: grid;
-  grid-template-columns: minmax(0, 1.05fr) repeat(3, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1.05fr) repeat(4, minmax(0, 1fr));
   gap: 0.35rem;
   align-items: center;
   padding: 0.55rem;
@@ -555,6 +600,37 @@ textarea {
   grid-template-columns: 54px repeat(7, minmax(0, 1fr));
 }
 
+.calendar-source-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  border-bottom: 1px solid var(--line);
+  padding: 0.7rem 0.85rem;
+}
+
+.calendar-source-chip {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.35rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #fff;
+  padding: 0.28rem 0.55rem;
+  color: #30343a;
+  font-size: 0.78rem;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.calendar-source-chip span {
+  width: 9px;
+  height: 9px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: var(--source-color, var(--accent));
+}
+
 .calendar-week-head,
 .kw-cell {
   min-height: 38px;
@@ -614,7 +690,7 @@ textarea {
   display: grid;
   gap: 0.05rem;
   overflow: hidden;
-  border-left: 3px solid var(--accent);
+  border-left: 3px solid var(--source-color, var(--accent));
   border-radius: 5px;
   background: #e7f1ef;
   color: #123c38;
@@ -724,7 +800,7 @@ textarea {
   display: grid;
   gap: 0.25rem;
   border: 1px solid var(--line);
-  border-left: 4px solid var(--accent);
+  border-left: 4px solid var(--source-color, var(--accent));
   border-radius: 8px;
   background: #fff;
   padding: 0.65rem;
@@ -1216,7 +1292,7 @@ body {
 
 .dashboard-stats {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 0.75rem;
 }
 
@@ -1284,6 +1360,7 @@ body {
   align-items: start;
   justify-content: space-between;
   gap: 1rem;
+  min-width: 0;
 }
 
 .card-head h2 {
@@ -1300,7 +1377,8 @@ body {
   display: flex;
   height: 150px;
   align-items: end;
-  gap: 0.8rem;
+  gap: clamp(0.25rem, 1.5vw, 0.8rem);
+  min-width: 0;
   border-radius: 8px;
   background: var(--surface-alt);
   padding: 1rem;
@@ -1308,6 +1386,7 @@ body {
 
 .finance-bar {
   width: 100%;
+  min-width: 6px;
   min-height: 18px;
   border-radius: 7px 7px 3px 3px;
 }
@@ -1322,7 +1401,7 @@ body {
 
 .dashboard-mini-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.75rem;
 }
 
@@ -1516,7 +1595,7 @@ body {
   }
 
   .dashboard-stats {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   }
 
   .dashboard-grid {
@@ -1568,6 +1647,36 @@ body {
   .dashboard-mini-grid,
   .task-item {
     grid-template-columns: 1fr;
+  }
+
+  .row {
+    display: grid;
+    justify-content: stretch;
+  }
+
+  .amount-column,
+  .action-stack {
+    min-width: 0;
+    justify-items: stretch;
+  }
+
+  .amount-column {
+    text-align: left;
+  }
+
+  .card-head,
+  .hero-actions {
+    display: grid;
+  }
+
+  .mini-table-head,
+  .mini-table-row {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  .mini-table-head span:nth-child(4),
+  .mini-table-row span:nth-child(4) {
+    display: none;
   }
 
   .task-check {

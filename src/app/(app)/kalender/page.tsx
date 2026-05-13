@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { CSSProperties } from "react";
 import {
   createCalendarEvent,
   createCalendarIntegration,
@@ -48,6 +49,7 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
   ]);
   const visibleRange = getVisibleRange(selectedDate, view);
   const visibleEvents = events.filter((event) => event.startAt < visibleRange.end && event.endAt > visibleRange.start);
+  const calendarSources = buildCalendarSources(events);
   const outlookRedirectUri = process.env.OUTLOOK_REDIRECT_URI ?? `${process.env.APP_URL ?? "http://localhost:3000"}/api/outlook/callback`;
   const outlookConfigured = Boolean(process.env.OUTLOOK_CLIENT_ID && process.env.OUTLOOK_CLIENT_SECRET);
 
@@ -178,6 +180,17 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
             <Link className={view === "day" ? "active" : ""} href={calendarHref("day", selectedDate)}>Tag</Link>
           </div>
         </div>
+
+        {calendarSources.length > 0 ? (
+          <div className="calendar-source-strip" aria-label="Kalenderquellen">
+            {calendarSources.map((source) => (
+              <span className="calendar-source-chip" key={source.id} style={{ "--source-color": source.color } as CSSProperties}>
+                <span aria-hidden="true" />
+                {source.name}
+              </span>
+            ))}
+          </div>
+        ) : null}
 
         {view === "month" ? <MonthView date={selectedDate} events={visibleEvents} /> : null}
         {view === "week" ? <WeekView date={selectedDate} events={visibleEvents} /> : null}
@@ -345,7 +358,7 @@ function CalendarCell({ date, events, muted }: { date: Date; events: CalendarEve
 
 function CalendarPill({ event }: { event: CalendarEvent }) {
   return (
-    <span className={`calendar-pill source-${event.source.toLowerCase()}`}>
+    <span className={`calendar-pill source-${event.source.toLowerCase()}`} style={sourceColorStyle(event)}>
       {timeFormatter.format(event.startAt)} {eventTitle(event)}
       {event.sourceCalendarName ? <small>{event.sourceCalendarName}</small> : null}
     </span>
@@ -363,7 +376,7 @@ function EventList({ events }: { events: CalendarEvent[] }) {
 
 function CalendarEventCard({ event, detailed = false }: { event: CalendarEvent; detailed?: boolean }) {
   return (
-    <article className="calendar-event-card">
+    <article className="calendar-event-card" style={sourceColorStyle(event)}>
       <span className="calendar-event-time">{timeFormatter.format(event.startAt)} - {timeFormatter.format(event.endAt)}</span>
       <strong>{eventTitle(event)}</strong>
       <span className="muted">{event.owner.name} · {event.sourceCalendarName ?? event.source} · {visibilityLabels[event.visibility]}</span>
@@ -371,6 +384,29 @@ function CalendarEventCard({ event, detailed = false }: { event: CalendarEvent; 
       {detailed && event.visibility === "FAMILY" && event.description ? <p>{event.description}</p> : null}
     </article>
   );
+}
+
+function buildCalendarSources(events: CalendarEvent[]) {
+  const sources = new Map<string, { id: string; name: string; color: string }>();
+  for (const event of events) {
+    const id = event.sourceCalendarId ?? event.integrationId ?? event.source;
+    if (sources.has(id)) continue;
+    const name = event.sourceCalendarName ?? providerLabels[event.source] ?? event.source;
+    sources.set(id, { id, name, color: colorFromString(id) });
+  }
+  return [...sources.values()].sort((a, b) => a.name.localeCompare(b.name, "de-DE"));
+}
+
+function sourceColorStyle(event: CalendarEvent) {
+  return {
+    "--source-color": colorFromString(event.sourceCalendarId ?? event.integrationId ?? event.source)
+  } as CSSProperties;
+}
+
+function colorFromString(value: string) {
+  const palette = ["#16776f", "#2e6fea", "#1c8c55", "#b7791f", "#7c5cc4", "#b94242", "#0f8b8d", "#d45d2f", "#536dfe", "#5c7c2f"];
+  const hash = [...value].reduce((sum, char) => sum + char.charCodeAt(0), 0);
+  return palette[Math.abs(hash) % palette.length];
 }
 
 function eventTitle(event: CalendarEvent) {

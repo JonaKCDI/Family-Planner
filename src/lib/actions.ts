@@ -91,14 +91,25 @@ export async function createExpense(formData: FormData) {
 
 export async function createCategory(formData: FormData) {
   const session = await requireSession();
+  const name = requiredText(formData, "name");
+  const type = enumValue(formData, "type", ["EXPENSE", "TASK", "CONTRACT"] as const, "EXPENSE");
+  const existingCategories = await db.category.count({
+    where: {
+      familyId: session.family.id,
+      type,
+      ...scopeWhereForCategoryColor(session.user.id)
+    }
+  });
+  const submittedColor = optionalText(formData, "color");
   await db.category.create({
     data: {
       familyId: session.family.id,
       ownerUserId: session.user.id,
-      type: enumValue(formData, "type", ["EXPENSE", "TASK", "CONTRACT"] as const, "EXPENSE"),
-      name: requiredText(formData, "name"),
-      color: optionalText(formData, "color") ?? "#2f6fed",
+      type,
+      name,
+      color: chooseCategoryColor(name, existingCategories, submittedColor),
       icon: optionalText(formData, "icon") ?? "tag",
+      monthlyBudgetCents: parseOptionalEuroToCents(formData.get("monthlyBudget")),
       scope: scopeValue(formData)
     }
   });
@@ -419,12 +430,12 @@ async function createDefaultCategories(userId: string) {
 
 function defaultCategorySeed(familyId: string, ownerUserId: string) {
   return [
-    { familyId, ownerUserId, type: "EXPENSE" as const, name: "Lebensmittel", color: "#2f855a", icon: "cart", scope: "FAMILY" as const },
-    { familyId, ownerUserId, type: "EXPENSE" as const, name: "Wohnen", color: "#2b6cb0", icon: "home", scope: "FAMILY" as const },
-    { familyId, ownerUserId, type: "EXPENSE" as const, name: "Mobilität", color: "#b7791f", icon: "car", scope: "FAMILY" as const },
-    { familyId, ownerUserId, type: "EXPENSE" as const, name: "Freizeit", color: "#805ad5", icon: "sparkles", scope: "FAMILY" as const },
-    { familyId, ownerUserId, type: "EXPENSE" as const, name: "Gehalt", color: "#2c7a7b", icon: "wallet", scope: "FAMILY" as const },
-    { familyId, ownerUserId, type: "EXPENSE" as const, name: "Rückerstattung", color: "#4a5568", icon: "return", scope: "FAMILY" as const }
+    { familyId, ownerUserId, type: "EXPENSE" as const, name: "Lebensmittel", color: "#1c8c55", icon: "cart", monthlyBudgetCents: 50000, scope: "FAMILY" as const },
+    { familyId, ownerUserId, type: "EXPENSE" as const, name: "Wohnen", color: "#2e6fea", icon: "home", monthlyBudgetCents: 120000, scope: "FAMILY" as const },
+    { familyId, ownerUserId, type: "EXPENSE" as const, name: "Mobilität", color: "#b7791f", icon: "car", monthlyBudgetCents: 25000, scope: "FAMILY" as const },
+    { familyId, ownerUserId, type: "EXPENSE" as const, name: "Freizeit", color: "#7c5cc4", icon: "sparkles", monthlyBudgetCents: 20000, scope: "FAMILY" as const },
+    { familyId, ownerUserId, type: "EXPENSE" as const, name: "Gehalt", color: "#16776f", icon: "wallet", monthlyBudgetCents: 0, scope: "FAMILY" as const },
+    { familyId, ownerUserId, type: "EXPENSE" as const, name: "Rückerstattung", color: "#66736f", icon: "return", monthlyBudgetCents: 0, scope: "FAMILY" as const }
   ];
 }
 
@@ -469,6 +480,38 @@ function optionalText(formData: FormData, key: string) {
 function optionalNumber(formData: FormData, key: string) {
   const value = String(formData.get(key) ?? "").trim();
   return value ? Number(value) : null;
+}
+
+function parseOptionalEuroToCents(value: FormDataEntryValue | null) {
+  const text = String(value ?? "").trim();
+  return text ? parseEuroToCents(text) : 0;
+}
+
+function chooseCategoryColor(name: string, existingCount: number, submittedColor: string | null) {
+  if (submittedColor && submittedColor.toLowerCase() !== "#2f6fed") return submittedColor;
+  const palette = [
+    "#16776f",
+    "#2e6fea",
+    "#1c8c55",
+    "#b7791f",
+    "#7c5cc4",
+    "#b94242",
+    "#0f8b8d",
+    "#d45d2f",
+    "#536dfe",
+    "#5c7c2f"
+  ];
+  const hash = [...name].reduce((sum, char) => sum + char.charCodeAt(0), existingCount);
+  return palette[Math.abs(hash) % palette.length];
+}
+
+function scopeWhereForCategoryColor(userId: string) {
+  return {
+    OR: [
+      { scope: "FAMILY" as const },
+      { ownerUserId: userId }
+    ]
+  };
 }
 
 function scopeValue(formData: FormData) {

@@ -3,6 +3,7 @@ import { requireSession } from "@/lib/auth";
 import { formatDate, formatMoney } from "@/lib/format";
 import {
   getVisibleCalendarEvents,
+  getVisibleCategories,
   getVisibleContracts,
   getVisibleDocuments,
   getVisibleExpenses,
@@ -11,18 +12,21 @@ import {
 
 export default async function DashboardPage() {
   const session = await requireSession();
-  const [events, expenses, tasks, contracts, documents] = await Promise.all([
+  const [events, expenses, tasks, contracts, documents, categories] = await Promise.all([
     getVisibleCalendarEvents(session.family.id, session.user.id),
     getVisibleExpenses(session.family.id, session.user.id),
     getVisibleTasks(session.family.id, session.user.id),
     getVisibleContracts(session.family.id, session.user.id),
-    getVisibleDocuments(session.family.id, session.user.id)
+    getVisibleDocuments(session.family.id, session.user.id),
+    getVisibleCategories(session.family.id, session.user.id, "EXPENSE")
   ]);
 
   const today = new Date();
   const monthEntries = expenses.filter((entry) => isSameMonth(entry.date, today));
   const income = sumByKind(monthEntries, "INCOME");
   const spending = sumByKind(monthEntries, "EXPENSE");
+  const budget = categories.reduce((sum, category) => sum + category.monthlyBudgetCents, 0);
+  const budgetLeft = budget - spending;
   const saldo = income - spending;
   const openTasks = tasks.filter((task) => task.status === "OPEN" || task.status === "IN_PROGRESS");
   const urgentTasks = openTasks.filter((task) => task.priority === "HIGH" || task.priority === "URGENT");
@@ -50,6 +54,7 @@ export default async function DashboardPage() {
         <DashboardStat label="Einnahmen" value={formatMoney(income)} detail="Dieser Monat" tone="green" />
         <DashboardStat label="Ausgaben" value={formatMoney(spending)} detail={`${monthEntries.length} Einträge`} tone="red" />
         <DashboardStat label="Saldo" value={formatMoney(saldo)} detail={saldo < 0 ? "Unter Plan prüfen" : "Aktueller Stand"} tone={saldo < 0 ? "red" : "green"} />
+        <DashboardStat label="Budget" value={formatMoney(budgetLeft)} detail={`${formatMoney(budget)} geplant`} tone={budgetLeft < 0 ? "red" : "blue"} />
         <DashboardStat label="Heute" value={`${upcomingEvents.length} Termine`} detail={`${openTasks.length} Aufgaben offen`} tone="blue" />
       </section>
 
@@ -71,6 +76,7 @@ export default async function DashboardPage() {
             <MiniMetric label="Einnahmen" value={formatMoney(income)} tone="green" />
             <MiniMetric label="Ausgaben" value={formatMoney(spending)} tone="red" />
             <MiniMetric label="Saldo" value={formatMoney(saldo)} tone={saldo < 0 ? "red" : "green"} />
+            <MiniMetric label="Budget frei" value={formatMoney(budgetLeft)} tone={budgetLeft < 0 ? "red" : "green"} />
           </div>
         </section>
 

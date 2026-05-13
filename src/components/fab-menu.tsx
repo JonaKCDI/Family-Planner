@@ -6,9 +6,9 @@ import { usePathname } from "next/navigation";
 const defaults = [
   { href: "/kalender#termin-erfassen", label: "Termin" },
   { href: "/ausgaben#eintrag-erfassen", label: "Eintrag" },
-  { href: "/aufgaben", label: "Aufgabe" },
-  { href: "/vertraege", label: "Vertrag" },
-  { href: "/dokumente", label: "Dokument" }
+  { href: "/aufgaben#aufgabe-erfassen", label: "Aufgabe" },
+  { href: "/vertraege#vertrag-erfassen", label: "Vertrag" },
+  { href: "/dokumente#dokument-erfassen", label: "Dokument" }
 ];
 
 const byPath: Record<string, { href: string; label: string }[]> = {
@@ -21,9 +21,9 @@ const byPath: Record<string, { href: string; label: string }[]> = {
     { href: "/ausgaben#eintrag-erfassen", label: "Eintrag erfassen" },
     { href: "/ausgaben#kategorie-erfassen", label: "Kategorie" }
   ],
-  "/aufgaben": [{ href: "/aufgaben", label: "Aufgabe erstellen" }],
-  "/vertraege": [{ href: "/vertraege", label: "Vertrag erstellen" }],
-  "/dokumente": [{ href: "/dokumente", label: "Dokument verknüpfen" }],
+  "/aufgaben": [{ href: "/aufgaben#aufgabe-erfassen", label: "Aufgabe erstellen" }],
+  "/vertraege": [{ href: "/vertraege#vertrag-erfassen", label: "Vertrag erstellen" }],
+  "/dokumente": [{ href: "/dokumente#dokument-erfassen", label: "Dokument verknüpfen" }],
   "/einstellungen": [{ href: "/einstellungen", label: "Benutzer anlegen" }]
 };
 

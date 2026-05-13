@@ -31,10 +31,12 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
   const income = sumByKind(selectedEntries, "INCOME");
   const spending = sumByKind(selectedEntries, "EXPENSE");
   const saldo = income - spending;
+  const rangeBudget = budgetForRange(categories, range.from, range.to);
+  const budgetDelta = rangeBudget - spending;
   const currentYearEntries = expenses.filter((entry) => new Date(entry.date).getFullYear() === new Date().getFullYear());
-  const categoryRows = buildCategoryRows(selectedEntries, spending);
-  const monthlyRows = buildPeriodRows(selectedEntries, "month");
-  const yearlyRows = buildPeriodRows(expenses, "year");
+  const categoryRows = buildCategoryRows(selectedEntries, categories, spending, range);
+  const monthlyRows = buildPeriodRows(selectedEntries, categories, "month");
+  const yearlyRows = buildPeriodRows(expenses, categories, "year");
 
   return (
     <>
@@ -57,7 +59,11 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
         <div className="stat"><span>Einnahmen</span><strong>{formatMoney(income)}</strong></div>
         <div className="stat"><span>Ausgaben</span><strong>{formatMoney(spending)}</strong></div>
         <div className="stat"><span>Saldo</span><strong className={saldo < 0 ? "negative" : "positive"}>{formatMoney(saldo)}</strong></div>
-        <div className="stat"><span>Dieses Jahr</span><strong>{formatMoney(sumByKind(currentYearEntries, "INCOME") - sumByKind(currentYearEntries, "EXPENSE"))}</strong></div>
+        <div className="stat">
+          <span>Budget übrig</span>
+          <strong className={budgetDelta < 0 ? "negative" : "positive"}>{formatMoney(budgetDelta)}</strong>
+          <small>{formatMoney(rangeBudget)} geplant</small>
+        </div>
       </section>
 
       <div className="grid two">
@@ -113,7 +119,8 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
           <form action={createCategory} className="form compact" id="kategorie-erfassen">
             <input type="hidden" name="type" value="EXPENSE" />
             <label>Name<input name="name" placeholder="Schule, Urlaub, Kindergeld ..." required /></label>
-            <label>Farbe<input name="color" type="color" defaultValue="#2f6fed" /></label>
+            <label>Monatsbudget in EUR<input name="monthlyBudget" inputMode="decimal" placeholder="250,00" /></label>
+            <label>Farbe automatisch oder wählen<input name="color" type="color" defaultValue="#2f6fed" /></label>
             <ScopeSelect />
             <button className="button secondary" type="submit">Kategorie speichern</button>
           </form>
@@ -131,10 +138,16 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
                     <div>
                       <strong>{row.name}</strong>
                       <br />
-                      <span className="muted">{row.percent.toFixed(1)}% der Ausgaben</span>
+                      <span className="muted">{row.percent.toFixed(1)}% der Ausgaben · Budget {formatMoney(row.budget)}</span>
                     </div>
-                    <div className="bar-wrap" aria-hidden="true"><span style={{ width: `${row.percent}%`, background: row.color }} /></div>
-                    <strong>{formatMoney(row.amount)}</strong>
+                    <div className="bar-stack">
+                      <div className="bar-wrap" aria-label={`Ausgabenanteil ${row.name}`}><span style={{ width: `${row.percent}%`, background: row.color }} /></div>
+                      <div className="bar-wrap budget-bar" aria-label={`Budgetnutzung ${row.name}`}><span style={{ width: `${row.budgetUsage}%`, background: row.color }} /></div>
+                    </div>
+                    <div className="amount-column compact-amount">
+                      <strong>{formatMoney(row.amount)}</strong>
+                      <small className={row.remaining < 0 ? "negative" : "positive"}>{row.remaining < 0 ? "drüber " : "frei "}{formatMoney(Math.abs(row.remaining))}</small>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -153,6 +166,7 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
 
       <section className="panel spacing-top">
         <h2 className="section-title">Letzte Einträge</h2>
+        <p className="muted">Jahressaldo aktuell: {formatMoney(sumByKind(currentYearEntries, "INCOME") - sumByKind(currentYearEntries, "EXPENSE"))}</p>
         <div className="list">
           {expenses.length === 0 ? <EmptyState>Noch keine Einträge erfasst.</EmptyState> : null}
           {expenses.map((expense) => {
@@ -196,12 +210,13 @@ function MiniTable({ rows }: { rows: PeriodRow[] }) {
   if (rows.length === 0) return <EmptyState>Noch keine Daten vorhanden.</EmptyState>;
   return (
     <div className="mini-table">
-      <div className="mini-table-head"><span>Zeitraum</span><span>Einnahmen</span><span>Ausgaben</span><span>Saldo</span></div>
+      <div className="mini-table-head"><span>Zeitraum</span><span>Einnahmen</span><span>Ausgaben</span><span>Budget</span><span>Saldo</span></div>
       {rows.map((row) => (
         <div className="mini-table-row" key={row.label}>
           <span>{row.label}</span>
           <span>{formatMoney(row.income)}</span>
           <span>{formatMoney(row.spending)}</span>
+          <span>{formatMoney(row.budget)}</span>
           <strong className={row.saldo < 0 ? "negative" : "positive"}>{formatMoney(row.saldo)}</strong>
         </div>
       ))}
@@ -235,23 +250,37 @@ function sumByKind(entries: ExpenseLike[], kind: "EXPENSE" | "INCOME") {
   return entries.filter((entry) => entry.kind === kind).reduce((sum, entry) => sum + entry.amountCents, 0);
 }
 
-function buildCategoryRows(entries: ExpenseLike[], totalSpending: number) {
-  const rows = new Map<string, { amount: number; color: string }>();
+function buildCategoryRows(entries: ExpenseLike[], categories: CategoryLike[], totalSpending: number, range: { from: Date; to: Date }) {
+  const rows = new Map<string, { amount: number; color: string; category?: CategoryLike }>();
   for (const entry of entries) {
     if (entry.kind !== "EXPENSE") continue;
     const name = entry.category?.name ?? "Ohne Kategorie";
-    const current = rows.get(name) ?? { amount: 0, color: entry.category?.color ?? "#6b6f76" };
+    const current = rows.get(name) ?? {
+      amount: 0,
+      color: entry.category?.color ?? "#6b6f76",
+      category: entry.category ?? undefined
+    };
     current.amount += entry.amountCents;
     rows.set(name, current);
   }
+  for (const category of categories) {
+    if (category.monthlyBudgetCents <= 0 || rows.has(category.name)) continue;
+    rows.set(category.name, { amount: 0, color: category.color, category });
+  }
 
   return [...rows.entries()]
-    .map(([name, row]) => ({
-      name,
-      amount: row.amount,
-      color: row.color,
-      percent: totalSpending > 0 ? (row.amount / totalSpending) * 100 : 0
-    }))
+    .map(([name, row]) => {
+      const budget = categoryBudgetForRange(row.category, range.from, range.to);
+      return {
+        name,
+        amount: row.amount,
+        color: row.color,
+        budget,
+        remaining: budget - row.amount,
+        budgetUsage: budget > 0 ? Math.min(100, (row.amount / budget) * 100) : 0,
+        percent: totalSpending > 0 ? (row.amount / totalSpending) * 100 : 0
+      };
+    })
     .sort((a, b) => b.amount - a.amount);
 }
 
@@ -259,23 +288,61 @@ type PeriodRow = {
   label: string;
   income: number;
   spending: number;
+  budget: number;
   saldo: number;
 };
 
-function buildPeriodRows(entries: ExpenseLike[], mode: "month" | "year"): PeriodRow[] {
+function buildPeriodRows(entries: ExpenseLike[], categories: CategoryLike[], mode: "month" | "year"): PeriodRow[] {
   const rows = new Map<string, PeriodRow>();
   for (const entry of entries) {
     const date = new Date(entry.date);
     const label = mode === "month"
       ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`
       : String(date.getFullYear());
-    const row = rows.get(label) ?? { label, income: 0, spending: 0, saldo: 0 };
+    const row = rows.get(label) ?? {
+      label,
+      income: 0,
+      spending: 0,
+      budget: budgetForPeriod(categories, mode),
+      saldo: 0
+    };
     if (entry.kind === "INCOME") row.income += entry.amountCents;
     if (entry.kind === "EXPENSE") row.spending += entry.amountCents;
     row.saldo = row.income - row.spending;
     rows.set(label, row);
   }
   return [...rows.values()].sort((a, b) => b.label.localeCompare(a.label)).slice(0, 12);
+}
+
+function budgetForPeriod(categories: CategoryLike[], mode: "month" | "year") {
+  const monthlyBudget = categories.reduce((sum, category) => sum + category.monthlyBudgetCents, 0);
+  return mode === "year" ? monthlyBudget * 12 : monthlyBudget;
+}
+
+function budgetForRange(categories: CategoryLike[], from: Date, to: Date) {
+  const monthlyBudget = categories.reduce((sum, category) => sum + category.monthlyBudgetCents, 0);
+  if (monthlyBudget === 0) return 0;
+  let total = 0;
+  for (let cursor = new Date(from.getFullYear(), from.getMonth(), 1); cursor <= to; cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1)) {
+    const monthStart = new Date(cursor.getFullYear(), cursor.getMonth(), 1);
+    const monthEnd = endOfDay(new Date(cursor.getFullYear(), cursor.getMonth() + 1, 0));
+    const overlapStart = new Date(Math.max(from.getTime(), monthStart.getTime()));
+    const overlapEnd = new Date(Math.min(to.getTime(), monthEnd.getTime()));
+    if (overlapStart <= overlapEnd) {
+      const daysInMonth = monthEnd.getDate();
+      const coveredDays = Math.floor((startOfDay(overlapEnd).getTime() - startOfDay(overlapStart).getTime()) / 86400000) + 1;
+      total += Math.round((monthlyBudget / daysInMonth) * coveredDays);
+    }
+  }
+  return total;
+}
+
+function categoryBudgetForRange(category: CategoryLike | undefined, from: Date, to: Date) {
+  return category ? budgetForRange([category], from, to) : 0;
+}
+
+function startOfDay(date: Date) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
 }
 
 function groupBy<T>(items: T[], getKey: (item: T) => string) {
@@ -287,3 +354,4 @@ function groupBy<T>(items: T[], getKey: (item: T) => string) {
 }
 
 type ExpenseLike = Awaited<ReturnType<typeof getVisibleExpenses>>[number];
+type CategoryLike = Awaited<ReturnType<typeof getVisibleCategories>>[number];
