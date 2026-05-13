@@ -1,6 +1,6 @@
-# Family Planner
+﻿# Family Planner
 
-Self-hosted Familien- und Alltagsorganisations-App als mobile-first Next.js/PWA. V1 konzentriert sich auf echte Nutzer, Familien-/Privat-Sichtbarkeit, Ausgaben, Aufgaben, Vertraege, manuelle Kalendertermine und HTTPS-Dokumentverweise auf Synology oder externe Quellen.
+Self-hosted Familien- und Alltagsorganisations-App als mobile-first Next.js/PWA. V1 konzentriert sich auf echte Nutzer, Familien-/Privat-Sichtbarkeit, Ausgaben, Aufgaben, Verträge, manuelle Kalendertermine und HTTPS-Dokumentverweise auf Synology oder externe Quellen.
 
 ## Lokaler Start
 
@@ -13,7 +13,7 @@ npm run prisma:migrate
 npm run dev
 ```
 
-Danach `http://localhost:3000` oeffnen. Beim ersten Aufruf erscheint der Setup-Flow fuer den ersten Admin und die Familie.
+Danach `http://localhost:3000` öffnen. Beim ersten Aufruf erscheint der Setup-Flow für den ersten Admin und die Familie.
 
 ## Datenbank
 
@@ -21,9 +21,9 @@ Ziel-Datenbank ist PostgreSQL. Die App verwendet Prisma und das Schema liegt in 
 
 Wichtige Sicherheitsentscheidungen:
 
-- Passwoerter werden gehasht gespeichert.
+- Passwörter werden gehasht gespeichert.
 - Sessions liegen serverseitig in der Datenbank.
-- Sichtbarkeit wird pro Datensatz ueber `PRIVATE` oder `FAMILY` modelliert.
+- Sichtbarkeit wird pro Datensatz über `PRIVATE` oder `FAMILY` modelliert.
 - Dokumente werden nicht hochgeladen; gespeichert werden nur HTTPS-Verweise.
 
 ## Synology Deployment
@@ -40,9 +40,9 @@ docker compose exec app npx prisma migrate deploy
 Empfohlen:
 
 - App nur im Heimnetz/VPN starten.
-- Fuer externen Zugriff spaeter HTTPS ueber Reverse Proxy erzwingen.
-- Datenbank-Port nicht oeffentlich veroeffentlichen.
-- PostgreSQL-Volume regelmaessig sichern.
+- Für externen Zugriff später HTTPS über Reverse Proxy erzwingen.
+- Datenbank-Port nicht öffentlich veröffentlichen.
+- PostgreSQL-Volume regelmäßig sichern.
 - Restore mindestens einmal testen.
 
 ## Dokumentverweise
@@ -57,4 +57,4 @@ Die App ist kein Datei-Proxy. Synology bleibt Single Source of Truth und kontrol
 
 ## Kalender
 
-V1 enthaelt manuelle Kalendertermine und vorbereitetes Datenmodell fuer Outlook, iCloud und CalDAV. Echter Sync ist absichtlich ein spaeteres Modul.
+V1 enthält manuelle Kalendertermine und vorbereitetes Datenmodell für Outlook, iCloud und CalDAV. Echter Sync ist absichtlich ein späteres Modul.

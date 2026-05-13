@@ -1,9 +1,10 @@
-import type { Metadata, Viewport } from "next";
+﻿import type { Metadata, Viewport } from "next";
+import { PwaRegister } from "@/components/pwa-register";
 import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Familien-App",
-  description: "Familien- und Alltagsorganisation fuer Zuhause",
+  description: "Familien- und Alltagsorganisation für Zuhause",
   manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,
@@ -29,7 +30,10 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="de">
-      <body>{children}</body>
+      <body>
+        {children}
+        <PwaRegister />
+      </body>
     </html>
   );
 }

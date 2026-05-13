@@ -1,4 +1,4 @@
-import Link from "next/link";
+﻿import Link from "next/link";
 import { redirect } from "next/navigation";
 import { login } from "@/lib/actions";
 import { getCurrentSession } from "@/lib/auth";
@@ -32,7 +32,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
           </label>
           <button className="button" type="submit">Einloggen</button>
         </form>
-        <p className="muted">Noch keine Familie? <Link href="/setup">Setup pruefen</Link></p>
+        <p className="muted">Noch keine Familie? <Link href="/setup">Setup prüfen</Link></p>
       </section>
     </main>
   );

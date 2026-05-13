@@ -1,4 +1,4 @@
-import { createTask, updateTaskStatus } from "@/lib/actions";
+﻿import { createTask, updateTaskStatus } from "@/lib/actions";
 import { requireSession } from "@/lib/auth";
 import { formatDate } from "@/lib/format";
 import { getFamilyMembers, getVisibleTasks } from "@/lib/queries";
@@ -13,7 +13,7 @@ export default async function TasksPage() {
 
   return (
     <>
-      <PageHeader title="Aufgaben" description="Actionliste fuer dich und die Familie mit Prioritaet, Deadline und Status." />
+      <PageHeader title="Aufgaben" description="Actionliste für dich und die Familie mit Priorität, Deadline und Status." />
       <div className="grid two">
         <section className="panel">
           <h2 className="section-title">Aufgabe erfassen</h2>
@@ -40,7 +40,7 @@ export default async function TasksPage() {
               <input name="dueDate" type="date" />
             </label>
             <label>
-              Prioritaet
+              Priorität
               <select name="priority" defaultValue="MEDIUM">
                 <option value="LOW">Niedrig</option>
                 <option value="MEDIUM">Mittel</option>
@@ -62,7 +62,7 @@ export default async function TasksPage() {
                   <div>
                     <strong>{task.title}</strong>
                     <span className="muted">
-                      {task.assignee?.name ?? "Nicht zugewiesen"} · Faellig: {formatDate(task.dueDate)} · {task.priority}
+                      {task.assignee?.name ?? "Nicht zugewiesen"} · Fällig: {formatDate(task.dueDate)} · {task.priority}
                     </span>
                     {task.description ? <p>{task.description}</p> : null}
                     <span className="badge">{task.scope === "FAMILY" ? "Familie" : "Privat"}</span>

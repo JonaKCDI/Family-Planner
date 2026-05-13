@@ -1,7 +1,7 @@
-{
+﻿{
   "name": "Familien-App",
   "short_name": "Familie",
-  "description": "Familien- und Alltagsorganisation fuer Zuhause",
+  "description": "Familien- und Alltagsorganisation für Zuhause",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#f6f5f1",

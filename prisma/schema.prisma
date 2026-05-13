@@ -271,9 +271,13 @@ model CalendarIntegration {
   userId             String
   provider           CalendarProvider
   displayName        String
+  calendarUrl        String?
+  username           String?
+  encryptedPassword  String?
   syncEnabled        Boolean            @default(false)
   visibilityToFamily CalendarVisibility @default(PRIVATE)
   lastSyncAt         DateTime?
+  lastSyncError      String?
   status             String             @default("prepared")
   createdAt          DateTime           @default(now())
   updatedAt          DateTime           @updatedAt
@@ -306,4 +310,5 @@ model CalendarEvent {
 
   @@index([familyId, startAt])
   @@index([integrationId])
+  @@unique([integrationId, externalEventId])
 }

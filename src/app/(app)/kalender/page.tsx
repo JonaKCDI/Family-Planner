@@ -1,4 +1,4 @@
-import { createCalendarEvent, createCalendarIntegration, deleteCalendarIntegration } from "@/lib/actions";
+﻿import { createCalendarEvent, createCalendarIntegration, deleteCalendarIntegration, syncCalendarIntegration } from "@/lib/actions";
 import { requireSession } from "@/lib/auth";
 import { formatDate } from "@/lib/format";
 import { getCalendarIntegrations, getVisibleCalendarEvents } from "@/lib/queries";
@@ -13,7 +13,7 @@ const providerLabels = {
 
 const visibilityLabels = {
   PRIVATE: "Privat",
-  BUSY_ONLY: "Nur beschaeftigt",
+  BUSY_ONLY: "Nur beschäftigt",
   TITLE_ONLY: "Nur Titel",
   FAMILY: "Voll sichtbar"
 };
@@ -29,7 +29,7 @@ export default async function CalendarPage() {
     <>
       <PageHeader
         title="Kalender"
-        description="Manuelle Familientermine und vorbereitete Kalenderquellen fuer Outlook, iCloud und CalDAV."
+        description="Manuelle Familientermine und vorbereitete Kalenderquellen für Outlook, iCloud und CalDAV."
       />
 
       <div className="grid two">
@@ -49,11 +49,26 @@ export default async function CalendarPage() {
               Anzeigename
               <input name="displayName" placeholder="Jona Arbeit, Familie iCloud, Schule ..." required />
             </label>
+            <fieldset className="fieldset">
+              <legend>CalDAV lokal synchronisieren</legend>
+              <label>
+                CalDAV-Kalender-URL
+                <input name="calendarUrl" type="url" placeholder="https://deine-synology.example/caldav/..." />
+              </label>
+              <label>
+                Benutzername
+                <input name="username" autoComplete="username" />
+              </label>
+              <label>
+                Passwort oder App-Passwort
+                <input name="password" type="password" autoComplete="current-password" />
+              </label>
+            </fieldset>
             <label>
-              Sichtbarkeit fuer Familie
+              Sichtbarkeit für Familie
               <select name="visibilityToFamily" defaultValue="BUSY_ONLY">
                 <option value="PRIVATE">Privat</option>
-                <option value="BUSY_ONLY">Nur beschaeftigt</option>
+                <option value="BUSY_ONLY">Nur beschäftigt</option>
                 <option value="TITLE_ONLY">Nur Titel</option>
                 <option value="FAMILY">Voll sichtbar</option>
               </select>
@@ -61,7 +76,7 @@ export default async function CalendarPage() {
             <button className="button" type="submit">Quelle vorbereiten</button>
           </form>
           <p className="muted">
-            Zugangsdaten und OAuth-Tokens werden hier bewusst noch nicht gespeichert. Das ist die sichere Vorstufe fuer den spaeteren Sync.
+            Echter lokaler Sync ist für CalDAV vorgesehen, idealerweise Synology Calendar. Outlook und iCloud bleiben Cloud-Anbieter und werden hier nicht automatisch verbunden.
           </p>
         </section>
 
@@ -74,17 +89,27 @@ export default async function CalendarPage() {
                 <div>
                   <strong>{integration.displayName}</strong>
                   <span className="muted">
-                    {providerLabels[integration.provider]} · {visibilityLabels[integration.visibilityToFamily]} · Status: vorbereitet
+                    {providerLabels[integration.provider]} · {visibilityLabels[integration.visibilityToFamily]} · Status: {integration.status}
                   </span>
                   <div className="badge-row">
-                    <span className="badge">{integration.syncEnabled ? "Sync aktiv" : "Sync spaeter"}</span>
+                    <span className="badge">{integration.syncEnabled ? "Sync aktiv" : "Sync später"}</span>
+                    {integration.lastSyncAt ? <span className="badge">Zuletzt: {formatDate(integration.lastSyncAt)}</span> : null}
                     <span className="badge">{integration.user.name}</span>
                   </div>
+                  {integration.lastSyncError ? <p className="negative">{integration.lastSyncError}</p> : null}
                 </div>
-                <form action={deleteCalendarIntegration}>
-                  <input type="hidden" name="id" value={integration.id} />
-                  <button className="button secondary" type="submit">Entfernen</button>
-                </form>
+                <div className="action-stack">
+                  {integration.provider === "CALDAV" ? (
+                    <form action={syncCalendarIntegration}>
+                      <input type="hidden" name="id" value={integration.id} />
+                      <button className="button" type="submit">Sync</button>
+                    </form>
+                  ) : null}
+                  <form action={deleteCalendarIntegration}>
+                    <input type="hidden" name="id" value={integration.id} />
+                    <button className="button secondary" type="submit">Entfernen</button>
+                  </form>
+                </div>
               </article>
             ))}
           </div>
@@ -105,7 +130,7 @@ export default async function CalendarPage() {
               <select name="visibility" defaultValue="FAMILY">
                 <option value="FAMILY">Familie</option>
                 <option value="TITLE_ONLY">Nur Titel</option>
-                <option value="BUSY_ONLY">Nur beschaeftigt</option>
+                <option value="BUSY_ONLY">Nur beschäftigt</option>
                 <option value="PRIVATE">Privat</option>
               </select>
             </label>
@@ -114,14 +139,14 @@ export default async function CalendarPage() {
         </section>
 
         <section className="panel">
-          <h2 className="section-title">Familienueberblick</h2>
+          <h2 className="section-title">Familienüberblick</h2>
           <div className="list">
             {events.length === 0 ? <EmptyState>Noch keine Termine erfasst.</EmptyState> : null}
             {events.map((event) => (
               <article className="card" key={event.id}>
                 <div className="row">
                   <div>
-                    <strong>{event.visibility === "BUSY_ONLY" ? "Beschaeftigt" : event.title}</strong>
+                    <strong>{event.visibility === "BUSY_ONLY" ? "Beschäftigt" : event.title}</strong>
                     <span className="muted">{formatDate(event.startAt)} · {event.owner.name} · {event.source}</span>
                     {event.visibility === "FAMILY" && event.description ? <p>{event.description}</p> : null}
                   </div>

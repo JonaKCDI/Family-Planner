@@ -1,4 +1,4 @@
-import { createDocumentReference } from "@/lib/actions";
+﻿import { createDocumentReference } from "@/lib/actions";
 import { requireSession } from "@/lib/auth";
 import { formatDate } from "@/lib/format";
 import { getVisibleDocuments } from "@/lib/queries";
@@ -10,7 +10,7 @@ export default async function DocumentsPage() {
 
   return (
     <>
-      <PageHeader title="Dokumente" description="HTTPS-Verweise auf Synology oder externe Quellen. Dateien bleiben ausserhalb der App." />
+      <PageHeader title="Dokumente" description="HTTPS-Verweise auf Synology oder externe Quellen. Dateien bleiben außerhalb der App." />
       <div className="grid two">
         <section className="panel">
           <h2 className="section-title">Dokumentverweis speichern</h2>
@@ -54,7 +54,7 @@ export default async function DocumentsPage() {
                     {document.description ? <p>{document.description}</p> : null}
                     <span className="badge">{document.scope === "FAMILY" ? "Familie" : "Privat"}</span>
                   </div>
-                  <a className="button secondary" href={document.url} target="_blank" rel="noreferrer">Oeffnen</a>
+                  <a className="button secondary" href={document.url} target="_blank" rel="noreferrer">Öffnen</a>
                 </div>
               </article>
             ))}

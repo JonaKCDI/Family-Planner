@@ -1,11 +1,13 @@
-"use server";
+﻿"use server";
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { createSession, destroySession, hashPassword, requireSession, verifyPassword } from "@/lib/auth";
+import { syncCalDavIntegration } from "@/lib/caldav";
 import { db } from "@/lib/db";
 import { parseEuroToCents } from "@/lib/format";
+import { encryptSecret } from "@/lib/secrets";
 
 const passwordSchema = z.string().min(6, "Das Passwort braucht mindestens 6 Zeichen.");
 
@@ -192,7 +194,7 @@ export async function createDocumentReference(formData: FormData) {
   const session = await requireSession();
   const url = requiredText(formData, "url");
   if (!url.startsWith("https://")) {
-    throw new Error("Dokumentverweise muessen als HTTPS-Link gespeichert werden.");
+    throw new Error("Dokumentverweise müssen als HTTPS-Link gespeichert werden.");
   }
 
   await db.documentReference.create({
@@ -234,15 +236,28 @@ export async function createCalendarEvent(formData: FormData) {
 
 export async function createCalendarIntegration(formData: FormData) {
   const session = await requireSession();
+  const provider = enumValue(formData, "provider", ["OUTLOOK", "ICLOUD", "CALDAV", "MANUAL"] as const, "MANUAL");
+  const calendarUrl = optionalText(formData, "calendarUrl");
+  const username = optionalText(formData, "username");
+  const password = optionalText(formData, "password");
+  const isCalDav = provider === "CALDAV";
+
+  if (isCalDav && (!calendarUrl || !username || !password)) {
+    throw new Error("Für CalDAV sind URL, Benutzername und Passwort erforderlich.");
+  }
+
   await db.calendarIntegration.create({
     data: {
       familyId: session.family.id,
       userId: session.user.id,
-      provider: enumValue(formData, "provider", ["OUTLOOK", "ICLOUD", "CALDAV", "MANUAL"] as const, "MANUAL"),
+      provider,
       displayName: requiredText(formData, "displayName"),
-      syncEnabled: false,
+      calendarUrl: isCalDav ? calendarUrl : null,
+      username: isCalDav ? username : null,
+      encryptedPassword: isCalDav && password ? encryptSecret(password) : null,
+      syncEnabled: isCalDav,
       visibilityToFamily: enumValue(formData, "visibilityToFamily", ["PRIVATE", "BUSY_ONLY", "TITLE_ONLY", "FAMILY"] as const, "BUSY_ONLY"),
-      status: "prepared"
+      status: isCalDav ? "ready" : "prepared"
     }
   });
 
@@ -259,6 +274,12 @@ export async function deleteCalendarIntegration(formData: FormData) {
     }
   });
 
+  revalidatePath("/kalender");
+}
+
+export async function syncCalendarIntegration(formData: FormData) {
+  const session = await requireSession();
+  await syncCalDavIntegration(requiredText(formData, "id"), session.user.id);
   revalidatePath("/kalender");
 }
 
@@ -299,10 +320,10 @@ function defaultCategorySeed(familyId: string, ownerUserId: string) {
   return [
     { familyId, ownerUserId, type: "EXPENSE" as const, name: "Lebensmittel", color: "#2f855a", icon: "cart", scope: "FAMILY" as const },
     { familyId, ownerUserId, type: "EXPENSE" as const, name: "Wohnen", color: "#2b6cb0", icon: "home", scope: "FAMILY" as const },
-    { familyId, ownerUserId, type: "EXPENSE" as const, name: "Mobilitaet", color: "#b7791f", icon: "car", scope: "FAMILY" as const },
+    { familyId, ownerUserId, type: "EXPENSE" as const, name: "Mobilität", color: "#b7791f", icon: "car", scope: "FAMILY" as const },
     { familyId, ownerUserId, type: "EXPENSE" as const, name: "Freizeit", color: "#805ad5", icon: "sparkles", scope: "FAMILY" as const },
     { familyId, ownerUserId, type: "EXPENSE" as const, name: "Gehalt", color: "#2c7a7b", icon: "wallet", scope: "FAMILY" as const },
-    { familyId, ownerUserId, type: "EXPENSE" as const, name: "Rueckerstattung", color: "#4a5568", icon: "return", scope: "FAMILY" as const }
+    { familyId, ownerUserId, type: "EXPENSE" as const, name: "Rückerstattung", color: "#4a5568", icon: "return", scope: "FAMILY" as const }
   ];
 }
 
@@ -319,8 +340,8 @@ async function createLinkedDocumentIfPresent(
   const title = optionalText(formData, "documentTitle");
   const url = optionalText(formData, "documentUrl");
   if (!title && !url) return;
-  if (!title || !url) throw new Error("Dokumenttitel und HTTPS-Link muessen gemeinsam angegeben werden.");
-  if (!url.startsWith("https://")) throw new Error("Dokumentverweise muessen als HTTPS-Link gespeichert werden.");
+  if (!title || !url) throw new Error("Dokumenttitel und HTTPS-Link müssen gemeinsam angegeben werden.");
+  if (!url.startsWith("https://")) throw new Error("Dokumentverweise müssen als HTTPS-Link gespeichert werden.");
 
   await db.documentReference.create({
     data: {

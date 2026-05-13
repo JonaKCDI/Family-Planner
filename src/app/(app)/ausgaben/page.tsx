@@ -1,4 +1,4 @@
-import { createCategory, createExpense, deleteExpense } from "@/lib/actions";
+﻿import { createCategory, createExpense, deleteExpense } from "@/lib/actions";
 import { requireSession } from "@/lib/auth";
 import { formatDate, formatMoney, toDateInputValue } from "@/lib/format";
 import { getDocumentsForLinkedEntities, getVisibleCategories, getVisibleExpenses } from "@/lib/queries";
@@ -90,11 +90,11 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
             </label>
             <label>
               Beschreibung
-              <input name="description" placeholder="Wocheneinkauf, Gehalt, Rueckerstattung ..." required />
+              <input name="description" placeholder="Wocheneinkauf, Gehalt, Rückerstattung ..." required />
             </label>
             <ScopeSelect />
             <fieldset className="fieldset">
-              <legend>Dokument optional verknuepfen</legend>
+              <legend>Dokument optional verknüpfen</legend>
               <label>Dokumenttitel<input name="documentTitle" placeholder="Rechnung, Beleg, Nachweis ..." /></label>
               <label>HTTPS-Link<input name="documentUrl" type="url" placeholder="https://..." /></label>
               <label>
@@ -109,7 +109,7 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
             <button className="button" type="submit">Speichern</button>
           </form>
 
-          <h2 className="section-title spacing-top">Kategorie hinzufuegen</h2>
+          <h2 className="section-title spacing-top">Kategorie hinzufügen</h2>
           <form action={createCategory} className="form compact">
             <input type="hidden" name="type" value="EXPENSE" />
             <label>Name<input name="name" placeholder="Schule, Urlaub, Kindergeld ..." required /></label>
@@ -140,11 +140,11 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
               </div>
             </div>
             <div>
-              <h3>Monatsuebersicht</h3>
+              <h3>Monatsübersicht</h3>
               <MiniTable rows={monthlyRows} />
             </div>
             <div>
-              <h3>Jahresuebersicht</h3>
+              <h3>Jahresübersicht</h3>
               <MiniTable rows={yearlyRows} />
             </div>
           </div>
@@ -152,9 +152,9 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
       </div>
 
       <section className="panel spacing-top">
-        <h2 className="section-title">Letzte Eintraege</h2>
+        <h2 className="section-title">Letzte Einträge</h2>
         <div className="list">
-          {expenses.length === 0 ? <EmptyState>Noch keine Eintraege erfasst.</EmptyState> : null}
+          {expenses.length === 0 ? <EmptyState>Noch keine Einträge erfasst.</EmptyState> : null}
           {expenses.map((expense) => {
             const linkedDocuments = documentsByExpense[expense.id] ?? [];
             return (
@@ -180,7 +180,7 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
                   </strong>
                   <form action={deleteExpense}>
                     <input type="hidden" name="id" value={expense.id} />
-                    <button className="button secondary" type="submit">Loeschen</button>
+                    <button className="button secondary" type="submit">Löschen</button>
                   </form>
                 </div>
               </article>

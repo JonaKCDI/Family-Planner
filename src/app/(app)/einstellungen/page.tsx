@@ -1,4 +1,4 @@
-import { createUser } from "@/lib/actions";
+﻿import { createUser } from "@/lib/actions";
 import { requireSession } from "@/lib/auth";
 import { getFamilyMembers } from "@/lib/queries";
 import { EmptyState, PageHeader } from "@/components/ui";
@@ -10,7 +10,7 @@ export default async function SettingsPage() {
 
   return (
     <>
-      <PageHeader title="Einstellungen" description="Familienmitglieder, Rollen und technische Leitplanken fuer den Haushalt." />
+      <PageHeader title="Einstellungen" description="Familienmitglieder, Rollen und technische Leitplanken für den Haushalt." />
       <div className="grid two">
         <section className="panel">
           <h2 className="section-title">Familienmitglied anlegen</h2>
@@ -28,7 +28,7 @@ export default async function SettingsPage() {
               <button className="button" type="submit">Anlegen</button>
             </form>
           ) : (
-            <EmptyState>Nur Admins koennen neue Familienmitglieder anlegen.</EmptyState>
+            <EmptyState>Nur Admins können neue Familienmitglieder anlegen.</EmptyState>
           )}
         </section>
         <section className="panel">

@@ -1,4 +1,4 @@
-import { redirect } from "next/navigation";
+﻿import { redirect } from "next/navigation";
 import { setupFirstFamily } from "@/lib/actions";
 import { db } from "@/lib/db";
 
@@ -12,7 +12,7 @@ export default async function SetupPage() {
     <main className="auth-wrap">
       <section className="auth-card">
         <h1>Familie einrichten</h1>
-        <p className="muted">Erstelle den ersten Admin und den Haushalt. Danach koennen weitere Familienmitglieder eingeladen werden.</p>
+        <p className="muted">Erstelle den ersten Admin und den Haushalt. Danach können weitere Familienmitglieder eingeladen werden.</p>
         <form action={setupFirstFamily} className="form">
           <label>
             Dein Name

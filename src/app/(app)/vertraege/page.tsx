@@ -1,4 +1,4 @@
-import { createContract } from "@/lib/actions";
+﻿import { createContract } from "@/lib/actions";
 import { requireSession } from "@/lib/auth";
 import { formatDate, formatMoney, toDateInputValue } from "@/lib/format";
 import { getDocumentsForLinkedEntities, getVisibleContracts } from "@/lib/queries";
@@ -24,12 +24,12 @@ export default async function ContractsPage() {
 
   return (
     <>
-      <PageHeader title="Vertraege" description="Ueberblick ueber Versicherungen, Abos, Energie, Internet und Fristen." />
+      <PageHeader title="Verträge" description="Überblick über Versicherungen, Abos, Energie, Internet und Fristen." />
       <section className="stats">
         <div className="stat"><span>Aktive Kosten</span><strong>{formatMoney(activeCosts)}</strong></div>
-        <div className="stat"><span>Vertraege</span><strong>{contracts.length}</strong></div>
+        <div className="stat"><span>Verträge</span><strong>{contracts.length}</strong></div>
         <div className="stat"><span>Aktiv</span><strong>{contracts.filter((contract) => contract.status === "ACTIVE").length}</strong></div>
-        <div className="stat"><span>Naechste Frist</span><strong>{formatDate(contracts.find((contract) => contract.nextCancellationDate)?.nextCancellationDate)}</strong></div>
+        <div className="stat"><span>Nächste Frist</span><strong>{formatDate(contracts.find((contract) => contract.nextCancellationDate)?.nextCancellationDate)}</strong></div>
       </section>
       <div className="grid two">
         <section className="panel">
@@ -42,7 +42,7 @@ export default async function ContractsPage() {
               Intervall
               <select name="billingInterval" defaultValue="MONTHLY">
                 <option value="MONTHLY">Monatlich</option>
-                <option value="YEARLY">Jaehrlich</option>
+                <option value="YEARLY">Jährlich</option>
                 <option value="QUARTERLY">Quartalsweise</option>
                 <option value="ONCE">Einmalig</option>
                 <option value="OTHER">Sonstiges</option>
@@ -50,20 +50,20 @@ export default async function ContractsPage() {
             </label>
             <label>Startdatum<input name="startDate" type="date" defaultValue={toDateInputValue(new Date())} required /></label>
             <label>Ende/Laufzeit bis<input name="endDate" type="date" /></label>
-            <label>Kuendigungsfrist in Tagen<input name="cancellationNoticeDays" type="number" min="0" /></label>
+            <label>Kündigungsfrist in Tagen<input name="cancellationNoticeDays" type="number" min="0" /></label>
             <label>
               Status
               <select name="status" defaultValue="ACTIVE">
                 <option value="ACTIVE">Aktiv</option>
                 <option value="DRAFT">Entwurf</option>
-                <option value="CANCELLED">Gekuendigt</option>
+                <option value="CANCELLED">Gekündigt</option>
                 <option value="EXPIRED">Ausgelaufen</option>
               </select>
             </label>
             <label>Notizen<textarea name="description" /></label>
             <ScopeSelect />
             <fieldset className="fieldset">
-              <legend>Dokument optional verknuepfen</legend>
+              <legend>Dokument optional verknüpfen</legend>
               <label>Dokumenttitel<input name="documentTitle" placeholder="Vertrag, Rechnung, Police ..." /></label>
               <label>HTTPS-Link<input name="documentUrl" type="url" placeholder="https://..." /></label>
               <label>
@@ -79,9 +79,9 @@ export default async function ContractsPage() {
           </form>
         </section>
         <section className="panel">
-          <h2 className="section-title">Vertragsuebersicht</h2>
+          <h2 className="section-title">Vertragsübersicht</h2>
           <div className="list">
-            {contracts.length === 0 ? <EmptyState>Noch keine Vertraege erfasst.</EmptyState> : null}
+            {contracts.length === 0 ? <EmptyState>Noch keine Verträge erfasst.</EmptyState> : null}
             {contracts.map((contract) => {
               const linkedDocuments = documentsByContract[contract.id] ?? [];
               return (
@@ -90,7 +90,7 @@ export default async function ContractsPage() {
                     <div>
                       <strong>{contract.provider}</strong>
                       <span className="muted">{contract.contractType} · {contract.billingInterval} · {contract.owner.name}</span>
-                      <p>{formatMoney(contract.costCents, contract.currency)} · Kuendigungsfrist: {formatDate(contract.nextCancellationDate)}</p>
+                      <p>{formatMoney(contract.costCents, contract.currency)} · Kündigungsfrist: {formatDate(contract.nextCancellationDate)}</p>
                       <div className="badge-row">
                         {linkedDocuments.map((document) => (
                           <a className="badge link-badge" href={document.url} key={document.id} target="_blank" rel="noreferrer">
