@@ -5,13 +5,14 @@ import { usePathname } from "next/navigation";
 
 const defaults = [
   { href: "/kalender#termin-erfassen", label: "Termin" },
-  { href: "/ausgaben#eintrag-erfassen", label: "Ausgabe" },
+  { href: "/ausgaben#eintrag-erfassen", label: "Eintrag" },
   { href: "/aufgaben", label: "Aufgabe" },
   { href: "/vertraege", label: "Vertrag" },
   { href: "/dokumente", label: "Dokument" }
 ];
 
 const byPath: Record<string, { href: string; label: string }[]> = {
+  "/dashboard": defaults,
   "/kalender": [
     { href: "/kalender#termin-erfassen", label: "Termin erstellen" },
     { href: "/kalender#kalender-verbinden", label: "Kalender verbinden" }

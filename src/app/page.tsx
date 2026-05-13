@@ -11,5 +11,5 @@ export default async function HomePage() {
   const session = await getCurrentSession();
   if (!session) redirect("/login");
 
-  redirect("/ausgaben");
+  redirect("/dashboard");
 }

@@ -11,7 +11,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
   if (userCount === 0) redirect("/setup");
 
   const session = await getCurrentSession();
-  if (session) redirect("/ausgaben");
+  if (session) redirect("/dashboard");
 
   const params = await searchParams;
 

@@ -12,16 +12,21 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   return (
     <div className="shell">
       <header className="topbar">
-        <Link className="brand" href="/ausgaben">
-          <strong>Familien-App</strong>
-          <span>{session.family.name} · {session.user.name}</span>
+        <Link className="brand" href="/dashboard">
+          <span className="brand-mark" aria-hidden="true">FA</span>
+          <span className="brand-copy">
+            <strong>Familien-App</strong>
+            <span>{session.family.name} · {session.user.name}</span>
+          </span>
         </Link>
         <form action={logout}>
           <button className="button secondary" type="submit">Logout</button>
         </form>
       </header>
-      <Nav />
-      <main className="content">{children}</main>
+      <div className="app-frame">
+        <Nav />
+        <main className="content">{children}</main>
+      </div>
       <FabMenu />
     </div>
   );

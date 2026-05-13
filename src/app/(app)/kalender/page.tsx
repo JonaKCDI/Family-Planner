@@ -47,6 +47,8 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
   ]);
   const visibleRange = getVisibleRange(selectedDate, view);
   const visibleEvents = events.filter((event) => event.startAt < visibleRange.end && event.endAt > visibleRange.start);
+  const outlookRedirectUri = process.env.OUTLOOK_REDIRECT_URI ?? `${process.env.APP_URL ?? "http://localhost:3000"}/api/outlook/callback`;
+  const outlookConfigured = Boolean(process.env.OUTLOOK_CLIENT_ID && process.env.OUTLOOK_CLIENT_SECRET);
 
   return (
     <>
@@ -61,28 +63,7 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
             <summary aria-label="Kalender-Einstellungen">Menü</summary>
             <div className="config-panel">
               <h2 className="section-title" id="kalender-verbinden">Kalender verbinden</h2>
-              {process.env.OUTLOOK_CLIENT_ID && process.env.OUTLOOK_CLIENT_SECRET ? (
-                <form action="/api/outlook/start" className="form outlook-connect" method="get">
-                  <label>
-                    Outlook-Sichtbarkeit
-                    <select name="visibilityToFamily" defaultValue="BUSY_ONLY">
-                      <option value="PRIVATE">Privat</option>
-                      <option value="BUSY_ONLY">Nur beschäftigt</option>
-                      <option value="TITLE_ONLY">Nur Titel</option>
-                      <option value="FAMILY">Voll sichtbar</option>
-                    </select>
-                  </label>
-                  <button className="button" type="submit">Mit Microsoft anmelden</button>
-                </form>
-              ) : (
-                <div className="outlook-connect">
-                  <strong>Microsoft-Login noch nicht konfiguriert</strong>
-                  <p className="muted">Trage zuerst OUTLOOK_CLIENT_ID und OUTLOOK_CLIENT_SECRET in .env ein.</p>
-                </div>
-              )}
-              <p className="muted">
-                Outlook wird per Microsoft-Login verbunden. Dein Firmenpasswort wird nicht in dieser App gespeichert.
-              </p>
+              <OutlookSetupGuide configured={outlookConfigured} redirectUri={outlookRedirectUri} />
               <form action={createCalendarIntegration} className="form">
                 <label>
                   Anbieter
@@ -241,6 +222,46 @@ function IntegrationActions({ id, provider }: { id: string; provider: keyof type
         <button className="button secondary" type="submit">Entfernen</button>
       </form>
     </div>
+  );
+}
+
+function OutlookSetupGuide({ configured, redirectUri }: { configured: boolean; redirectUri: string }) {
+  return (
+    <details className="outlook-connect" open={!configured}>
+      <summary>Outlook per Microsoft-Login</summary>
+      <div className="setup-steps">
+        <div className="setup-status">
+          <span className={configured ? "status-dot positive-dot" : "status-dot warning-dot"} aria-hidden="true" />
+          <strong>{configured ? "Bereit zum Anmelden" : "Lokale Microsoft-App noch nicht eingetragen"}</strong>
+        </div>
+        <p className="muted">
+          Die Anmeldung läuft über Microsoft. Die App fragt kein Outlook-Passwort ab; sie bekommt nach deiner Zustimmung nur Kalender-Tokens und speichert diese lokal verschlüsselt.
+        </p>
+        <ol>
+          <li>Microsoft-App registrieren oder von der Uni freigeben lassen.</li>
+          <li>Diese Redirect-URI exakt eintragen: <code>{redirectUri}</code></li>
+          <li>Delegated Permissions setzen: <code>User.Read</code>, <code>Calendars.Read</code>, <code>offline_access</code>.</li>
+          <li><code>OUTLOOK_CLIENT_ID</code> und <code>OUTLOOK_CLIENT_SECRET</code> in <code>.env</code> eintragen.</li>
+          <li>App neu starten und hier mit Microsoft anmelden.</li>
+        </ol>
+        <p className="muted">
+          Wenn deine Uni externe Apps blockiert, erscheint beim Microsoft-Login eine Admin-Consent-Meldung. Dann muss die Uni diese App erlauben.
+        </p>
+        {configured ? (
+          <form action="/api/outlook/start" className="form" method="get">
+            <label>
+              Outlook-Sichtbarkeit
+              <select name="visibilityToFamily" defaultValue="BUSY_ONLY">
+                <VisibilityOptions />
+              </select>
+            </label>
+            <button className="button" type="submit">Mit Microsoft anmelden</button>
+          </form>
+        ) : (
+          <span className="badge">Wartet auf .env-Konfiguration</span>
+        )}
+      </div>
+    </details>
   );
 }
 

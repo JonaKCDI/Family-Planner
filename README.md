@@ -76,6 +76,8 @@ Die Zugangsdaten werden mit `CALENDAR_SECRET` lokal verschlüsselt in PostgreSQL
 
 ### Outlook praktisch einrichten
 
+In der App selbst findest du unter **Kalender > Menü > Outlook per Microsoft-Login** einen geführten Workflow. Die Anmeldung selbst passiert über Microsoft; die App fragt kein Outlook-Passwort ab.
+
 1. Öffne im Microsoft Entra Admin Center eine neue **App registration**.
 2. Setze als Redirect URI `http://localhost:3000/api/outlook/callback` für lokale Tests. Auf der Synology später entsprechend deine HTTPS-Adresse verwenden.
 3. Erstelle unter **Certificates & secrets** ein Client Secret.
@@ -92,3 +94,5 @@ OUTLOOK_REDIRECT_URI="http://localhost:3000/api/outlook/callback"
 6. Starte die App neu, öffne **Kalender > Menü** und klicke **Outlook verbinden**.
 
 Die App speichert kein Outlook-Passwort. Access- und Refresh-Tokens werden mit `CALENDAR_SECRET` lokal verschlüsselt gespeichert.
+
+Hinweis für Uni-/Firmenkonten: Auch der normale Microsoft-Login braucht technisch eine registrierte App-ID. Wenn deine Organisation externe Apps blockiert oder User Consent deaktiviert hat, muss ein Admin die App freigeben. Ohne diese Freigabe kann die App deine Outlook-Daten nicht über Microsoft Graph lesen.
