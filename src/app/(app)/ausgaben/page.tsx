@@ -61,7 +61,7 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
       </section>
 
       <div className="grid two">
-        <section className="panel">
+        <section className="panel" id="eintrag-erfassen">
           <h2 className="section-title">Eintrag erfassen</h2>
           <form action={createExpense} className="form">
             <label>

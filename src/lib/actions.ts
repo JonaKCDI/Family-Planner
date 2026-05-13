@@ -249,7 +249,7 @@ export async function createCalendarIntegration(formData: FormData) {
     throw new Error("Für generisches CalDAV ist die Kalender-URL erforderlich.");
   }
 
-  await db.calendarIntegration.create({
+  const integration = await db.calendarIntegration.create({
     data: {
       familyId: session.family.id,
       userId: session.user.id,
@@ -260,9 +260,17 @@ export async function createCalendarIntegration(formData: FormData) {
       encryptedPassword: isCalDavLike && password ? encryptSecret(password) : null,
       syncEnabled: isCalDavLike,
       visibilityToFamily: enumValue(formData, "visibilityToFamily", ["PRIVATE", "BUSY_ONLY", "TITLE_ONLY", "FAMILY"] as const, "BUSY_ONLY"),
-      status: isCalDavLike ? "ready" : "prepared"
+      status: isCalDavLike ? "verbunden" : "manuell"
     }
   });
+
+  if (isCalDavLike) {
+    try {
+      await syncCalDavIntegration(integration.id, session.user.id);
+    } catch {
+      // syncCalDavIntegration speichert die konkrete Fehlermeldung an der Quelle.
+    }
+  }
 
   revalidatePath("/kalender");
 }

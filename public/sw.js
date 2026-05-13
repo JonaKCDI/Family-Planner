@@ -1,4 +1,4 @@
-const CACHE_NAME = "family-app-v1";
+const CACHE_NAME = "family-app-v2";
 const STATIC_ASSETS = [
   "/",
   "/manifest.webmanifest",
@@ -31,7 +31,12 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
 
-  if (url.pathname.startsWith("/_next/static/") || STATIC_ASSETS.includes(url.pathname)) {
+  if (url.pathname.startsWith("/_next/static/")) {
+    event.respondWith(networkFirst(request));
+    return;
+  }
+
+  if (STATIC_ASSETS.includes(url.pathname)) {
     event.respondWith(cacheFirst(request));
     return;
   }
