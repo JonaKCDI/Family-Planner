@@ -32,6 +32,24 @@ export async function getVisibleExpenses(familyId: string, userId: string) {
   });
 }
 
+export async function getDocumentsForLinkedEntities(
+  familyId: string,
+  userId: string,
+  linkedEntityType: "EXPENSE" | "CONTRACT",
+  linkedEntityIds: string[]
+) {
+  if (linkedEntityIds.length === 0) return [];
+  return db.documentReference.findMany({
+    where: {
+      familyId,
+      linkedEntityType,
+      linkedEntityId: { in: linkedEntityIds },
+      ...visibleScopeWhere(userId)
+    },
+    orderBy: { createdAt: "desc" }
+  });
+}
+
 export async function getVisibleTasks(familyId: string, userId: string) {
   return db.task.findMany({
     where: {

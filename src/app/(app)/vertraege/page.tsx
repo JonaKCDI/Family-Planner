@@ -1,12 +1,23 @@
 import { createContract } from "@/lib/actions";
 import { requireSession } from "@/lib/auth";
 import { formatDate, formatMoney, toDateInputValue } from "@/lib/format";
-import { getVisibleContracts } from "@/lib/queries";
+import { getDocumentsForLinkedEntities, getVisibleContracts } from "@/lib/queries";
 import { EmptyState, PageHeader, ScopeSelect } from "@/components/ui";
 
 export default async function ContractsPage() {
   const session = await requireSession();
   const contracts = await getVisibleContracts(session.family.id, session.user.id);
+  const documents = await getDocumentsForLinkedEntities(
+    session.family.id,
+    session.user.id,
+    "CONTRACT",
+    contracts.map((contract) => contract.id)
+  );
+  const documentsByContract = documents.reduce<Record<string, typeof documents>>((groups, document) => {
+    const key = document.linkedEntityId ?? "";
+    groups[key] = [...(groups[key] ?? []), document];
+    return groups;
+  }, {});
   const activeCosts = contracts
     .filter((contract) => contract.status === "ACTIVE")
     .reduce((sum, contract) => sum + contract.costCents, 0);
@@ -51,6 +62,19 @@ export default async function ContractsPage() {
             </label>
             <label>Notizen<textarea name="description" /></label>
             <ScopeSelect />
+            <fieldset className="fieldset">
+              <legend>Dokument optional verknuepfen</legend>
+              <label>Dokumenttitel<input name="documentTitle" placeholder="Vertrag, Rechnung, Police ..." /></label>
+              <label>HTTPS-Link<input name="documentUrl" type="url" placeholder="https://..." /></label>
+              <label>
+                Linktyp
+                <select name="documentReferenceType" defaultValue="SYNOLOGY_HTTPS">
+                  <option value="SYNOLOGY_HTTPS">Synology HTTPS</option>
+                  <option value="WEBDAV_HTTPS">WebDAV HTTPS</option>
+                  <option value="EXTERNAL_URL">Externer Link</option>
+                </select>
+              </label>
+            </fieldset>
             <button className="button" type="submit">Speichern</button>
           </form>
         </section>
@@ -58,18 +82,28 @@ export default async function ContractsPage() {
           <h2 className="section-title">Vertragsuebersicht</h2>
           <div className="list">
             {contracts.length === 0 ? <EmptyState>Noch keine Vertraege erfasst.</EmptyState> : null}
-            {contracts.map((contract) => (
-              <article className="card" key={contract.id}>
-                <div className="row">
-                  <div>
-                    <strong>{contract.provider}</strong>
-                    <span className="muted">{contract.contractType} · {contract.billingInterval} · {contract.owner.name}</span>
-                    <p>{formatMoney(contract.costCents, contract.currency)} · Kuendigungsfrist: {formatDate(contract.nextCancellationDate)}</p>
+            {contracts.map((contract) => {
+              const linkedDocuments = documentsByContract[contract.id] ?? [];
+              return (
+                <article className="card" key={contract.id}>
+                  <div className="row">
+                    <div>
+                      <strong>{contract.provider}</strong>
+                      <span className="muted">{contract.contractType} · {contract.billingInterval} · {contract.owner.name}</span>
+                      <p>{formatMoney(contract.costCents, contract.currency)} · Kuendigungsfrist: {formatDate(contract.nextCancellationDate)}</p>
+                      <div className="badge-row">
+                        {linkedDocuments.map((document) => (
+                          <a className="badge link-badge" href={document.url} key={document.id} target="_blank" rel="noreferrer">
+                            {document.title}
+                          </a>
+                        ))}
+                      </div>
+                    </div>
+                    <span className="badge">{contract.status}</span>
                   </div>
-                  <span className="badge">{contract.status}</span>
-                </div>
-              </article>
-            ))}
+                </article>
+              );
+            })}
           </div>
         </section>
       </div>

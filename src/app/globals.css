@@ -170,6 +170,45 @@ textarea {
   resize: vertical;
 }
 
+.form.compact {
+  border-top: 1px solid var(--line);
+  padding-top: 0.9rem;
+}
+
+.inline-form {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.inline-form label {
+  display: grid;
+  gap: 0.3rem;
+  color: #34383d;
+  font-size: 0.9rem;
+}
+
+.inline-form input {
+  border: 1px solid #cfc9bd;
+  border-radius: 7px;
+  background: #fff;
+  padding: 0.68rem 0.72rem;
+}
+
+.fieldset {
+  display: grid;
+  gap: 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  margin: 0.25rem 0 0;
+  padding: 0.8rem;
+}
+
+.fieldset legend {
+  color: var(--muted);
+  font-size: 0.85rem;
+  padding: 0 0.35rem;
+}
+
 .button {
   display: inline-flex;
   min-height: 42px;
@@ -221,6 +260,37 @@ textarea {
   font-size: 0.78rem;
 }
 
+.badge-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.45rem;
+}
+
+.link-badge {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.positive {
+  color: #1d6f42;
+}
+
+.negative {
+  color: #a63a3a;
+}
+
+.amount-column {
+  display: grid;
+  justify-items: end;
+  gap: 0.55rem;
+  min-width: 130px;
+}
+
+.spacing-top {
+  margin-top: 1rem;
+}
+
 .stats {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -269,6 +339,69 @@ textarea {
   text-align: center;
 }
 
+.analysis-grid {
+  display: grid;
+  gap: 1rem;
+}
+
+.analysis-grid h3 {
+  margin: 0 0 0.5rem;
+  font-size: 0.98rem;
+}
+
+.analysis-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.45rem;
+  border-bottom: 1px solid var(--line);
+  padding: 0.65rem 0;
+}
+
+.analysis-row > div:first-child {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.bar-wrap {
+  height: 9px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #ece8dc;
+}
+
+.bar-wrap span {
+  display: block;
+  height: 100%;
+  min-width: 3px;
+}
+
+.mini-table {
+  display: grid;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.mini-table-head,
+.mini-table-row {
+  display: grid;
+  grid-template-columns: 1.05fr 1fr 1fr 1fr;
+  gap: 0.35rem;
+  align-items: center;
+  padding: 0.55rem;
+  font-size: 0.82rem;
+}
+
+.mini-table-head {
+  background: #ede9df;
+  color: #34383d;
+  font-weight: 700;
+}
+
+.mini-table-row + .mini-table-row {
+  border-top: 1px solid var(--line);
+}
+
 @media (min-width: 820px) {
   .topbar {
     padding-inline: 1.5rem;
@@ -285,5 +418,15 @@ textarea {
 
   .stats {
     grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .inline-form {
+    grid-template-columns: repeat(2, minmax(160px, 220px)) auto;
+    align-items: end;
+  }
+
+  .analysis-row {
+    grid-template-columns: 1.2fr 1.4fr auto;
+    align-items: center;
   }
 }

@@ -60,15 +60,41 @@ export async function createExpense(formData: FormData) {
   const session = await requireSession();
   const categoryId = optionalText(formData, "categoryId");
 
-  await db.expense.create({
+  const expense = await db.expense.create({
     data: {
       familyId: session.family.id,
       ownerUserId: session.user.id,
+      kind: enumValue(formData, "kind", ["EXPENSE", "INCOME"] as const, "EXPENSE"),
       amountCents: parseEuroToCents(formData.get("amount")),
       currency: "EUR",
       date: new Date(requiredText(formData, "date")),
       categoryId: categoryId || null,
       description: requiredText(formData, "description"),
+      scope: scopeValue(formData)
+    }
+  });
+
+  await createLinkedDocumentIfPresent(formData, {
+    familyId: session.family.id,
+    ownerUserId: session.user.id,
+    linkedEntityType: "EXPENSE",
+    linkedEntityId: expense.id,
+    scope: expense.scope
+  });
+
+  revalidatePath("/ausgaben");
+}
+
+export async function createCategory(formData: FormData) {
+  const session = await requireSession();
+  await db.category.create({
+    data: {
+      familyId: session.family.id,
+      ownerUserId: session.user.id,
+      type: enumValue(formData, "type", ["EXPENSE", "TASK", "CONTRACT"] as const, "EXPENSE"),
+      name: requiredText(formData, "name"),
+      color: optionalText(formData, "color") ?? "#2f6fed",
+      icon: optionalText(formData, "icon") ?? "tag",
       scope: scopeValue(formData)
     }
   });
@@ -132,7 +158,7 @@ export async function createContract(formData: FormData) {
   const noticeDays = optionalNumber(formData, "cancellationNoticeDays");
   const nextCancellationDate = calculateCancellationDate(endDate, noticeDays);
 
-  await db.contract.create({
+  const contract = await db.contract.create({
     data: {
       familyId: session.family.id,
       ownerUserId: session.user.id,
@@ -149,6 +175,14 @@ export async function createContract(formData: FormData) {
       status: enumValue(formData, "status", ["ACTIVE", "CANCELLED", "EXPIRED", "DRAFT"] as const, "ACTIVE"),
       scope: scopeValue(formData)
     }
+  });
+
+  await createLinkedDocumentIfPresent(formData, {
+    familyId: session.family.id,
+    ownerUserId: session.user.id,
+    linkedEntityType: "CONTRACT",
+    linkedEntityId: contract.id,
+    scope: contract.scope
   });
 
   revalidatePath("/vertraege");
@@ -236,8 +270,37 @@ function defaultCategorySeed(familyId: string, ownerUserId: string) {
     { familyId, ownerUserId, type: "EXPENSE" as const, name: "Lebensmittel", color: "#2f855a", icon: "cart", scope: "FAMILY" as const },
     { familyId, ownerUserId, type: "EXPENSE" as const, name: "Wohnen", color: "#2b6cb0", icon: "home", scope: "FAMILY" as const },
     { familyId, ownerUserId, type: "EXPENSE" as const, name: "Mobilitaet", color: "#b7791f", icon: "car", scope: "FAMILY" as const },
-    { familyId, ownerUserId, type: "EXPENSE" as const, name: "Freizeit", color: "#805ad5", icon: "sparkles", scope: "FAMILY" as const }
+    { familyId, ownerUserId, type: "EXPENSE" as const, name: "Freizeit", color: "#805ad5", icon: "sparkles", scope: "FAMILY" as const },
+    { familyId, ownerUserId, type: "EXPENSE" as const, name: "Gehalt", color: "#2c7a7b", icon: "wallet", scope: "FAMILY" as const },
+    { familyId, ownerUserId, type: "EXPENSE" as const, name: "Rueckerstattung", color: "#4a5568", icon: "return", scope: "FAMILY" as const }
   ];
+}
+
+async function createLinkedDocumentIfPresent(
+  formData: FormData,
+  data: {
+    familyId: string;
+    ownerUserId: string;
+    linkedEntityType: "EXPENSE" | "CONTRACT";
+    linkedEntityId: string;
+    scope: "PRIVATE" | "FAMILY";
+  }
+) {
+  const title = optionalText(formData, "documentTitle");
+  const url = optionalText(formData, "documentUrl");
+  if (!title && !url) return;
+  if (!title || !url) throw new Error("Dokumenttitel und HTTPS-Link muessen gemeinsam angegeben werden.");
+  if (!url.startsWith("https://")) throw new Error("Dokumentverweise muessen als HTTPS-Link gespeichert werden.");
+
+  await db.documentReference.create({
+    data: {
+      ...data,
+      title,
+      url,
+      referenceType: enumValue(formData, "documentReferenceType", ["SYNOLOGY_HTTPS", "WEBDAV_HTTPS", "EXTERNAL_URL"] as const, "SYNOLOGY_HTTPS"),
+      description: optionalText(formData, "documentDescription")
+    }
+  });
 }
 
 function requiredText(formData: FormData, key: string) {

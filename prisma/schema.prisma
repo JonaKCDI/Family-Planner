@@ -34,6 +34,11 @@ enum CategoryType {
   CONTRACT
 }
 
+enum TransactionKind {
+  EXPENSE
+  INCOME
+}
+
 enum TaskStatus {
   OPEN
   IN_PROGRESS
@@ -177,6 +182,7 @@ model Expense {
   id          String   @id @default(cuid())
   familyId    String
   ownerUserId String
+  kind        TransactionKind @default(EXPENSE)
   amountCents Int
   currency    String   @default("EUR")
   date        DateTime
@@ -190,6 +196,7 @@ model Expense {
   category    Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
 
   @@index([familyId, date])
+  @@index([familyId, kind])
   @@index([ownerUserId])
 }
 
