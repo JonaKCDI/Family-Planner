@@ -290,7 +290,11 @@ export async function deleteCalendarIntegration(formData: FormData) {
 
 export async function syncCalendarIntegration(formData: FormData) {
   const session = await requireSession();
-  await syncCalDavIntegration(requiredText(formData, "id"), session.user.id);
+  try {
+    await syncCalDavIntegration(requiredText(formData, "id"), session.user.id);
+  } catch {
+    // Der Sync-Fehler wird an der Kalenderquelle gespeichert und in der UI angezeigt.
+  }
   revalidatePath("/kalender");
 }
 

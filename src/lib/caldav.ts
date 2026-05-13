@@ -211,7 +211,7 @@ function calendarCollections(xml: string, baseUrl: string) {
   const responses = [...xml.matchAll(/<[^>]*response[^>]*>([\s\S]*?)<\/[^>]*response>/gi)];
   return responses.flatMap((response) => {
     const content = response[1] ?? "";
-    if (!/<[^>]*calendar\s*\/?>/i.test(content)) return [];
+    if (!hasXmlElement(content, "calendar")) return [];
     const href = content.match(/<[^>]*href[^>]*>([\s\S]*?)<\/[^>]*href>/i)?.[1];
     if (!href) return [];
     const displayName = content.match(/<[^>]*displayname[^>]*>([\s\S]*?)<\/[^>]*displayname>/i)?.[1];
@@ -220,6 +220,10 @@ function calendarCollections(xml: string, baseUrl: string) {
       url: resolveHref(baseUrl, decodeXml(href.trim()))
     }];
   });
+}
+
+function hasXmlElement(xml: string, localName: string) {
+  return new RegExp(`<\\s*(?:[\\w.-]+:)?${localName}(?:\\s|/?>)`, "i").test(xml);
 }
 
 function formatCalDavDate(date: Date) {
