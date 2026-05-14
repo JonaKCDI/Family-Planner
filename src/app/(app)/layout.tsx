@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { LogOut, UsersRound } from "lucide-react";
 import { logout } from "@/lib/actions";
 import { requireSession } from "@/lib/auth";
 import { getExpenseLabels, getFamilyMembers, getVisibleCategories } from "@/lib/queries";
@@ -20,14 +21,19 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     <div className="shell">
       <header className="topbar">
         <Link className="brand" href="/dashboard">
-          <span className="brand-mark" aria-hidden="true">F</span>
+          <span className="brand-mark" aria-hidden="true">
+            <UsersRound size={21} strokeWidth={2.3} />
+          </span>
           <span className="brand-copy">
             <strong>Familien-App</strong>
             <span>{session.family.name} · {session.user.name}</span>
           </span>
         </Link>
         <form action={logout}>
-          <button className="button secondary" type="submit">Logout</button>
+          <button className="button secondary button-icon" type="submit">
+            <LogOut size={17} />
+            Logout
+          </button>
         </form>
       </header>
       <div className="app-frame">

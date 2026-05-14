@@ -6,12 +6,9 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { createSession, destroySession, hashPassword, requireSession, verifyPassword } from "@/lib/auth";
-import { syncCalDavIntegration } from "@/lib/caldav";
 import { db } from "@/lib/db";
+import { parseExpenseCsv, parseExpenseWorkbook, stringifyExpenseCsv, type ExpenseFormatRow } from "@/lib/expense-formats";
 import { parseEuroToCents } from "@/lib/format";
-import { syncIcsIntegration } from "@/lib/ics";
-import { syncOutlookIntegration } from "@/lib/outlook";
-import { encryptSecret } from "@/lib/secrets";
 
 const passwordSchema = z.string().min(6, "Das Passwort braucht mindestens 6 Zeichen.");
 
@@ -130,39 +127,29 @@ export async function importExpensesFromCsv() {
   const csvPath = process.env.EXPENSE_CSV_PATH;
   if (!csvPath) throw new Error("EXPENSE_CSV_PATH ist nicht gesetzt.");
 
-  await importExpenseCsvContent(session.family.id, session.user.id, await readFile(csvPath, "utf8"));
+  await importExpenseRows(session.family.id, session.user.id, parseExpenseCsv(await readFile(csvPath, "utf8")));
   revalidatePath("/ausgaben");
   revalidatePath("/dashboard");
 }
 
-async function importExpenseCsvContent(familyId: string, userId: string, content: string) {
-  const rows = normalizeWrappedCsvRows(parseCsv(content));
-  const header = rows.shift()?.map(normalizeCsvHeader) ?? [];
-  const indexes = csvColumnIndexes(header);
-  const required = ["id", "kind", "amountCents", "currency", "date", "category", "label", "description"] as const;
-  const missing = required.filter((field) => indexes[field] < 0);
-  if (missing.length > 0) {
-    throw new Error(`CSV braucht die Spalten: ${required.join(", ")}. Gefunden wurden: ${header.join(", ") || "keine Kopfzeile"}`);
-  }
-
+async function importExpenseRows(familyId: string, userId: string, rows: ExpenseFormatRow[]) {
   for (const row of rows) {
-    if (row.length === 0 || row.every((cell) => !cell.trim())) continue;
-    const categoryName = row[indexes.category]?.trim();
-    const labelName = row[indexes.label]?.trim();
+    const categoryName = row.categoryName.trim();
+    const labelName = row.labelName.trim();
     const categoryId = categoryName ? await findOrCreateExpenseCategory(familyId, userId, categoryName) : null;
     const labelId = labelName ? await findOrCreateExpenseLabel(familyId, userId, labelName) : null;
-    const id = row[indexes.id]?.trim();
+    const id = row.id?.trim();
     const data = {
       familyId,
       ownerUserId: userId,
-      kind: normalizeTransactionKind(row[indexes.kind]),
-      amountCents: parseCsvAmountCents(row[indexes.amountCents]),
-      currency: row[indexes.currency]?.trim() || "EUR",
-      date: new Date(row[indexes.date] ?? new Date()),
-      paymentMethod: row[indexes.paymentMethod]?.trim() || "Nicht angegeben",
+      kind: row.kind,
+      amountCents: row.amountCents,
+      currency: row.currency || "EUR",
+      date: row.date,
+      paymentMethod: row.paymentMethod || "Nicht angegeben",
       categoryId,
       labelId,
-      description: row[indexes.description]?.trim() || "CSV Import",
+      description: row.description || "Import",
       scope: "PRIVATE" as const
     };
 
@@ -188,7 +175,19 @@ export async function importExpensesFromUploadedCsv(formData: FormData) {
     throw new Error("Bitte eine CSV-Datei auswählen.");
   }
 
-  await importExpenseCsvContent(session.family.id, session.user.id, await file.text());
+  await importExpenseRows(session.family.id, session.user.id, parseExpenseCsv(await file.text()));
+  revalidatePath("/ausgaben");
+  revalidatePath("/dashboard");
+}
+
+export async function importExpensesFromUploadedXlsx(formData: FormData) {
+  const session = await requireSession();
+  const file = formData.get("xlsxFile");
+  if (!(file instanceof File) || file.size === 0) {
+    throw new Error("Bitte eine XLSX-Datei auswählen.");
+  }
+
+  await importExpenseRows(session.family.id, session.user.id, await parseExpenseWorkbook(await file.arrayBuffer(), file.name));
   revalidatePath("/ausgaben");
   revalidatePath("/dashboard");
 }
@@ -242,22 +241,21 @@ export async function exportExpensesToCsv() {
     orderBy: { date: "desc" }
   });
   const rows = [
-    ["id", "kind", "amountCents", "currency", "date", "paymentMethod", "category", "label", "description"],
-    ...expenses.map((expense) => [
-      expense.id,
-      expense.kind,
-      String(expense.amountCents),
-      expense.currency,
-      expense.date.toISOString().slice(0, 10),
-      expense.paymentMethod,
-      expense.category?.name ?? "",
-      expense.label?.name ?? "",
-      expense.description
-    ])
+    ...expenses.map((expense) => ({
+      id: expense.id,
+      kind: expense.kind,
+      amountCents: expense.amountCents,
+      currency: expense.currency,
+      date: expense.date,
+      paymentMethod: expense.paymentMethod,
+      categoryName: expense.category?.name ?? "",
+      labelName: expense.label?.name ?? "",
+      description: expense.description
+    }))
   ];
 
   await mkdir(dirname(csvPath), { recursive: true });
-  await writeFile(csvPath, stringifyCsv(rows), "utf8");
+  await writeFile(csvPath, stringifyExpenseCsv(rows), "utf8");
   revalidatePath("/ausgaben");
 }
 
@@ -481,7 +479,7 @@ export async function createDocumentReference(formData: FormData) {
     data: {
       familyId: session.family.id,
       ownerUserId: session.user.id,
-      linkedEntityType: enumValue(formData, "linkedEntityType", ["EXPENSE", "TASK", "CONTRACT", "CALENDAR_EVENT", "GENERAL"] as const, "GENERAL"),
+      linkedEntityType: enumValue(formData, "linkedEntityType", ["EXPENSE", "TASK", "CONTRACT", "GENERAL"] as const, "GENERAL"),
       linkedEntityId: optionalText(formData, "linkedEntityId") || null,
       title: requiredText(formData, "title"),
       referenceType: enumValue(formData, "referenceType", ["SYNOLOGY_HTTPS", "WEBDAV_HTTPS", "EXTERNAL_URL"] as const, "EXTERNAL_URL"),
@@ -508,7 +506,7 @@ export async function updateDocumentReference(formData: FormData) {
       ...(session.role === "ADMIN" ? {} : { ownerUserId: session.user.id })
     },
     data: {
-      linkedEntityType: enumValue(formData, "linkedEntityType", ["EXPENSE", "TASK", "CONTRACT", "CALENDAR_EVENT", "GENERAL"] as const, "GENERAL"),
+      linkedEntityType: enumValue(formData, "linkedEntityType", ["EXPENSE", "TASK", "CONTRACT", "GENERAL"] as const, "GENERAL"),
       linkedEntityId: optionalText(formData, "linkedEntityId") || null,
       title: requiredText(formData, "title"),
       referenceType: "EXTERNAL_URL",
@@ -535,174 +533,6 @@ export async function deleteDocumentReference(formData: FormData) {
 
   revalidatePath("/dokumente");
   revalidatePath("/dashboard");
-}
-
-export async function createCalendarEvent(formData: FormData) {
-  const session = await requireSession();
-  await db.calendarEvent.create({
-    data: {
-      familyId: session.family.id,
-      ownerUserId: session.user.id,
-      title: requiredText(formData, "title"),
-      description: optionalText(formData, "description"),
-      startAt: new Date(requiredText(formData, "startAt")),
-      endAt: new Date(requiredText(formData, "endAt")),
-      timezone: "Europe/Berlin",
-      location: optionalText(formData, "location"),
-      visibility: enumValue(formData, "visibility", ["PRIVATE", "BUSY_ONLY", "TITLE_ONLY", "FAMILY"] as const, "FAMILY"),
-      source: "MANUAL"
-    }
-  });
-
-  revalidatePath("/kalender");
-}
-
-export async function createCalendarIntegration(formData: FormData) {
-  const session = await requireSession();
-  const provider = enumValue(formData, "provider", ["OUTLOOK", "ICLOUD", "CALDAV", "ICS", "MANUAL"] as const, "MANUAL");
-  const calendarUrl = optionalText(formData, "calendarUrl");
-  const username = optionalText(formData, "username");
-  const password = optionalText(formData, "password");
-  const isCalDavLike = provider === "CALDAV" || provider === "ICLOUD";
-  const isIcs = provider === "ICS";
-
-  if (isCalDavLike && (!username || !password)) {
-    throw new Error("Für iCloud/CalDAV sind Benutzername und Passwort erforderlich.");
-  }
-  if (provider === "CALDAV" && !calendarUrl) {
-    throw new Error("Für generisches CalDAV ist die Kalender-URL erforderlich.");
-  }
-  if (isIcs && !calendarUrl) {
-    throw new Error("Für ICS ist die Kalender-URL erforderlich.");
-  }
-
-  const integration = await db.calendarIntegration.create({
-    data: {
-      familyId: session.family.id,
-      userId: session.user.id,
-      provider,
-      displayName: requiredText(formData, "displayName"),
-      calendarUrl: provider === "ICLOUD" ? calendarUrl ?? "https://caldav.icloud.com/" : isCalDavLike || isIcs ? calendarUrl : null,
-      username: isCalDavLike ? username : null,
-      encryptedPassword: isCalDavLike && password ? encryptSecret(password) : null,
-      syncEnabled: isCalDavLike || isIcs,
-      visibilityToFamily: enumValue(formData, "visibilityToFamily", ["PRIVATE", "BUSY_ONLY", "TITLE_ONLY", "FAMILY"] as const, "BUSY_ONLY"),
-      status: isCalDavLike || isIcs ? "verbunden" : "manuell"
-    }
-  });
-
-  if (isCalDavLike) {
-    try {
-      await syncCalDavIntegration(integration.id, session.user.id);
-    } catch {
-      // syncCalDavIntegration speichert die konkrete Fehlermeldung an der Quelle.
-    }
-  }
-  if (isIcs) {
-    try {
-      await syncIcsIntegration(integration.id, session.user.id);
-    } catch {
-      // syncIcsIntegration speichert die konkrete Fehlermeldung an der Quelle.
-    }
-  }
-
-  revalidatePath("/kalender");
-}
-
-export async function deleteCalendarIntegration(formData: FormData) {
-  const session = await requireSession();
-  await db.calendarIntegration.deleteMany({
-    where: {
-      id: requiredText(formData, "id"),
-      familyId: session.family.id,
-      userId: session.user.id
-    }
-  });
-
-  revalidatePath("/kalender");
-}
-
-export async function syncCalendarIntegration(formData: FormData) {
-  const session = await requireSession();
-  try {
-    const id = requiredText(formData, "id");
-    const integration = await db.calendarIntegration.findFirst({ where: { id, familyId: session.family.id, userId: session.user.id } });
-    if (integration?.provider === "OUTLOOK") {
-      await syncOutlookIntegration(id, session.user.id);
-    } else if (integration?.provider === "ICS") {
-      await syncIcsIntegration(id, session.user.id);
-    } else {
-      await syncCalDavIntegration(id, session.user.id);
-    }
-  } catch {
-    // Der Sync-Fehler wird an der Kalenderquelle gespeichert und in der UI angezeigt.
-  }
-  revalidatePath("/kalender");
-}
-
-export async function updateCalendarIntegrationVisibility(formData: FormData) {
-  const session = await requireSession();
-  const id = requiredText(formData, "id");
-  const visibilityToFamily = enumValue(formData, "visibilityToFamily", ["PRIVATE", "BUSY_ONLY", "TITLE_ONLY", "FAMILY"] as const, "BUSY_ONLY");
-  const integration = await db.calendarIntegration.findFirst({
-    where: { id, familyId: session.family.id, userId: session.user.id },
-    include: { sourceVisibilityOverrides: true }
-  });
-  if (!integration) return;
-
-  await db.calendarIntegration.update({
-    where: { id },
-    data: { visibilityToFamily }
-  });
-
-  const overrideIds = integration.sourceVisibilityOverrides.map((source) => source.sourceCalendarId);
-  await db.calendarEvent.updateMany({
-    where: {
-      integrationId: id,
-      ...(overrideIds.length > 0 ? { sourceCalendarId: { notIn: overrideIds } } : {})
-    },
-    data: { visibility: visibilityToFamily }
-  });
-
-  revalidatePath("/kalender");
-}
-
-export async function updateCalendarSourceVisibility(formData: FormData) {
-  const session = await requireSession();
-  const integrationId = requiredText(formData, "integrationId");
-  const sourceCalendarId = requiredText(formData, "sourceCalendarId");
-  const sourceCalendarName = requiredText(formData, "sourceCalendarName");
-  const visibilityToFamily = enumValue(formData, "visibilityToFamily", ["PRIVATE", "BUSY_ONLY", "TITLE_ONLY", "FAMILY"] as const, "BUSY_ONLY");
-  const integration = await db.calendarIntegration.findFirst({
-    where: { id: integrationId, familyId: session.family.id, userId: session.user.id }
-  });
-  if (!integration) return;
-
-  await db.calendarSourceVisibility.upsert({
-    where: {
-      integrationId_sourceCalendarId: {
-        integrationId,
-        sourceCalendarId
-      }
-    },
-    create: {
-      integrationId,
-      sourceCalendarId,
-      sourceCalendarName,
-      visibilityToFamily
-    },
-    update: {
-      sourceCalendarName,
-      visibilityToFamily
-    }
-  });
-
-  await db.calendarEvent.updateMany({
-    where: { integrationId, sourceCalendarId },
-    data: { visibility: visibilityToFamily }
-  });
-
-  revalidatePath("/kalender");
 }
 
 export async function createUser(formData: FormData) {
@@ -934,104 +764,6 @@ async function findOrCreateExpenseLabel(familyId: string, ownerUserId: string, n
     }
   });
   return label.id;
-}
-
-function parseCsv(content: string) {
-  const delimiter = detectCsvDelimiter(content);
-  const rows: string[][] = [];
-  let row: string[] = [];
-  let cell = "";
-  let quoted = false;
-
-  for (let index = 0; index < content.length; index += 1) {
-    const char = content[index];
-    const next = content[index + 1];
-    if (char === "\"" && quoted && next === "\"") {
-      cell += "\"";
-      index += 1;
-    } else if (char === "\"") {
-      quoted = !quoted;
-    } else if (char === delimiter && !quoted) {
-      row.push(cell);
-      cell = "";
-    } else if ((char === "\n" || char === "\r") && !quoted) {
-      if (char === "\r" && next === "\n") index += 1;
-      row.push(cell);
-      rows.push(row);
-      row = [];
-      cell = "";
-    } else {
-      cell += char;
-    }
-  }
-
-  if (cell || row.length > 0) {
-    row.push(cell);
-    rows.push(row);
-  }
-  return rows;
-}
-
-function normalizeWrappedCsvRows(rows: string[][]) {
-  if (!rows[0] || rows[0].length !== 1 || !rows[0][0].includes(",")) return rows;
-  return rows.map((row) => {
-    if (row.length !== 1) return row;
-    const reparsed = parseCsv(row[0]);
-    return reparsed[0] ?? row;
-  });
-}
-
-function detectCsvDelimiter(content: string) {
-  const firstLine = content.split(/\r?\n/, 1)[0] ?? "";
-  const candidates = [",", ";", "\t"];
-  return candidates
-    .map((delimiter) => ({ delimiter, count: firstLine.split(delimiter).length }))
-    .sort((a, b) => b.count - a.count)[0]?.delimiter ?? ",";
-}
-
-function normalizeCsvHeader(value: string) {
-  return value
-    .replace(/^\uFEFF/, "")
-    .trim()
-    .replace(/^"|"$/g, "")
-    .toLowerCase();
-}
-
-function csvColumnIndexes(header: string[]) {
-  return {
-    id: findCsvColumn(header, ["id", "expenseid", "expense_id", "eintragsid"]),
-    kind: findCsvColumn(header, ["kind", "type", "art", "typ"]),
-    amountCents: findCsvColumn(header, ["amountcents", "amount_cents", "betragcent", "betragcents", "betrag_cent", "betrag_cents", "amount", "betrag"]),
-    currency: findCsvColumn(header, ["currency", "währung", "waehrung"]),
-    date: findCsvColumn(header, ["date", "datum"]),
-    paymentMethod: findCsvColumn(header, ["paymentmethod", "payment_method", "bezahlart", "zahlungsart", "zahlungsmethode"]),
-    category: findCsvColumn(header, ["category", "kategorie"]),
-    label: findCsvColumn(header, ["label", "projekt", "project"]),
-    description: findCsvColumn(header, ["description", "beschreibung", "notiz", "notes"])
-  };
-}
-
-function findCsvColumn(header: string[], names: string[]) {
-  return header.findIndex((field) => names.includes(field.replace(/[\s-]/g, "")));
-}
-
-function normalizeTransactionKind(value: string | undefined) {
-  const normalized = String(value ?? "").trim().toLowerCase();
-  return ["income", "einnahme", "in"].includes(normalized) ? "INCOME" as const : "EXPENSE" as const;
-}
-
-function parseCsvAmountCents(value: string | undefined) {
-  const text = String(value ?? "0").trim();
-  if (!text.includes(",") && !text.includes(".") && /^-?\d+$/.test(text)) {
-    return Number(text);
-  }
-  return parseEuroToCents(text);
-}
-
-function stringifyCsv(rows: string[][]) {
-  return rows
-    .map((row) => row.map((cell) => `"${String(cell).replace(/"/g, "\"\"")}"`).join(","))
-    .join("\n");
 }
 
 function scopeValue(formData: FormData) {

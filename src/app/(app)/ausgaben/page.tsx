@@ -5,6 +5,7 @@ import {
   exportExpensesToCsv,
   importExpensesFromCsv,
   importExpensesFromUploadedCsv,
+  importExpensesFromUploadedXlsx,
   updateCategory,
   updateExpense
 } from "@/lib/actions";
@@ -58,18 +59,14 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
   const yearlyRows = buildPeriodRows(expenses, categories, "year");
   const comparison = buildYearComparison(expenses, categories, Number(params.compareA ?? years[0]), Number(params.compareB ?? years[1] ?? years[0]));
   const pie = buildPie(categoryRows);
+  const activeFilterChips = buildActiveFilterChips(params, categories, labels, range);
 
   return (
     <>
       <PageHeader title="Ausgaben & Einnahmen" description="Persönliche Finanzübersicht mit Bezahlart, Kategorien, Labels, Analyse und CSV-Sicherung." />
 
       <form className="search-bar">
-        {params.year ? <input type="hidden" name="year" value={params.year} /> : null}
-        {params.month ? <input type="hidden" name="month" value={params.month} /> : null}
-        {params.from ? <input type="hidden" name="from" value={params.from} /> : null}
-        {params.to ? <input type="hidden" name="to" value={params.to} /> : null}
-        {params.label ? <input type="hidden" name="label" value={params.label} /> : null}
-        {params.category ? <input type="hidden" name="category" value={params.category} /> : null}
+        <FilterHiddenFields params={params} includePeriod />
         <label>
           <span>Ausgaben durchsuchen</span>
           <input name="q" type="search" defaultValue={params.q ?? ""} placeholder="Beschreibung, Kategorie, Label, Bezahlart ..." />
@@ -78,12 +75,38 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
         {query ? <a className="button secondary" href={buildExpensesHref(params, { q: undefined })}>Suche löschen</a> : null}
       </form>
 
+      <section className="filter-system" aria-label="Ausgabenfilter">
+        <div className="period-tabs" role="list" aria-label="Zeitraum">
+          <a role="listitem" className={range.mode === "month" && !params.month ? "active" : ""} href={buildPeriodHref(params, {})}>Aktueller Monat</a>
+          {years.map((year) => <a role="listitem" className={params.year === String(year) ? "active" : ""} href={buildPeriodHref(params, { year: String(year) })} key={year}>{year}</a>)}
+        </div>
+        {activeFilterChips.length > 0 ? (
+          <div className="active-filter-row" aria-label="Aktive Filter">
+            {activeFilterChips.map((chip) => (
+              <a className="filter-chip" href={buildExpensesHref(params, chip.clear)} key={chip.label}>
+                <span>{chip.label}</span>
+                <strong aria-hidden="true">×</strong>
+              </a>
+            ))}
+            <a className="filter-chip clear-all" href="/ausgaben">Alle löschen</a>
+          </div>
+        ) : null}
+      </section>
+
       <section className="overview-actions">
         <ActionModal title="Ausgaben filtern" trigger="Filter">
             <form className="form form-grid">
-              {params.q ? <input type="hidden" name="q" value={params.q} /> : null}
-              <label>Von<input name="from" type="date" defaultValue={toDateInputValue(range.from)} /></label>
-              <label>Bis<input name="to" type="date" defaultValue={toDateInputValue(range.to)} /></label>
+              <FilterHiddenFields params={params} includeSearch includeFacets={false} />
+              {params.year ? <input type="hidden" name="year" value={params.year} /> : null}
+              {params.month ? <input type="hidden" name="month" value={params.month} /> : null}
+              <fieldset className="fieldset full-span compact-fieldset">
+                <legend>Zeitraum optional eingrenzen</legend>
+                <p className="muted">Leer lassen, um den oben gewählten Monat oder das Jahr beizubehalten.</p>
+                <div className="form-grid">
+                  <label>Von<input name="from" type="date" defaultValue={params.from ?? ""} /></label>
+                  <label>Bis<input name="to" type="date" defaultValue={params.to ?? ""} /></label>
+                </div>
+              </fieldset>
               <label>
                 Kategorie
                 <select name="category" defaultValue={params.category ?? ""}>
@@ -100,7 +123,7 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
               </label>
               <div className="filter-actions full-span">
                 <button className="button" type="submit">Anwenden</button>
-                <a className="button secondary" href={params.q ? `/ausgaben?q=${encodeURIComponent(params.q)}` : "/ausgaben"}>Filter löschen</a>
+                <a className="button secondary" href={buildExpensesHref(params, { q: undefined, category: undefined, label: undefined, from: undefined, to: undefined })}>Filter löschen</a>
               </div>
             </form>
         </ActionModal>
@@ -130,14 +153,19 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
                 <h2 className="section-title">CSV-Sicherung</h2>
                 <div className="csv-actions">
                   <a className="button secondary" href="/api/expenses/export">CSV herunterladen</a>
+                  <a className="button secondary" href={`/api/expenses/export?format=xlsx&year=${currentYear}`}>Excel herunterladen</a>
                   <form action={importExpensesFromUploadedCsv} className="upload-form">
                     <input name="csvFile" type="file" accept=".csv,text/csv" required />
                     <button className="button secondary" type="submit">CSV hochladen</button>
                   </form>
+                  <form action={importExpensesFromUploadedXlsx} className="upload-form">
+                    <input name="xlsxFile" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required />
+                    <button className="button secondary" type="submit">Excel hochladen</button>
+                  </form>
                   <form action={importExpensesFromCsv}><button className="button secondary" type="submit">Synology-CSV importieren</button></form>
                   <form action={exportExpensesToCsv}><button className="button secondary" type="submit">Synology-CSV exportieren</button></form>
                 </div>
-                <p className="muted">Download/Upload funktioniert lokal sofort. Die Synology-Aktionen nutzen optional EXPENSE_CSV_PATH.</p>
+                <p className="muted">Download/Upload funktioniert lokal sofort. Excel nutzt das Layout mit Monatsblättern aus Ausgaben_{currentYear}.xlsx. Die Synology-Aktionen nutzen optional EXPENSE_CSV_PATH.</p>
               </section>
             </div>
             <h2 className="section-title spacing-top">Kategorien bearbeiten</h2>
@@ -162,11 +190,6 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
             </div>
         </ActionModal>
       </section>
-
-      <nav className="year-strip" aria-label="Zeitraumfilter">
-        <a className={!params.year && !params.month && !params.from ? "active" : ""} href="/ausgaben">Aktueller Monat</a>
-        {years.map((year) => <a className={params.year === String(year) ? "active" : ""} href={`/ausgaben?year=${year}`} key={year}>{year}</a>)}
-      </nav>
 
       <section className="stats">
         <div className="stat"><span>Einnahmen</span><strong>{formatMoney(income)}</strong></div>
@@ -194,7 +217,6 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
             <h2 className="section-title">Einträge</h2>
             <p className="muted">{formatDate(range.from)} bis {formatDate(range.to)} · {selectedEntries.length} Einträge · nur dein persönlicher Bereich</p>
           </div>
-          <span className="badge">CSV-kompatibel</span>
         </div>
         <div className="expense-list">
           {selectedEntries.length === 0 ? <EmptyState>Noch keine Einträge im gewählten Zeitraum.</EmptyState> : null}
@@ -207,14 +229,20 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
                   <span>{formatDate(expense.date)}</span>
                   <span>
                     {expense.description}
-                    <small>{expense.category?.name ?? "Ohne Kategorie"} · {expense.paymentMethod}{expense.label ? ` · ${expense.label.name}` : ""}</small>
+                    <small>{expense.paymentMethod}</small>
+                  </span>
+                  <span className="expense-overview-tags">
+                    <span className="overview-tag" style={expense.category ? { borderColor: expense.category.color } : undefined}>
+                      {expense.category?.name ?? "Ohne Kategorie"}
+                    </span>
+                    {expense.label ? <span className="overview-tag label-overview-tag" style={{ background: expense.label.color }}>{expense.label.name}</span> : null}
                   </span>
                   <strong className={expense.kind === "INCOME" ? "positive" : "negative"}>
                     {expense.kind === "INCOME" ? "+" : "-"}{formatMoney(expense.amountCents, expense.currency)}
                   </strong>
                 </summary>
                 <div className="expense-detail">
-                  <div className="badge-row">
+                  <div className="expense-detail-meta">
                     <span className="badge">{expense.kind === "INCOME" ? "Einnahme" : "Ausgabe"}</span>
                     <span className="badge">{expense.paymentMethod}</span>
                     {expense.category ? <span className="badge" style={{ borderColor: expense.category.color }}>{expense.category.name}</span> : null}
@@ -229,7 +257,7 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
                   <div className="entry-actions">
                     <form action={deleteExpense}>
                       <input type="hidden" name="id" value={expense.id} />
-                      <button className="button secondary" type="submit">Löschen</button>
+                      <button className="button secondary danger-subtle" type="submit">Löschen</button>
                     </form>
                     <ActionModal title="Eintrag bearbeiten" trigger="Bearbeiten">
                       <form action={updateExpense} className="form form-grid modal-form">
@@ -385,6 +413,30 @@ function MiniTable({ rows, showBudget = false }: { rows: PeriodRow[]; showBudget
         </div>
       ))}
     </div>
+  );
+}
+
+function FilterHiddenFields({
+  params,
+  includeSearch = false,
+  includePeriod = false,
+  includeFacets = true
+}: {
+  params: Awaited<ExpensesPageProps["searchParams"]>;
+  includeSearch?: boolean;
+  includePeriod?: boolean;
+  includeFacets?: boolean;
+}) {
+  return (
+    <>
+      {includeSearch && params.q ? <input type="hidden" name="q" value={params.q} /> : null}
+      {includePeriod && params.year ? <input type="hidden" name="year" value={params.year} /> : null}
+      {includePeriod && params.month ? <input type="hidden" name="month" value={params.month} /> : null}
+      {includePeriod && params.from ? <input type="hidden" name="from" value={params.from} /> : null}
+      {includePeriod && params.to ? <input type="hidden" name="to" value={params.to} /> : null}
+      {includeFacets && params.label ? <input type="hidden" name="label" value={params.label} /> : null}
+      {includeFacets && params.category ? <input type="hidden" name="category" value={params.category} /> : null}
+    </>
   );
 }
 
@@ -564,6 +616,46 @@ function buildExpensesHref(
   return query ? `/ausgaben?${query}` : "/ausgaben";
 }
 
+function buildPeriodHref(
+  params: Awaited<ExpensesPageProps["searchParams"]>,
+  period: Pick<Awaited<ExpensesPageProps["searchParams"]>, "year" | "month">
+) {
+  const next = new URLSearchParams();
+  const merged = { ...params, from: undefined, to: undefined, year: period.year, month: period.month };
+  for (const key of ["year", "month", "label", "category", "q", "compareA", "compareB"] as const) {
+    const value = merged[key];
+    if (value) next.set(key, value);
+  }
+  const query = next.toString();
+  return query ? `/ausgaben?${query}` : "/ausgaben";
+}
+
+function buildActiveFilterChips(
+  params: Awaited<ExpensesPageProps["searchParams"]>,
+  categories: CategoryLike[],
+  labels: LabelLike[],
+  range: ReturnType<typeof getRange>
+) {
+  const chips: { label: string; clear: Partial<Awaited<ExpensesPageProps["searchParams"]>> }[] = [];
+  if (params.q) chips.push({ label: `Suche: ${params.q}`, clear: { q: undefined } });
+  if (params.category) {
+    chips.push({
+      label: `Kategorie: ${categories.find((category) => category.id === params.category)?.name ?? "Gewählt"}`,
+      clear: { category: undefined }
+    });
+  }
+  if (params.label) {
+    chips.push({
+      label: `Label: ${labels.find((label) => label.id === params.label)?.name ?? "Gewählt"}`,
+      clear: { label: undefined }
+    });
+  }
+  if (range.mode === "custom") {
+    chips.push({ label: `Zeitraum: ${formatDate(range.from)} - ${formatDate(range.to)}`, clear: { from: undefined, to: undefined } });
+  }
+  return chips;
+}
+
 function PaymentMethods() {
   return (
     <datalist id="payment-methods">
@@ -580,3 +672,4 @@ function PaymentMethods() {
 type ExpenseLike = Awaited<ReturnType<typeof getVisibleExpenses>>[number];
 type CategoryLike = Awaited<ReturnType<typeof getVisibleCategories>>[number];
 type LabelLike = Awaited<ReturnType<typeof getExpenseLabels>>[number];
+

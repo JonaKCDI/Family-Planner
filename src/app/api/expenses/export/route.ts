@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { buildExpenseWorkbook, stringifyExpenseCsv } from "@/lib/expense-formats";
 
-export async function GET() {
+export async function GET(request: Request) {
   const session = await requireSession();
+  const format = new URL(request.url).searchParams.get("format");
   const expenses = await db.expense.findMany({
     where: {
       familyId: session.family.id,
@@ -12,31 +14,33 @@ export async function GET() {
     include: { category: true, label: true },
     orderBy: { date: "desc" }
   });
-  const rows = [
-    ["id", "kind", "amountCents", "currency", "date", "paymentMethod", "category", "label", "description"],
-    ...expenses.map((expense) => [
-      expense.id,
-      expense.kind,
-      String(expense.amountCents),
-      expense.currency,
-      expense.date.toISOString().slice(0, 10),
-      expense.paymentMethod,
-      expense.category?.name ?? "",
-      expense.label?.name ?? "",
-      expense.description
-    ])
-  ];
 
-  return new NextResponse(stringifyCsv(rows), {
+  const rows = expenses.map((expense) => ({
+    id: expense.id,
+    kind: expense.kind,
+    amountCents: expense.amountCents,
+    currency: expense.currency,
+    date: expense.date,
+    paymentMethod: expense.paymentMethod,
+    categoryName: expense.category?.name ?? "",
+    labelName: expense.label?.name ?? "",
+    description: expense.description
+  }));
+
+  if (format === "xlsx") {
+    const year = Number(new URL(request.url).searchParams.get("year")) || new Date().getFullYear();
+    return new NextResponse(await buildExpenseWorkbook(rows, year), {
+      headers: {
+        "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "Content-Disposition": `attachment; filename="Ausgaben_${year}-${session.user.name}.xlsx"`
+      }
+    });
+  }
+
+  return new NextResponse(stringifyExpenseCsv(rows), {
     headers: {
       "Content-Type": "text/csv; charset=utf-8",
       "Content-Disposition": `attachment; filename="expenses-${session.user.name}.csv"`
     }
   });
-}
-
-function stringifyCsv(rows: string[][]) {
-  return rows
-    .map((row) => row.map((cell) => `"${String(cell).replace(/"/g, "\"\"")}"`).join(","))
-    .join("\n");
 }

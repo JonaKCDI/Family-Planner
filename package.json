@@ -8,6 +8,9 @@
     "build": "prisma generate && next build",
     "start": "next start",
     "lint": "eslint .",
+    "test": "vitest run",
+    "test:stress": "vitest run tests/stress.test.ts",
+    "test:visual": "playwright test",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:deploy": "prisma migrate deploy",
@@ -17,6 +20,8 @@
     "@prisma/client": "^6.19.0",
     "bcryptjs": "^3.0.2",
     "clsx": "^2.1.1",
+    "exceljs": "^4.4.0",
+    "lucide-react": "^1.14.0",
     "next": "^16.0.0",
     "prisma": "^6.19.0",
     "react": "^19.2.0",
@@ -24,6 +29,7 @@
     "zod": "^4.1.12"
   },
   "devDependencies": {
+    "@playwright/test": "^1.60.0",
     "@tailwindcss/postcss": "^4.1.16",
     "@types/bcryptjs": "^2.4.6",
     "@types/node": "^24.10.0",
@@ -32,7 +38,8 @@
     "eslint": "^9.38.0",
     "eslint-config-next": "^16.0.0",
     "tailwindcss": "^4.1.16",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.6"
   },
   "overrides": {
     "postcss": "^8.5.10"

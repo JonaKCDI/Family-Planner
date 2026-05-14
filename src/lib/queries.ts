@@ -88,31 +88,3 @@ export async function getVisibleDocuments(familyId: string, userId: string) {
     orderBy: { createdAt: "desc" }
   });
 }
-
-export async function getVisibleCalendarEvents(familyId: string, userId: string) {
-  return db.calendarEvent.findMany({
-    where: {
-      familyId,
-      OR: [{ visibility: { in: ["FAMILY", "BUSY_ONLY", "TITLE_ONLY"] } }, { ownerUserId: userId }]
-    },
-    include: { owner: true },
-    orderBy: { startAt: "asc" },
-    take: 100
-  });
-}
-
-export async function getCalendarIntegrations(familyId: string, userId: string) {
-  return db.calendarIntegration.findMany({
-    where: {
-      familyId,
-      userId
-    },
-    include: {
-      user: true,
-      sourceVisibilityOverrides: {
-        orderBy: { sourceCalendarName: "asc" }
-      }
-    },
-    orderBy: { createdAt: "desc" }
-  });
-}

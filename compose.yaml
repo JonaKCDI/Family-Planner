@@ -10,7 +10,6 @@ services:
       DATABASE_URL: postgresql://family_app:${POSTGRES_PASSWORD}@db:5432/family_app?schema=public
       SESSION_COOKIE_NAME: family_app_session
       APP_URL: ${APP_URL:-http://localhost:3000}
-      CALENDAR_SECRET: ${CALENDAR_SECRET}
       EXPENSE_CSV_PATH: ${EXPENSE_CSV_PATH:-/data/expenses/expenses.csv}
     ports:
       - "${APP_PORT:-3000}:3000"

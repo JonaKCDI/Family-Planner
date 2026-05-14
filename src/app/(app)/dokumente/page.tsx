@@ -95,6 +95,5 @@ const linkedEntityLabels = {
   EXPENSE: "Ausgabe",
   TASK: "Aufgabe",
   CONTRACT: "Vertrag",
-  CALENDAR_EVENT: "Kalender",
   GENERAL: "Allgemein"
 };
