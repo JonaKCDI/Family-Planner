@@ -8,6 +8,7 @@ import { z } from "zod";
 import { cleanupExpiredSessions, createSession, destroySession, hashPassword, requireSession, verifyPassword } from "@/lib/auth";
 import { resolveContractCancellationSchedule } from "@/lib/contracts";
 import { db } from "@/lib/db";
+import { ensureDueContractExpenses } from "@/lib/contract-auto-expenses";
 import { buildExpenseWorkbook, parseExpenseWorkbook, type ExpenseFormatRow } from "@/lib/expense-formats";
 import { safeFilePart } from "@/lib/file-names";
 import { ownedExpenseWhere } from "@/lib/permissions";
@@ -511,6 +512,8 @@ export async function createContract(formData: FormData) {
   const endDate = optionalText(formData, "endDate");
   const noticeDays = parseOptionalIntegerInput(formData.get("cancellationNoticeDays"), { min: 0, max: 3650 });
   const autoRenewal = formData.get("autoRenewal") === "on";
+  const autoCreateExpenses = formData.get("autoCreateExpenses") === "on";
+  const expensePaymentDay = parseOptionalIntegerInput(formData.get("expensePaymentDay"), { min: 1, max: 31 });
   const cancellation = resolveContractCancellationSchedule({
     annualDeadline: optionalText(formData, "cancellationDeadline"),
     endDate,
@@ -537,6 +540,8 @@ export async function createContract(formData: FormData) {
       autoRenewal,
       renewalInterval: renewalIntervalValue(formData),
       renewalAnchorDay: cancellation.renewalAnchorDay,
+      autoCreateExpenses,
+      expensePaymentDay,
       nextCancellationDate: cancellation.nextDate,
       status: enumValue(formData, "status", ["ACTIVE", "CANCELLED", "EXPIRED", "DRAFT"] as const, "ACTIVE"),
       scope: scopeValue(formData)
@@ -551,7 +556,10 @@ export async function createContract(formData: FormData) {
     scope: contract.scope
   });
 
+  await ensureDueContractExpenses(session.family.id, session.user.id);
   revalidatePath("/vertraege");
+  revalidatePath("/ausgaben");
+  revalidatePath("/dashboard");
 }
 
 export async function updateContract(formData: FormData) {
@@ -559,6 +567,8 @@ export async function updateContract(formData: FormData) {
   const endDate = optionalText(formData, "endDate");
   const noticeDays = parseOptionalIntegerInput(formData.get("cancellationNoticeDays"), { min: 0, max: 3650 });
   const autoRenewal = formData.get("autoRenewal") === "on";
+  const autoCreateExpenses = formData.get("autoCreateExpenses") === "on";
+  const expensePaymentDay = parseOptionalIntegerInput(formData.get("expensePaymentDay"), { min: 1, max: 31 });
   const cancellation = resolveContractCancellationSchedule({
     annualDeadline: optionalText(formData, "cancellationDeadline"),
     endDate,
@@ -589,6 +599,8 @@ export async function updateContract(formData: FormData) {
       autoRenewal,
       renewalInterval: renewalIntervalValue(formData),
       renewalAnchorDay: cancellation.renewalAnchorDay,
+      autoCreateExpenses,
+      expensePaymentDay,
       nextCancellationDate: cancellation.nextDate,
       status: enumValue(formData, "status", ["ACTIVE", "CANCELLED", "EXPIRED", "DRAFT"] as const, "ACTIVE"),
       scope: scopeValue(formData)
@@ -605,7 +617,9 @@ export async function updateContract(formData: FormData) {
     });
   }
 
+  await ensureDueContractExpenses(session.family.id, session.user.id);
   revalidatePath("/vertraege");
+  revalidatePath("/ausgaben");
   revalidatePath("/dashboard");
 }
 

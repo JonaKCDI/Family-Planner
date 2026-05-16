@@ -193,6 +193,7 @@ model Expense {
   categoryId  String?
   labelId     String?
   contractId  String?
+  generatedByContract Boolean @default(false)
   description String
   scope       Scope    @default(FAMILY)
   createdAt   DateTime @default(now())
@@ -249,6 +250,8 @@ model Contract {
   autoRenewal           Boolean         @default(false)
   renewalInterval       BillingInterval @default(MONTHLY)
   renewalAnchorDay      Int?
+  autoCreateExpenses    Boolean         @default(false)
+  expensePaymentDay     Int?
   nextCancellationDate   DateTime?
   status                 ContractStatus  @default(ACTIVE)
   scope                  Scope           @default(FAMILY)

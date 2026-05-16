@@ -1,5 +1,6 @@
 import { updateContract } from "@/lib/actions";
 import { requireSession } from "@/lib/auth";
+import { ensureDueContractExpenses } from "@/lib/contract-auto-expenses";
 import { getContractNextCancellationDate, toAnnualCancellationInputValue } from "@/lib/contracts";
 import { formatDate, formatMoney, toDateInputValue } from "@/lib/format";
 import { getDocumentsForLinkedEntities, getVisibleContractPayments, getVisibleContracts } from "@/lib/queries";
@@ -14,6 +15,7 @@ type ContractsPageProps = {
 export default async function ContractsPage({ searchParams }: ContractsPageProps) {
   const session = await requireSession();
   const params = await searchParams;
+  await ensureDueContractExpenses(session.family.id, session.user.id);
   const query = normalizeSearch(params.q);
   const contracts = await getVisibleContracts(session.family.id, session.user.id);
   const visibleContracts = query ? contracts.filter((contract) => matchesContract(contract, query)) : contracts;
@@ -89,6 +91,7 @@ export default async function ContractsPage({ searchParams }: ContractsPageProps
                       <span className="badge">{statusLabels[contract.status]}</span>
                       <span className="badge">{contract.scope === "FAMILY" ? "Familie" : "Privat"}</span>
                       {contract.autoRenewal ? <span className="badge">Verlängert sich {renewalLabels[contract.renewalInterval]}</span> : null}
+                      {contract.autoCreateExpenses ? <span className="badge">Auto-Ausgabe am {contract.expensePaymentDay ?? new Date(contract.startDate).getDate()}.</span> : null}
                       <span className="badge">{contractPayments.length} Zahlungen · {formatMoney(paymentTotal, contract.currency)}</span>
                       {linkedDocuments.map((document) => (
                         <a className="badge link-badge" href={document.url} key={document.id} target="_blank" rel="noreferrer">
@@ -116,6 +119,8 @@ export default async function ContractsPage({ searchParams }: ContractsPageProps
                         </select>
                       </label>
                       <label>Startdatum<input name="startDate" type="date" defaultValue={toDateInputValue(contract.startDate)} required /></label>
+                      <label>Einzugstag<input name="expensePaymentDay" type="number" min="1" max="31" defaultValue={contract.expensePaymentDay ?? new Date(contract.startDate).getDate()} /></label>
+                      <label className="checkbox-field"><input name="autoCreateExpenses" type="checkbox" defaultChecked={contract.autoCreateExpenses} /> Automatisch als Ausgabe eintragen</label>
                       <label>Ende/Laufzeit bis<input name="endDate" type="date" defaultValue={toDateInputValue(contract.endDate)} /></label>
                       <label>Kündigung spätestens am<input name="cancellationDeadline" type="date" defaultValue={toAnnualCancellationInputValue(contract.cancellationDeadlineMonth, contract.cancellationDeadlineDay)} /></label>
                       <label>Kündigungsfrist in Tagen<input name="cancellationNoticeDays" type="number" min="0" defaultValue={contract.cancellationNoticeDays ?? ""} /></label>

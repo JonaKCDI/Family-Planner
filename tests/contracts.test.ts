@@ -1,4 +1,5 @@
 import { describe, expect, test } from "vitest";
+import { getDueContractExpenseDates, paymentDayForContract } from "../src/lib/contract-auto-expenses";
 import { getContractNextCancellationDate, getNextAnnualCancellationDate, parseAnnualCancellationDeadline, resolveContractCancellationSchedule, toAnnualCancellationInputValue } from "../src/lib/contracts";
 
 describe("annual cancellation deadlines", () => {
@@ -65,6 +66,77 @@ describe("annual cancellation deadlines", () => {
     }, new Date(2026, 4, 16));
 
     expect(nextDate ? toLocalDateKey(nextDate) : null).toBe("2026-06-10");
+  });
+});
+
+describe("automatic contract expenses", () => {
+  test("generates monthly due dates up to today", () => {
+    const dates = getDueContractExpenseDates({
+      id: "contract-1",
+      familyId: "family-1",
+      ownerUserId: "user-1",
+      provider: "Mobilfunk",
+      contractType: "Handy",
+      costCents: 2999,
+      currency: "EUR",
+      billingInterval: "MONTHLY",
+      startDate: new Date(Date.UTC(2026, 0, 15)),
+      endDate: null,
+      status: "ACTIVE",
+      autoRenewal: true,
+      autoCreateExpenses: true,
+      expensePaymentDay: 15
+    }, new Date(Date.UTC(2026, 2, 16)));
+
+    expect(dates.map(toLocalDateKey)).toEqual(["2026-01-15", "2026-02-15", "2026-03-15"]);
+  });
+
+  test("uses the last valid month day for high payment days", () => {
+    const dates = getDueContractExpenseDates({
+      id: "contract-1",
+      familyId: "family-1",
+      ownerUserId: "user-1",
+      provider: "Abo",
+      contractType: "Monatsende",
+      costCents: 999,
+      currency: "EUR",
+      billingInterval: "MONTHLY",
+      startDate: new Date(Date.UTC(2026, 0, 31)),
+      endDate: null,
+      status: "ACTIVE",
+      autoRenewal: true,
+      autoCreateExpenses: true,
+      expensePaymentDay: 31
+    }, new Date(Date.UTC(2026, 2, 31)));
+
+    expect(dates.map(toLocalDateKey)).toEqual(["2026-01-31", "2026-02-28", "2026-03-31"]);
+  });
+
+  test("does not generate for inactive or disabled contracts", () => {
+    const base = {
+      id: "contract-1",
+      familyId: "family-1",
+      ownerUserId: "user-1",
+      provider: "Abo",
+      contractType: "Test",
+      costCents: 999,
+      currency: "EUR",
+      billingInterval: "MONTHLY" as const,
+      startDate: new Date(Date.UTC(2026, 0, 1)),
+      endDate: null,
+      autoRenewal: true,
+      expensePaymentDay: 1
+    };
+
+    expect(getDueContractExpenseDates({ ...base, status: "ACTIVE", autoCreateExpenses: false }, new Date(Date.UTC(2026, 0, 2)))).toEqual([]);
+    expect(getDueContractExpenseDates({ ...base, status: "CANCELLED", autoCreateExpenses: true }, new Date(Date.UTC(2026, 0, 2)))).toEqual([]);
+  });
+
+  test("falls back to the contract start day as payment day", () => {
+    expect(paymentDayForContract({
+      startDate: new Date(Date.UTC(2026, 4, 20)),
+      expensePaymentDay: null
+    })).toBe(20);
   });
 });
 

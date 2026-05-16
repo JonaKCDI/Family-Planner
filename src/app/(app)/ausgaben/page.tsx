@@ -10,6 +10,7 @@ import {
 } from "@/lib/actions";
 import { redirect } from "next/navigation";
 import { requireSession } from "@/lib/auth";
+import { ensureDueContractExpenses } from "@/lib/contract-auto-expenses";
 import { toExpenseDocumentItem, toExpenseListItem } from "@/lib/expense-list";
 import { formatDate, formatMoney } from "@/lib/format";
 import { buildExpensesHref, buildPeriodHref, getCanonicalExpensesHref, getMonthKey, getRawExpensesHref, type ExpenseFilterParams } from "@/lib/expense-filter-url";
@@ -28,6 +29,7 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
   const params = await searchParams;
   const canonicalHref = getCanonicalExpensesHref(params);
   if (canonicalHref !== getRawExpensesHref(params)) redirect(canonicalHref);
+  await ensureDueContractExpenses(session.family.id, session.user.id);
   const [expenses, categories, labels, contracts] = await Promise.all([
     getVisibleExpenses(session.family.id, session.user.id),
     getVisibleCategories(session.family.id, session.user.id, "EXPENSE"),

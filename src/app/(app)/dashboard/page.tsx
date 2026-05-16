@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { requireSession } from "@/lib/auth";
+import { ensureDueContractExpenses } from "@/lib/contract-auto-expenses";
 import { getContractNextCancellationDate } from "@/lib/contracts";
 import { formatDate, formatMoney } from "@/lib/format";
 import { isImportantTask, taskRank } from "@/lib/tasks";
@@ -13,6 +14,7 @@ import {
 
 export default async function DashboardPage() {
   const session = await requireSession();
+  await ensureDueContractExpenses(session.family.id, session.user.id);
   const [expenses, tasks, contracts, documents, categories] = await Promise.all([
     getVisibleExpenses(session.family.id, session.user.id),
     getVisibleTasks(session.family.id, session.user.id),

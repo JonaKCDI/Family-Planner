@@ -188,6 +188,8 @@ function ContractForm({ today, onSubmit }: { today: string; onSubmit: () => void
       <label>Kosten in EUR<input name="cost" inputMode="decimal" placeholder="29,99" required /></label>
       <label>Intervall<select name="billingInterval" defaultValue="MONTHLY"><option value="MONTHLY">Monatlich</option><option value="YEARLY">Jährlich</option><option value="QUARTERLY">Quartalsweise</option><option value="ONCE">Einmalig</option><option value="OTHER">Sonstiges</option></select></label>
       <label>Startdatum<input name="startDate" type="date" defaultValue={today} required /></label>
+      <label>Einzugstag<input name="expensePaymentDay" type="number" min="1" max="31" defaultValue={new Date(`${today}T00:00:00`).getDate()} /></label>
+      <label className="checkbox-field"><input name="autoCreateExpenses" type="checkbox" /> Automatisch als Ausgabe eintragen</label>
       <label>Ende/Laufzeit bis<input name="endDate" type="date" /></label>
       <label>Kündigung spätestens am<input name="cancellationDeadline" type="date" /></label>
       <label>Kündigungsfrist in Tagen<input name="cancellationNoticeDays" type="number" min="0" /></label>
