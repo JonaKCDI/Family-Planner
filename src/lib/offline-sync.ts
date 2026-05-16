@@ -22,6 +22,7 @@ type OfflineState = {
   tasks?: unknown[];
   categories?: { id: string; name: string }[];
   labels?: { id: string; name: string }[];
+  contracts?: { id: string; provider: string; contractType: string }[];
   members?: { userId: string; name: string }[];
 };
 
@@ -88,8 +89,10 @@ export async function enqueueOfflineExpenseCreate(formData: FormData) {
       currency: "EUR",
       date: String(formData.get("date") || new Date().toISOString().slice(0, 10)),
       paymentMethod: optionalText(formData.get("paymentMethod")) || "Nicht angegeben",
+      store: optionalText(formData.get("store")) || "",
       categoryId: optionalText(formData.get("categoryId")),
       labelId: optionalText(formData.get("labelId")),
+      contractId: optionalText(formData.get("contractId")),
       description: optionalText(formData.get("description")) || "Offline-Ausgabe"
     },
     status: "pending"
@@ -151,6 +154,16 @@ export async function getOfflineSummary() {
     failed: changes.filter((change) => change.status === "failed").length,
     lastSyncAt: state.lastSyncAt
   };
+}
+
+export async function clearOfflineData() {
+  if (!canUseIndexedDb()) return;
+  await new Promise<void>((resolve) => {
+    const request = indexedDB.deleteDatabase(DB_NAME);
+    request.onsuccess = () => resolve();
+    request.onerror = () => resolve();
+    request.onblocked = () => resolve();
+  });
 }
 
 async function pullServerChanges(serverTime?: string) {

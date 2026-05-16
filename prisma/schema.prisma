@@ -110,6 +110,14 @@ model Session {
   @@index([userId])
 }
 
+model LoginAttempt {
+  normalizedName String   @id
+  failedCount    Int      @default(0)
+  lockedUntil    DateTime?
+  lastFailedAt   DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
 model Family {
   id        String   @id @default(cuid())
   name      String
@@ -181,8 +189,10 @@ model Expense {
   currency    String   @default("EUR")
   date        DateTime
   paymentMethod String  @default("Nicht angegeben")
+  store       String   @default("")
   categoryId  String?
   labelId     String?
+  contractId  String?
   description String
   scope       Scope    @default(FAMILY)
   createdAt   DateTime @default(now())
@@ -191,11 +201,13 @@ model Expense {
   owner       User     @relation("ExpenseOwner", fields: [ownerUserId], references: [id], onDelete: Cascade)
   category    Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   label       ExpenseLabel? @relation(fields: [labelId], references: [id], onDelete: SetNull)
+  contract    Contract? @relation(fields: [contractId], references: [id], onDelete: SetNull)
 
   @@index([familyId, date])
   @@index([familyId, kind])
   @@index([ownerUserId])
   @@index([labelId])
+  @@index([contractId])
 }
 
 model Task {
@@ -232,6 +244,11 @@ model Contract {
   startDate              DateTime
   endDate                DateTime?
   cancellationNoticeDays Int?
+  cancellationDeadlineMonth Int?
+  cancellationDeadlineDay   Int?
+  autoRenewal           Boolean         @default(false)
+  renewalInterval       BillingInterval @default(MONTHLY)
+  renewalAnchorDay      Int?
   nextCancellationDate   DateTime?
   status                 ContractStatus  @default(ACTIVE)
   scope                  Scope           @default(FAMILY)
@@ -239,6 +256,7 @@ model Contract {
   updatedAt              DateTime        @updatedAt
   family                 Family          @relation(fields: [familyId], references: [id], onDelete: Cascade)
   owner                  User            @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
+  expenses               Expense[]
 
   @@index([familyId, status])
   @@index([nextCancellationDate])

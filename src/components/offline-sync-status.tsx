@@ -80,8 +80,8 @@ export function OfflineSyncStatus() {
         {summary.failed > 0
           ? `${summary.failed} fehlgeschlagen`
           : summary.pending > 0
-            ? `${summary.pending} wartet`
-            : "Änderungen werden lokal gespeichert"}
+            ? `${summary.pending} wartet auf Sync beim nächsten Online-Start`
+            : "Neue Ausgaben, neue Aufgaben und Aufgabenstatus sind offline möglich"}
       </span>
       {serverReachable && summary.pending > 0 ? <button type="button" onClick={() => void syncPendingChanges()}>Jetzt syncen</button> : null}
     </div>

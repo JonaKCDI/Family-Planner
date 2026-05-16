@@ -1,10 +1,6 @@
-const CACHE_NAME = "family-app-v3";
+const CACHE_NAME = "family-app-v4";
 const STATIC_ASSETS = [
-  "/",
   "/manifest.webmanifest",
-  "/dashboard",
-  "/ausgaben",
-  "/aufgaben",
   "/icon.svg",
   "/icon-192.png",
   "/icon-512.png",
@@ -35,7 +31,7 @@ self.addEventListener("fetch", (event) => {
   if (url.origin !== self.location.origin) return;
 
   if (url.pathname.startsWith("/_next/static/")) {
-    event.respondWith(networkFirst(request));
+    event.respondWith(cacheFirst(request));
     return;
   }
 
@@ -45,8 +41,16 @@ self.addEventListener("fetch", (event) => {
   }
 
   if (request.mode === "navigate") {
-    event.respondWith(networkFirst(request, true));
+    event.respondWith(networkOnlyNavigation(request));
   }
+});
+
+self.addEventListener("message", (event) => {
+  if (event.data?.type !== "FAMILY_APP_CLEAR_AUTH_DATA") return;
+  event.waitUntil(
+    caches.keys()
+      .then((keys) => Promise.all(keys.filter((key) => key.startsWith("family-app-")).map((key) => caches.delete(key))))
+  );
 });
 
 async function cacheFirst(request) {
@@ -58,15 +62,13 @@ async function cacheFirst(request) {
   return response;
 }
 
-async function networkFirst(request, ignoreSearch = false) {
+async function networkOnlyNavigation(request) {
   try {
-    const response = await fetch(request);
-    if (response.ok) {
-      const cache = await caches.open(CACHE_NAME);
-      cache.put(request, response.clone());
-    }
-    return response;
+    return await fetch(request);
   } catch {
-    return caches.match(request, { ignoreSearch }) || caches.match("/dashboard") || caches.match("/");
+    return new Response(
+      "<!doctype html><html lang=\"de\"><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Offline</title><body style=\"font-family:system-ui,sans-serif;margin:2rem;line-height:1.4\"><h1>Offline</h1><p>Die Familien-App ist gerade nicht erreichbar. Öffne sie erneut, sobald die Verbindung zur Synology wieder steht.</p></body></html>",
+      { headers: { "Content-Type": "text/html; charset=utf-8" } }
+    );
   }
 }

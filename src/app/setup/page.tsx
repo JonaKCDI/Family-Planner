@@ -28,7 +28,7 @@ export default async function SetupPage() {
               </label>
               <label>
                 Passwort
-                <input name="password" type="password" autoComplete="new-password" minLength={6} required />
+                <input name="password" type="password" autoComplete="new-password" minLength={10} required />
               </label>
               <button className="button" type="submit">Ersten Admin anlegen</button>
             </form>

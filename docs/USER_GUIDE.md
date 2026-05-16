@@ -2,6 +2,8 @@
 
 Diese Anleitung ist für eine frische Installation auf einer Synology NAS gedacht. Ziel: Du kopierst den Projektordner auf die NAS, trägst wenige Werte ein, startest das Docker-Projekt und legst danach in der App den ersten Admin an.
 
+Das konkrete Container-Manager-Bundle liegt zusätzlich in `deploy/synology`. Nutze diesen Ordner als Projektpfad, wenn du die vorbereitete Synology-Compose-Datei samt Checkliste verwenden möchtest.
+
 ## Kurzfassung
 
 1. Synology **Container Manager** installieren.
@@ -35,7 +37,7 @@ Wenn du wirklich sauber neu starten willst, nutze einen neuen leeren Projektordn
 Für eine frische Synology-Installation:
 
 1. Stoppe ein altes `family-app` Projekt, falls es existiert.
-2. Sichere alte Backups und CSV-Dateien, falls du sie noch brauchst.
+2. Sichere alte Backups und Excel-Dateien, falls du sie noch brauchst.
 3. Lösche nur dann alte Container/Volumes, wenn du wirklich alle alten App-Daten verwerfen willst.
 4. Lege den Projektordner neu an:
 
@@ -80,8 +82,8 @@ APP_PORT="3000"
 
 POSTGRES_PASSWORD="bitte-ein-sehr-langes-zufaelliges-passwort-eintragen"
 
-EXPENSE_CSV_DIR="/volume1/docker/family-app/expenses"
-EXPENSE_CSV_PATH="/data/expenses/expenses.csv"
+EXPENSE_EXCEL_HOST_DIR="/volume1/docker/family-app/expenses"
+EXPENSE_EXCEL_DIR="/data/expenses"
 
 BACKUP_DIR="/volume1/docker/family-app/backups"
 BACKUP_RETENTION_DAYS="30"
@@ -93,8 +95,8 @@ Ersetze `192.168.178.20` durch die IP deiner NAS.
 Wichtig:
 
 - `POSTGRES_PASSWORD` nur einmal setzen und danach nicht ohne Grund ändern.
-- `EXPENSE_CSV_DIR` ist der Synology-Ordner.
-- `EXPENSE_CSV_PATH` ist der Pfad im Container und bleibt normalerweise `/data/expenses/expenses.csv`.
+- `EXPENSE_EXCEL_HOST_DIR` ist der Synology-Ordner.
+- `EXPENSE_EXCEL_DIR` ist der Pfad im Container und bleibt normalerweise `/data/expenses`.
 - `BACKUP_INTERVAL_SECONDS="86400"` bedeutet ein Backup pro Tag.
 
 ## Start In Container Manager
@@ -128,7 +130,7 @@ Danach:
 1. Einloggen.
 2. Unter **Einstellungen** die Synology-Übersicht prüfen.
 3. Eine Test-Ausgabe anlegen.
-4. In **Ausgaben** CSV oder XLSX exportieren.
+4. In **Ausgaben** Excel exportieren und testweise wieder hochladen.
 5. Auf der NAS prüfen, ob im Ordner `backups` eine Backup-Datei entsteht.
 
 ## Was Läuft Im Hintergrund?
@@ -144,6 +146,10 @@ Das Compose-Projekt startet drei Container:
 Die Datenbank wird nicht öffentlich freigegeben. Nur die App ist über `APP_PORT` erreichbar.
 
 Beim Start wartet die App auf PostgreSQL, führt automatisch Prisma-Migrationen aus und startet dann den Next.js-Server.
+
+## Sicherheit Vor Migrationen
+
+Vor Migrationen auf einer Datenbank mit echten Daten immer zuerst ein SQL-Backup prüfen. Die alte Kalender-Entfernungsmigration archiviert vorhandene Kalender-Tabellen vor dem Drop, falls sie existieren. Trotzdem bleibt das `.sql.gz` Backup die entscheidende Wiederherstellungsquelle.
 
 ## Updates
 
@@ -208,13 +214,13 @@ Häufige Ursache:
 
 - `POSTGRES_PASSWORD` fehlt in `.env`.
 
-### CSV-Export schreibt nicht
+### Excel-Export schreibt nicht
 
 Prüfe:
 
 ```env
-EXPENSE_CSV_DIR="/volume1/docker/family-app/expenses"
-EXPENSE_CSV_PATH="/data/expenses/expenses.csv"
+EXPENSE_EXCEL_HOST_DIR="/volume1/docker/family-app/expenses"
+EXPENSE_EXCEL_DIR="/data/expenses"
 ```
 
 Der Ordner `expenses` muss existieren und für Container Manager beschreibbar sein.
@@ -263,5 +269,5 @@ Vorher unbedingt sicherstellen, dass du das richtige Backup und das richtige Pro
 | `Dockerfile` | Baut die App |
 | `prisma/` | Datenbankschema und Migrationen |
 | `scripts/backup-postgres.sh` | Backup-Automation |
-| `expenses/` | CSV/Excel-nahe Ausgabenablage |
+| `expenses/` | Excel-Ablage für persönliche Ausgaben |
 | `backups/` | Datenbank-Backups |

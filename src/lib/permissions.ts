@@ -17,3 +17,11 @@ export function visibleScopeWhere(userId: string) {
     OR: [{ scope: "FAMILY" as const }, { ownerUserId: userId }]
   };
 }
+
+export function ownedExpenseWhere(familyId: string, userId: string, id: string) {
+  return {
+    id,
+    familyId,
+    ownerUserId: userId
+  };
+}

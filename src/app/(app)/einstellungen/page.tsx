@@ -12,14 +12,14 @@ export default async function SettingsPage() {
 
   return (
     <>
-      <PageHeader title="Einstellungen" description="Familienmitglieder, Rollen und technische Leitplanken für den Haushalt." />
+      <PageHeader title="Einstellungen" />
       <div className="grid two">
         <section className="panel">
           <h2 className="section-title">Familienmitglied anlegen</h2>
           {isAdmin ? (
             <form action={createUser} className="form">
               <label>Name<input name="name" required /></label>
-              <label>Start-Passwort<input name="password" type="password" minLength={6} required /></label>
+              <label>Start-Passwort<input name="password" type="password" minLength={10} required /></label>
               <label>Rolle<select name="role" defaultValue="MEMBER"><option value="MEMBER">Mitglied</option><option value="ADMIN">Admin</option></select></label>
               <button className="button" type="submit">Anlegen</button>
             </form>
@@ -48,7 +48,6 @@ export default async function SettingsPage() {
           <div className="section-head">
             <div>
               <h2 className="section-title">Synology</h2>
-              <p className="muted">Read-only Übersicht für Container Manager, Mounts, Backups und notwendige Neustarts.</p>
             </div>
             <span className="badge">Admin</span>
           </div>
@@ -64,12 +63,11 @@ export default async function SettingsPage() {
               ))}
             </div>
             <div className="setup-steps">
-              <p className="muted">Diese Werte werden beim Containerstart gelesen. Änderungen in DSM oder der Compose-Datei brauchen einen Neustart des App-Containers.</p>
               <ol>
-                <li>In Synology Container Manager die `.env` Werte für `APP_URL`, `POSTGRES_PASSWORD`, `EXPENSE_CSV_DIR` und `BACKUP_DIR` setzen.</li>
-                <li>`EXPENSE_CSV_DIR` als Ordner nach `/data/expenses` mounten, damit Import/Export dauerhaft auf dem NAS liegt.</li>
+                <li>In Synology Container Manager die `.env` Werte für `APP_URL`, `POSTGRES_PASSWORD`, `EXPENSE_EXCEL_HOST_DIR`, `EXPENSE_EXCEL_DIR` und `BACKUP_DIR` setzen.</li>
+                <li>`EXPENSE_EXCEL_HOST_DIR` als Ordner nach `/data/expenses` mounten, damit Excel-Import und -Export dauerhaft auf dem NAS liegen.</li>
                 <li>`BACKUP_DIR` als echten Synology-Ordner mounten und regelmäßig in Hyper Backup oder Snapshot Replication sichern.</li>
-                <li>Nach jeder Env-Änderung Container neu erstellen oder neu starten und danach Login, CSV/Excel-Export und Backup-Dateien prüfen.</li>
+                <li>Nach jeder Env-Änderung Container neu erstellen oder neu starten und danach Login, Excel-Export und Backup-Dateien prüfen.</li>
               </ol>
             </div>
           </div>

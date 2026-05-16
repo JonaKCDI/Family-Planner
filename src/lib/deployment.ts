@@ -7,7 +7,7 @@ export type DeploymentFact = {
 
 export function buildDeploymentFacts(): DeploymentFact[] {
   const appUrl = process.env.APP_URL || "nicht gesetzt";
-  const expenseCsvPath = process.env.EXPENSE_CSV_PATH || "nicht gesetzt";
+  const expenseExcelDir = process.env.EXPENSE_EXCEL_DIR || "nicht gesetzt";
   const backupRetention = process.env.BACKUP_RETENTION_DAYS || "30";
   const backupInterval = process.env.BACKUP_INTERVAL_SECONDS || "86400";
 
@@ -25,10 +25,10 @@ export function buildDeploymentFacts(): DeploymentFact[] {
       hint: "Für Synology später auf die echte HTTP- oder HTTPS-Adresse setzen."
     },
     {
-      label: "Ausgaben-Export",
-      value: expenseCsvPath,
-      ok: expenseCsvPath.startsWith("/data/expenses"),
-      hint: "Sollte im Container normalerweise unter /data/expenses liegen."
+      label: "Excel-Ablage",
+      value: expenseExcelDir,
+      ok: expenseExcelDir.startsWith("/data/expenses"),
+      hint: "Sollte im Container normalerweise der gemountete Ordner /data/expenses sein."
     },
     {
       label: "Backup-Plan",

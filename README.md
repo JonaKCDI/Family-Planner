@@ -26,22 +26,28 @@ Wichtige Sicherheitsentscheidungen:
 - Sichtbarkeit wird pro Datensatz über `PRIVATE` oder `FAMILY` modelliert.
 - Dokumente werden nicht hochgeladen; gespeichert werden nur HTTPS-Verweise.
 
-## Ausgaben und CSV-Sicherung
+## Ausgaben und Excel-Sicherung
 
 Ausgaben sind bewusst persönlich pro Nutzer sichtbar. Kategorien und Labels helfen dabei, laufende Kosten und projektartige Ausgaben wie Dienstreisen oder Renovierungen getrennt auszuwerten.
 
-Optional kann ein CSV-Spiegel für die eigenen Ausgaben gesetzt werden:
+Optional kann ein Excel-Ordner für die eigenen Ausgaben gesetzt werden:
 
 ```powershell
-EXPENSE_CSV_DIR="Z:\FamilyApp\expenses"
-EXPENSE_CSV_PATH="/data/expenses/expenses.csv"
+EXPENSE_EXCEL_HOST_DIR="Z:\FamilyApp\expenses"
+EXPENSE_EXCEL_DIR="/data/expenses"
 ```
 
-In Docker wird `EXPENSE_CSV_DIR` nach `/data/expenses` gemountet. In der App unter **Ausgaben > Setup** lassen sich die persönlichen Ausgaben importieren oder exportieren. Die CSV enthält stabile IDs, Kategorien und Labels, damit Excel-kompatible Sicherungen und spätere Re-Imports möglich bleiben. Zusätzlich gibt es dort einen direkten CSV-Download und Upload für lokale Tests ohne Synology-Pfad.
+In Docker wird `EXPENSE_EXCEL_HOST_DIR` nach `/data/expenses` gemountet. In der App unter **Ausgaben > Setup** lassen sich die persönlichen Ausgaben als Excel-Datei importieren oder exportieren. Pro Nutzer und Jahr entsteht eine Datei wie `Ausgaben-Jona-2026.xlsx`. Der Download/Upload funktioniert zusätzlich lokal ohne Synology-Pfad.
+
+## Implementierungsstand
+
+Eine strukturierte Übersicht aller aktuell implementierten Module, Integrationen und Deployment-Bausteine steht in [`docs/IMPLEMENTATION_OVERVIEW.md`](docs/IMPLEMENTATION_OVERVIEW.md).
+
+Der finale Abschlussbericht mit Sicherheits- und Installationshinweisen steht in [`docs/FINAL_REPORT.md`](docs/FINAL_REPORT.md).
 
 ## Synology Deployment
 
-Ausführliche Schritt-für-Schritt-Hilfe für Synology Container Manager, Docker-Volumes, lokale HTTPS-Adresse und iPhone/PWA-Installation steht in [`docs/USER_GUIDE.md`](docs/USER_GUIDE.md).
+Ausführliche Schritt-für-Schritt-Hilfe für Synology Container Manager, Docker-Volumes, lokale HTTPS-Adresse und iPhone/PWA-Installation steht in [`docs/USER_GUIDE.md`](docs/USER_GUIDE.md). Das konkrete Synology-Handoff-Bundle liegt in [`deploy/synology`](deploy/synology).
 
 Vorgesehen ist Synology Container Manager mit Docker Compose. Die App startet die Prisma-Migrationen beim Containerstart automatisch, wartet auf PostgreSQL und legt tägliche Datenbank-Backups in einem gemounteten Ordner ab.
 
@@ -57,7 +63,8 @@ Wichtige `.env`-Werte auf der Synology:
 APP_URL="https://deine-synology-adresse"
 APP_PORT="3000"
 POSTGRES_PASSWORD="ein-langes-zufaelliges-passwort"
-EXPENSE_CSV_DIR="/volume1/docker/family-app/expenses"
+EXPENSE_EXCEL_HOST_DIR="/volume1/docker/family-app/expenses"
+EXPENSE_EXCEL_DIR="/data/expenses"
 BACKUP_DIR="/volume1/docker/family-app/backups"
 BACKUP_RETENTION_DAYS="30"
 ```

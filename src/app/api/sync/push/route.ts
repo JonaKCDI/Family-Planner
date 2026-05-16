@@ -6,7 +6,20 @@ import { applySyncPush, pushSchema } from "@/lib/sync-server";
 export async function POST(request: Request) {
   const session = await getCurrentSession();
   if (!session) return NextResponse.json({ message: "Nicht angemeldet." }, { status: 401 });
-  const input = pushSchema.parse(await request.json());
+
+  const body = await request.json().catch(() => null);
+  const parsed = pushSchema.safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json(
+      {
+        message: "Die Sync-Daten sind ungültig.",
+        issues: parsed.error.issues.map((issue) => issue.message)
+      },
+      { status: 400 }
+    );
+  }
+
+  const input = parsed.data;
   const result = await applySyncPush(session, input);
   revalidatePath("/ausgaben");
   revalidatePath("/aufgaben");

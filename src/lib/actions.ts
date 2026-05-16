@@ -1,16 +1,22 @@
 ﻿"use server";
 
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname } from "node:path";
+import { dirname, join } from "node:path";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
-import { createSession, destroySession, hashPassword, requireSession, verifyPassword } from "@/lib/auth";
+import { cleanupExpiredSessions, createSession, destroySession, hashPassword, requireSession, verifyPassword } from "@/lib/auth";
+import { resolveContractCancellationSchedule } from "@/lib/contracts";
 import { db } from "@/lib/db";
-import { parseExpenseCsv, parseExpenseWorkbook, stringifyExpenseCsv, type ExpenseFormatRow } from "@/lib/expense-formats";
-import { parseEuroToCents } from "@/lib/format";
+import { buildExpenseWorkbook, parseExpenseWorkbook, type ExpenseFormatRow } from "@/lib/expense-formats";
+import { safeFilePart } from "@/lib/file-names";
+import { ownedExpenseWhere } from "@/lib/permissions";
+import { resolveDocumentLinkedEntityId, resolveExpenseCategoryId, resolveExpenseLabelId, resolveTaskAssigneeId, resolveVisibleContractId } from "@/lib/relations";
+import { parseEuroInputToCents, parseOptionalDateInput, parseOptionalEuroInputToCents, parseOptionalIntegerInput, parseRequiredDateInput } from "@/lib/validation";
 
-const passwordSchema = z.string().min(6, "Das Passwort braucht mindestens 6 Zeichen.");
+const passwordSchema = z.string().min(10, "Das Passwort braucht mindestens 10 Zeichen.");
+const MAX_LOGIN_FAILURES = 5;
+const LOGIN_LOCK_MINUTES = 15;
 
 export async function setupFirstFamily(formData: FormData) {
   const existingUsers = await db.user.count();
@@ -42,14 +48,26 @@ export async function setupFirstFamily(formData: FormData) {
 }
 
 export async function login(formData: FormData) {
+  await cleanupExpiredSessions();
   const name = requiredText(formData, "name");
   const password = String(formData.get("password") ?? "");
+  const normalizedName = normalizeLoginName(name);
+  const attempt = await db.loginAttempt.findUnique({ where: { normalizedName } });
+  const now = new Date();
+  if (attempt?.lockedUntil && attempt.lockedUntil > now) {
+    redirect("/login?error=locked");
+  }
+  if (attempt?.lockedUntil && attempt.lockedUntil <= now) {
+    await db.loginAttempt.deleteMany({ where: { normalizedName } });
+  }
   const user = await db.user.findUnique({ where: { name } });
 
   if (!user || !(await verifyPassword(password, user.passwordHash))) {
+    await recordLoginFailure(normalizedName);
     redirect("/login?error=1");
   }
 
+  await db.loginAttempt.deleteMany({ where: { normalizedName } });
   await createSession(user.id);
   redirect("/ausgaben");
 }
@@ -61,20 +79,23 @@ export async function logout() {
 
 export async function createExpense(formData: FormData) {
   const session = await requireSession();
-  const categoryId = optionalText(formData, "categoryId");
-  const labelId = optionalText(formData, "labelId");
+  const categoryId = await resolveExpenseCategoryId(session.family.id, session.user.id, optionalText(formData, "categoryId"));
+  const labelId = await resolveExpenseLabelId(session.family.id, session.user.id, optionalText(formData, "labelId"));
+  const contractId = await resolveVisibleContractId(session.family.id, session.user.id, optionalText(formData, "contractId"));
 
   const expense = await db.expense.create({
     data: {
       familyId: session.family.id,
       ownerUserId: session.user.id,
       kind: enumValue(formData, "kind", ["EXPENSE", "INCOME"] as const, "EXPENSE"),
-      amountCents: parseEuroToCents(formData.get("amount")),
+      amountCents: parseEuroInputToCents(formData.get("amount")),
       currency: "EUR",
-      date: new Date(requiredText(formData, "date")),
+      date: parseRequiredDateInput(formData.get("date")),
       paymentMethod: paymentMethodValue(formData),
+      store: optionalText(formData, "store") ?? "",
       categoryId: categoryId || null,
       labelId: labelId || null,
+      contractId,
       description: requiredText(formData, "description"),
       scope: "PRIVATE"
     }
@@ -111,23 +132,47 @@ export async function createExpenseLabel(formData: FormData) {
       ownerUserId: session.user.id,
       name,
       color: chooseCategoryColor(name, existingLabels, submittedColor),
-      budgetCents: parseOptionalEuroToCents(formData.get("budget"))
+      budgetCents: parseOptionalEuroInputToCents(formData.get("budget"))
     },
     update: {
       color: chooseCategoryColor(name, existingLabels, submittedColor),
-      budgetCents: parseOptionalEuroToCents(formData.get("budget"))
+      budgetCents: parseOptionalEuroInputToCents(formData.get("budget"))
     }
   });
 
   revalidatePath("/ausgaben");
 }
 
-export async function importExpensesFromCsv() {
+export async function mergeExpenseLabels(formData: FormData) {
   const session = await requireSession();
-  const csvPath = process.env.EXPENSE_CSV_PATH;
-  if (!csvPath) throw new Error("EXPENSE_CSV_PATH ist nicht gesetzt.");
+  const sourceLabelId = requiredText(formData, "sourceLabelId");
+  const targetLabelId = requiredText(formData, "targetLabelId");
+  if (sourceLabelId === targetLabelId) throw new Error("Bitte zwei unterschiedliche Labels auswählen.");
 
-  await importExpenseRows(session.family.id, session.user.id, parseExpenseCsv(await readFile(csvPath, "utf8")));
+  const [sourceLabel, targetLabel] = await Promise.all([
+    db.expenseLabel.findFirst({
+      where: { id: sourceLabelId, familyId: session.family.id, ownerUserId: session.user.id },
+      select: { id: true }
+    }),
+    db.expenseLabel.findFirst({
+      where: { id: targetLabelId, familyId: session.family.id, ownerUserId: session.user.id },
+      select: { id: true }
+    })
+  ]);
+  if (!sourceLabel || !targetLabel) throw new Error("Die ausgewählten Labels sind nicht verfügbar.");
+
+  await db.$transaction([
+    db.expense.updateMany({
+      where: {
+        familyId: session.family.id,
+        ownerUserId: session.user.id,
+        labelId: sourceLabel.id
+      },
+      data: { labelId: targetLabel.id }
+    }),
+    db.expenseLabel.delete({ where: { id: sourceLabel.id } })
+  ]);
+
   revalidatePath("/ausgaben");
   revalidatePath("/dashboard");
 }
@@ -138,6 +183,7 @@ async function importExpenseRows(familyId: string, userId: string, rows: Expense
     const labelName = row.labelName.trim();
     const categoryId = categoryName ? await findOrCreateExpenseCategory(familyId, userId, categoryName) : null;
     const labelId = labelName ? await findOrCreateExpenseLabel(familyId, userId, labelName) : null;
+    const contractId = await resolveVisibleContractId(familyId, userId, row.contractId?.trim() || null);
     const id = row.id?.trim();
     const data = {
       familyId,
@@ -147,17 +193,23 @@ async function importExpenseRows(familyId: string, userId: string, rows: Expense
       currency: row.currency || "EUR",
       date: row.date,
       paymentMethod: row.paymentMethod || "Nicht angegeben",
+      store: row.store || "",
       categoryId,
       labelId,
+      contractId,
       description: row.description || "Import",
       scope: "PRIVATE" as const
     };
 
     if (id) {
-      const existing = await db.expense.findFirst({
-        where: { id, familyId, ownerUserId: userId }
+      const existing = await db.expense.findUnique({
+        where: { id },
+        select: { familyId: true, ownerUserId: true }
       });
       if (existing) {
+        if (existing.familyId !== familyId || existing.ownerUserId !== userId) {
+          throw new Error(`Die importierte Ausgabe mit der ID ${id} gehört nicht zu deinem Konto und kann nicht importiert werden.`);
+        }
         await db.expense.update({ where: { id }, data });
       } else {
         await db.expense.create({ data: { id, ...data } });
@@ -168,18 +220,6 @@ async function importExpenseRows(familyId: string, userId: string, rows: Expense
   }
 }
 
-export async function importExpensesFromUploadedCsv(formData: FormData) {
-  const session = await requireSession();
-  const file = formData.get("csvFile");
-  if (!(file instanceof File) || file.size === 0) {
-    throw new Error("Bitte eine CSV-Datei auswählen.");
-  }
-
-  await importExpenseRows(session.family.id, session.user.id, parseExpenseCsv(await file.text()));
-  revalidatePath("/ausgaben");
-  revalidatePath("/dashboard");
-}
-
 export async function importExpensesFromUploadedXlsx(formData: FormData) {
   const session = await requireSession();
   const file = formData.get("xlsxFile");
@@ -187,15 +227,30 @@ export async function importExpensesFromUploadedXlsx(formData: FormData) {
     throw new Error("Bitte eine XLSX-Datei auswählen.");
   }
 
-  await importExpenseRows(session.family.id, session.user.id, await parseExpenseWorkbook(await file.arrayBuffer(), file.name));
+  const rows = await parseExpenseWorkbook(await file.arrayBuffer(), file.name);
+  await importExpenseRows(session.family.id, session.user.id, rows);
   revalidatePath("/ausgaben");
   revalidatePath("/dashboard");
+  redirect(`/ausgaben?year=${primaryImportedYear(rows)}`);
+}
+
+export async function importExpensesFromSynologyExcel(formData: FormData) {
+  const session = await requireSession();
+  const year = exportYearFromFormData(formData);
+  const excelPath = expenseExcelPathForUser(session.user.name, year);
+  const fileBuffer = await readFile(excelPath);
+  const rows = await parseExpenseWorkbook(toArrayBuffer(fileBuffer), excelPath);
+  await importExpenseRows(session.family.id, session.user.id, rows);
+  revalidatePath("/ausgaben");
+  revalidatePath("/dashboard");
+  redirect(`/ausgaben?year=${primaryImportedYear(rows)}`);
 }
 
 export async function updateExpense(formData: FormData) {
   const session = await requireSession();
-  const categoryId = optionalText(formData, "categoryId");
-  const labelId = optionalText(formData, "labelId");
+  const categoryId = await resolveExpenseCategoryId(session.family.id, session.user.id, optionalText(formData, "categoryId"));
+  const labelId = await resolveExpenseLabelId(session.family.id, session.user.id, optionalText(formData, "labelId"));
+  const contractId = await resolveVisibleContractId(session.family.id, session.user.id, optionalText(formData, "contractId"));
 
   const updated = await db.expense.updateMany({
     where: {
@@ -205,12 +260,14 @@ export async function updateExpense(formData: FormData) {
     },
     data: {
       kind: enumValue(formData, "kind", ["EXPENSE", "INCOME"] as const, "EXPENSE"),
-      amountCents: parseEuroToCents(formData.get("amount")),
+      amountCents: parseEuroInputToCents(formData.get("amount")),
       currency: "EUR",
-      date: new Date(requiredText(formData, "date")),
+      date: parseRequiredDateInput(formData.get("date")),
       paymentMethod: paymentMethodValue(formData),
+      store: optionalText(formData, "store") ?? "",
       categoryId: categoryId || null,
       labelId: labelId || null,
+      contractId,
       description: requiredText(formData, "description"),
       scope: "PRIVATE"
     }
@@ -230,14 +287,20 @@ export async function updateExpense(formData: FormData) {
   revalidatePath("/dashboard");
 }
 
-export async function exportExpensesToCsv() {
+export async function exportExpensesToSynologyExcel(formData: FormData) {
   const session = await requireSession();
-  const csvPath = process.env.EXPENSE_CSV_PATH;
-  if (!csvPath) throw new Error("EXPENSE_CSV_PATH ist nicht gesetzt.");
+  const year = exportYearFromFormData(formData);
+  const excelPath = expenseExcelPathForUser(session.user.name, year);
+  const from = new Date(Date.UTC(year, 0, 1));
+  const to = new Date(Date.UTC(year + 1, 0, 1));
 
   const expenses = await db.expense.findMany({
-    where: { familyId: session.family.id, ownerUserId: session.user.id },
-    include: { category: true, label: true },
+    where: {
+      familyId: session.family.id,
+      ownerUserId: session.user.id,
+      date: { gte: from, lt: to }
+    },
+    include: { category: true, label: true, contract: true },
     orderBy: { date: "desc" }
   });
   const rows = [
@@ -248,14 +311,18 @@ export async function exportExpensesToCsv() {
       currency: expense.currency,
       date: expense.date,
       paymentMethod: expense.paymentMethod,
+      store: expense.store,
       categoryName: expense.category?.name ?? "",
       labelName: expense.label?.name ?? "",
+      contractId: expense.contractId ?? "",
+      contractProvider: expense.contract?.provider ?? "",
+      contractType: expense.contract?.contractType ?? "",
       description: expense.description
     }))
   ];
 
-  await mkdir(dirname(csvPath), { recursive: true });
-  await writeFile(csvPath, stringifyExpenseCsv(rows), "utf8");
+  await mkdir(dirname(excelPath), { recursive: true });
+  await writeFile(excelPath, Buffer.from(await buildExpenseWorkbook(rows, year)));
   revalidatePath("/ausgaben");
 }
 
@@ -279,7 +346,7 @@ export async function createCategory(formData: FormData) {
       name,
       color: chooseCategoryColor(name, existingCategories, submittedColor),
       icon: optionalText(formData, "icon") ?? "tag",
-      monthlyBudgetCents: parseOptionalEuroToCents(formData.get("monthlyBudget")),
+      monthlyBudgetCents: parseOptionalEuroInputToCents(formData.get("monthlyBudget")),
       scope: type === "EXPENSE" ? "PRIVATE" : scopeValue(formData)
     }
   });
@@ -302,7 +369,7 @@ export async function updateCategory(formData: FormData) {
     data: {
       name,
       color,
-      monthlyBudgetCents: parseOptionalEuroToCents(formData.get("monthlyBudget")),
+      monthlyBudgetCents: parseOptionalEuroInputToCents(formData.get("monthlyBudget")),
       scope: scopeValue(formData)
     }
   });
@@ -315,30 +382,74 @@ export async function deleteExpense(formData: FormData) {
   const session = await requireSession();
   const id = requiredText(formData, "id");
   await db.expense.deleteMany({
-    where: {
-      id,
-      familyId: session.family.id,
-      ...(session.role === "ADMIN" ? {} : { ownerUserId: session.user.id })
-    }
+    where: ownedExpenseWhere(session.family.id, session.user.id, id)
   });
   revalidatePath("/ausgaben");
 }
 
+export async function mergeExpenseCategories(formData: FormData) {
+  const session = await requireSession();
+  const sourceCategoryId = requiredText(formData, "sourceCategoryId");
+  const targetCategoryId = requiredText(formData, "targetCategoryId");
+  if (sourceCategoryId === targetCategoryId) throw new Error("Bitte zwei unterschiedliche Kategorien auswählen.");
+
+  const [sourceCategory, targetCategory] = await Promise.all([
+    db.category.findFirst({
+      where: {
+        id: sourceCategoryId,
+        familyId: session.family.id,
+        type: "EXPENSE",
+        ...scopeWhereForCategoryColor(session.user.id)
+      },
+      select: { id: true, ownerUserId: true }
+    }),
+    db.category.findFirst({
+      where: {
+        id: targetCategoryId,
+        familyId: session.family.id,
+        type: "EXPENSE",
+        ...scopeWhereForCategoryColor(session.user.id)
+      },
+      select: { id: true }
+    })
+  ]);
+  if (!sourceCategory || !targetCategory) throw new Error("Die ausgewählten Kategorien sind nicht verfügbar.");
+
+  await db.expense.updateMany({
+    where: {
+      familyId: session.family.id,
+      ownerUserId: session.user.id,
+      categoryId: sourceCategory.id
+    },
+    data: { categoryId: targetCategory.id }
+  });
+
+  if (sourceCategory.ownerUserId === session.user.id) {
+    const remainingUses = await db.expense.count({ where: { categoryId: sourceCategory.id } });
+    if (remainingUses === 0) {
+      await db.category.delete({ where: { id: sourceCategory.id } });
+    }
+  }
+
+  revalidatePath("/ausgaben");
+  revalidatePath("/dashboard");
+}
+
 export async function createTask(formData: FormData) {
   const session = await requireSession();
-  const assignedToUserId = optionalText(formData, "assignedToUserId");
+  const assignedToUserId = await resolveTaskAssigneeId(session.family.id, optionalText(formData, "assignedToUserId"));
   const dueDate = optionalText(formData, "dueDate");
 
   await db.task.create({
     data: {
       familyId: session.family.id,
       ownerUserId: session.user.id,
-      assignedToUserId: assignedToUserId || null,
+      assignedToUserId,
       title: requiredText(formData, "title"),
       description: optionalText(formData, "description"),
       status: "OPEN",
       priority: enumValue(formData, "priority", ["LOW", "MEDIUM", "HIGH", "URGENT"] as const, "MEDIUM"),
-      dueDate: dueDate ? new Date(dueDate) : null,
+      dueDate: parseOptionalDateInput(dueDate),
       scope: scopeValue(formData)
     }
   });
@@ -363,7 +474,7 @@ export async function updateTaskStatus(formData: FormData) {
 
 export async function updateTask(formData: FormData) {
   const session = await requireSession();
-  const assignedToUserId = optionalText(formData, "assignedToUserId");
+  const assignedToUserId = await resolveTaskAssigneeId(session.family.id, optionalText(formData, "assignedToUserId"));
   const dueDate = optionalText(formData, "dueDate");
   const status = formData.has("status")
     ? enumValue(formData, "status", ["OPEN", "IN_PROGRESS", "DONE", "ARCHIVED"] as const, "OPEN")
@@ -376,12 +487,12 @@ export async function updateTask(formData: FormData) {
       OR: [{ ownerUserId: session.user.id }, { assignedToUserId: session.user.id }]
     },
     data: {
-      assignedToUserId: assignedToUserId || null,
+      assignedToUserId,
       title: requiredText(formData, "title"),
       description: optionalText(formData, "description"),
       ...(status ? { status } : {}),
       priority: enumValue(formData, "priority", ["LOW", "MEDIUM", "HIGH", "URGENT"] as const, "MEDIUM"),
-      dueDate: dueDate ? new Date(dueDate) : null,
+      dueDate: parseOptionalDateInput(dueDate),
       scope: scopeValue(formData)
     }
   });
@@ -393,8 +504,15 @@ export async function updateTask(formData: FormData) {
 export async function createContract(formData: FormData) {
   const session = await requireSession();
   const endDate = optionalText(formData, "endDate");
-  const noticeDays = optionalNumber(formData, "cancellationNoticeDays");
-  const nextCancellationDate = calculateCancellationDate(endDate, noticeDays);
+  const noticeDays = parseOptionalIntegerInput(formData.get("cancellationNoticeDays"), { min: 0, max: 3650 });
+  const autoRenewal = formData.get("autoRenewal") === "on";
+  const cancellation = resolveContractCancellationSchedule({
+    annualDeadline: optionalText(formData, "cancellationDeadline"),
+    endDate,
+    noticeDays,
+    autoRenewal,
+    renewalInterval: renewalIntervalValue(formData)
+  });
 
   const contract = await db.contract.create({
     data: {
@@ -403,13 +521,18 @@ export async function createContract(formData: FormData) {
       provider: requiredText(formData, "provider"),
       contractType: requiredText(formData, "contractType"),
       description: optionalText(formData, "description"),
-      costCents: parseEuroToCents(formData.get("cost")),
+      costCents: parseEuroInputToCents(formData.get("cost")),
       currency: "EUR",
       billingInterval: enumValue(formData, "billingInterval", ["MONTHLY", "YEARLY", "QUARTERLY", "ONCE", "OTHER"] as const, "MONTHLY"),
-      startDate: new Date(requiredText(formData, "startDate")),
-      endDate: endDate ? new Date(endDate) : null,
+      startDate: parseRequiredDateInput(formData.get("startDate")),
+      endDate: parseOptionalDateInput(endDate),
       cancellationNoticeDays: noticeDays,
-      nextCancellationDate,
+      cancellationDeadlineMonth: cancellation.deadlineMonth,
+      cancellationDeadlineDay: cancellation.deadlineDay,
+      autoRenewal,
+      renewalInterval: renewalIntervalValue(formData),
+      renewalAnchorDay: cancellation.renewalAnchorDay,
+      nextCancellationDate: cancellation.nextDate,
       status: enumValue(formData, "status", ["ACTIVE", "CANCELLED", "EXPIRED", "DRAFT"] as const, "ACTIVE"),
       scope: scopeValue(formData)
     }
@@ -429,8 +552,16 @@ export async function createContract(formData: FormData) {
 export async function updateContract(formData: FormData) {
   const session = await requireSession();
   const endDate = optionalText(formData, "endDate");
-  const noticeDays = optionalNumber(formData, "cancellationNoticeDays");
-  const nextCancellationDate = calculateCancellationDate(endDate, noticeDays);
+  const noticeDays = parseOptionalIntegerInput(formData.get("cancellationNoticeDays"), { min: 0, max: 3650 });
+  const autoRenewal = formData.get("autoRenewal") === "on";
+  const cancellation = resolveContractCancellationSchedule({
+    annualDeadline: optionalText(formData, "cancellationDeadline"),
+    endDate,
+    noticeDays,
+    autoRenewal,
+    renewalInterval: renewalIntervalValue(formData),
+    renewalAnchorDay: parseOptionalIntegerInput(formData.get("renewalAnchorDay"), { min: 1, max: 31 })
+  });
 
   const updated = await db.contract.updateMany({
     where: {
@@ -442,13 +573,18 @@ export async function updateContract(formData: FormData) {
       provider: requiredText(formData, "provider"),
       contractType: requiredText(formData, "contractType"),
       description: optionalText(formData, "description"),
-      costCents: parseEuroToCents(formData.get("cost")),
+      costCents: parseEuroInputToCents(formData.get("cost")),
       currency: "EUR",
       billingInterval: enumValue(formData, "billingInterval", ["MONTHLY", "YEARLY", "QUARTERLY", "ONCE", "OTHER"] as const, "MONTHLY"),
-      startDate: new Date(requiredText(formData, "startDate")),
-      endDate: endDate ? new Date(endDate) : null,
+      startDate: parseRequiredDateInput(formData.get("startDate")),
+      endDate: parseOptionalDateInput(endDate),
       cancellationNoticeDays: noticeDays,
-      nextCancellationDate,
+      cancellationDeadlineMonth: cancellation.deadlineMonth,
+      cancellationDeadlineDay: cancellation.deadlineDay,
+      autoRenewal,
+      renewalInterval: renewalIntervalValue(formData),
+      renewalAnchorDay: cancellation.renewalAnchorDay,
+      nextCancellationDate: cancellation.nextDate,
       status: enumValue(formData, "status", ["ACTIVE", "CANCELLED", "EXPIRED", "DRAFT"] as const, "ACTIVE"),
       scope: scopeValue(formData)
     }
@@ -474,13 +610,15 @@ export async function createDocumentReference(formData: FormData) {
   if (!url.startsWith("https://")) {
     throw new Error("Dokumentverweise müssen als HTTPS-Link gespeichert werden.");
   }
+  const linkedEntityType = enumValue(formData, "linkedEntityType", ["EXPENSE", "TASK", "CONTRACT", "GENERAL"] as const, "GENERAL");
+  const linkedEntityId = await resolveDocumentLinkedEntityId(session.family.id, session.user.id, linkedEntityType, optionalText(formData, "linkedEntityId"));
 
   await db.documentReference.create({
     data: {
       familyId: session.family.id,
       ownerUserId: session.user.id,
-      linkedEntityType: enumValue(formData, "linkedEntityType", ["EXPENSE", "TASK", "CONTRACT", "GENERAL"] as const, "GENERAL"),
-      linkedEntityId: optionalText(formData, "linkedEntityId") || null,
+      linkedEntityType,
+      linkedEntityId,
       title: requiredText(formData, "title"),
       referenceType: enumValue(formData, "referenceType", ["SYNOLOGY_HTTPS", "WEBDAV_HTTPS", "EXTERNAL_URL"] as const, "EXTERNAL_URL"),
       url,
@@ -498,6 +636,8 @@ export async function updateDocumentReference(formData: FormData) {
   if (!url.startsWith("https://")) {
     throw new Error("Dokumentverweise müssen als HTTPS-Link gespeichert werden.");
   }
+  const linkedEntityType = enumValue(formData, "linkedEntityType", ["EXPENSE", "TASK", "CONTRACT", "GENERAL"] as const, "GENERAL");
+  const linkedEntityId = await resolveDocumentLinkedEntityId(session.family.id, session.user.id, linkedEntityType, optionalText(formData, "linkedEntityId"));
 
   await db.documentReference.updateMany({
     where: {
@@ -506,8 +646,8 @@ export async function updateDocumentReference(formData: FormData) {
       ...(session.role === "ADMIN" ? {} : { ownerUserId: session.user.id })
     },
     data: {
-      linkedEntityType: enumValue(formData, "linkedEntityType", ["EXPENSE", "TASK", "CONTRACT", "GENERAL"] as const, "GENERAL"),
-      linkedEntityId: optionalText(formData, "linkedEntityId") || null,
+      linkedEntityType,
+      linkedEntityId,
       title: requiredText(formData, "title"),
       referenceType: "EXTERNAL_URL",
       url,
@@ -627,7 +767,8 @@ async function syncLinkedDocumentFromForm(
           id: documentId,
           familyId: data.familyId,
           linkedEntityType: data.linkedEntityType,
-          linkedEntityId: data.linkedEntityId
+          linkedEntityId: data.linkedEntityId,
+          ownerUserId: data.ownerUserId
         }
       });
     }
@@ -643,7 +784,8 @@ async function syncLinkedDocumentFromForm(
         id: documentId,
         familyId: data.familyId,
         linkedEntityType: data.linkedEntityType,
-        linkedEntityId: data.linkedEntityId
+        linkedEntityId: data.linkedEntityId,
+        ownerUserId: data.ownerUserId
       },
       data: {
         title,
@@ -676,18 +818,12 @@ function optionalText(formData: FormData, key: string) {
   return value || null;
 }
 
-function optionalNumber(formData: FormData, key: string) {
-  const value = String(formData.get(key) ?? "").trim();
-  return value ? Number(value) : null;
-}
-
-function parseOptionalEuroToCents(value: FormDataEntryValue | null) {
-  const text = String(value ?? "").trim();
-  return text ? parseEuroToCents(text) : 0;
-}
-
 function paymentMethodValue(formData: FormData) {
   return optionalText(formData, "paymentMethod") ?? "Nicht angegeben";
+}
+
+function renewalIntervalValue(formData: FormData) {
+  return enumValue(formData, "renewalInterval", ["MONTHLY", "QUARTERLY", "YEARLY"] as const, "MONTHLY");
 }
 
 function chooseCategoryColor(name: string, existingCount: number, submittedColor: string | null) {
@@ -766,6 +902,34 @@ async function findOrCreateExpenseLabel(familyId: string, ownerUserId: string, n
   return label.id;
 }
 
+function expenseExcelPathForUser(userName: string, year: number) {
+  const configuredDir = process.env.EXPENSE_EXCEL_DIR;
+  if (!configuredDir) throw new Error("EXPENSE_EXCEL_DIR ist nicht gesetzt.");
+  return join(configuredDir, `Ausgaben-${safeFilePart(userName)}-${year}.xlsx`);
+}
+
+function exportYearFromFormData(formData: FormData) {
+  const year = Number(formData.get("year"));
+  if (!Number.isInteger(year) || year < 1900 || year > 2100) {
+    throw new Error("Bitte ein gültiges Exportjahr auswählen.");
+  }
+  return year;
+}
+
+function primaryImportedYear(rows: ExpenseFormatRow[]) {
+  const counts = new Map<number, number>();
+  for (const row of rows) {
+    const year = row.date.getFullYear();
+    counts.set(year, (counts.get(year) ?? 0) + 1);
+  }
+
+  return [...counts.entries()].sort((a, b) => b[1] - a[1] || b[0] - a[0])[0]?.[0] ?? new Date().getFullYear();
+}
+
+function toArrayBuffer(buffer: Buffer) {
+  return buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength) as ArrayBuffer;
+}
+
 function scopeValue(formData: FormData) {
   return formData.get("scope") === "PRIVATE" ? "PRIVATE" : "FAMILY";
 }
@@ -775,9 +939,31 @@ function enumValue<T extends string>(formData: FormData, key: string, allowed: r
   return allowed.includes(value) ? value : fallback;
 }
 
-function calculateCancellationDate(endDate: string | null, noticeDays: number | null) {
-  if (!endDate || !noticeDays) return null;
-  const date = new Date(endDate);
-  date.setDate(date.getDate() - noticeDays);
-  return date;
+function normalizeLoginName(name: string) {
+  return name.trim().toLocaleLowerCase("de-DE");
+}
+
+async function recordLoginFailure(normalizedName: string) {
+  const now = new Date();
+  const existing = await db.loginAttempt.findUnique({ where: { normalizedName } });
+  const previousFailures = existing?.lockedUntil && existing.lockedUntil <= now ? 0 : existing?.failedCount ?? 0;
+  const failedCount = previousFailures + 1;
+  const lockedUntil = failedCount >= MAX_LOGIN_FAILURES
+    ? new Date(now.getTime() + LOGIN_LOCK_MINUTES * 60_000)
+    : null;
+
+  await db.loginAttempt.upsert({
+    where: { normalizedName },
+    create: {
+      normalizedName,
+      failedCount,
+      lockedUntil,
+      lastFailedAt: now
+    },
+    update: {
+      failedCount,
+      lockedUntil,
+      lastFailedAt: now
+    }
+  });
 }

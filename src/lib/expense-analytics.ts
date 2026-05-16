@@ -48,7 +48,7 @@ export function buildCategoryRows(entries: AnalyticsExpense[], categories: Analy
       color: row.color,
       budget,
       remaining: budget - row.amount,
-      budgetUsage: budget > 0 ? Math.min(100, (row.amount / budget) * 100) : 0,
+      budgetUsage: budget > 0 ? Math.min(100, (row.amount / budget) * 100) : row.amount > 0 ? 100 : 0,
       percent: totalSpending > 0 ? (row.amount / totalSpending) * 100 : 0
     };
   }).sort((a, b) => b.amount - a.amount);
@@ -67,7 +67,7 @@ export function buildLabelRows(entries: AnalyticsExpense[], labels: AnalyticsLab
     name,
     ...row,
     remaining: row.budget - row.amount,
-    budgetUsage: row.budget > 0 ? Math.min(100, (row.amount / row.budget) * 100) : 0
+    budgetUsage: row.budget > 0 ? Math.min(100, (row.amount / row.budget) * 100) : row.amount > 0 ? 100 : 0
   })).filter((row) => row.amount > 0 || row.budget > 0).sort((a, b) => b.amount - a.amount);
 }
 

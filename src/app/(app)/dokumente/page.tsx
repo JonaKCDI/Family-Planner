@@ -26,7 +26,7 @@ export default async function DocumentsPage({ searchParams }: DocumentsPageProps
 
   return (
     <>
-      <PageHeader title="Dokumente" description="Drive-Links und andere HTTPS-Verweise. Dateien bleiben außerhalb der App." />
+      <PageHeader title="Dokumente" />
       <form className="search-bar">
         <label>
           <span>Dokumente durchsuchen</span>

@@ -20,7 +20,8 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
       <section className="auth-card">
         <h1>Anmelden</h1>
         <p className="muted">Melde dich mit deinem Familien-App-Namen und Passwort an.</p>
-        {params.error ? <p className="badge">Name oder Passwort stimmt nicht.</p> : null}
+        {params.error === "locked" ? <p className="badge">Zu viele Fehlversuche. Bitte warte 15 Minuten.</p> : null}
+        {params.error && params.error !== "locked" ? <p className="badge">Name oder Passwort stimmt nicht.</p> : null}
         <form action={login} className="form">
           <label>
             Name

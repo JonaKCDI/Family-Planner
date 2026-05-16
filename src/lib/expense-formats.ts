@@ -1,5 +1,4 @@
 import ExcelJS from "exceljs";
-import { parseEuroToCents } from "@/lib/format";
 
 export type ExpenseFormatRow = {
   id?: string;
@@ -8,8 +7,12 @@ export type ExpenseFormatRow = {
   currency: string;
   date: Date;
   paymentMethod: string;
+  store: string;
   categoryName: string;
   labelName: string;
+  contractId?: string;
+  contractProvider?: string;
+  contractType?: string;
   description: string;
 };
 
@@ -17,7 +20,24 @@ export type ExpenseExportRow = ExpenseFormatRow & {
   id: string;
 };
 
-const csvHeader = ["id", "kind", "amountCents", "currency", "date", "paymentMethod", "category", "label", "description"];
+const dataSheetName = "Daten";
+const dataSheetHeader = [
+  "id",
+  "art",
+  "betragCents",
+  "waehrung",
+  "datum",
+  "zahlungsart",
+  "laden",
+  "kategorie",
+  "label",
+  "vertragId",
+  "vertragAnbieter",
+  "vertragArt",
+  "beschreibung"
+];
+const dataRequiredFields = ["kind", "amountCents", "currency", "date", "category", "label", "description"] as const;
+const dataHeaderScanLimit = 20;
 const monthSheets = [
   { name: "Januar", month: 0 },
   { name: "Februar", month: 1 },
@@ -33,53 +53,12 @@ const monthSheets = [
   { name: "Dezember", month: 11 }
 ] as const;
 
-export function parseExpenseCsv(content: string): ExpenseFormatRow[] {
-  const rows = normalizeWrappedCsvRows(parseCsv(content));
-  const header = rows.shift()?.map(normalizeCsvHeader) ?? [];
-  const indexes = csvColumnIndexes(header);
-  const required = ["id", "kind", "amountCents", "currency", "date", "category", "label", "description"] as const;
-  const missing = required.filter((field) => indexes[field] < 0);
-  if (missing.length > 0) {
-    throw new Error(`CSV braucht die Spalten: ${required.join(", ")}. Gefunden wurden: ${header.join(", ") || "keine Kopfzeile"}`);
-  }
-
-  return rows.flatMap((row) => {
-    if (row.length === 0 || row.every((cell) => !cell.trim())) return [];
-    return [{
-      id: row[indexes.id]?.trim() || undefined,
-      kind: normalizeTransactionKind(row[indexes.kind]),
-      amountCents: parseCsvAmountCents(row[indexes.amountCents]),
-      currency: row[indexes.currency]?.trim() || "EUR",
-      date: new Date(row[indexes.date] ?? new Date()),
-      paymentMethod: row[indexes.paymentMethod]?.trim() || "Nicht angegeben",
-      categoryName: row[indexes.category]?.trim() ?? "",
-      labelName: row[indexes.label]?.trim() ?? "",
-      description: row[indexes.description]?.trim() || "CSV Import"
-    }];
-  });
-}
-
-export function stringifyExpenseCsv(expenses: ExpenseExportRow[]) {
-  const rows = [
-    csvHeader,
-    ...expenses.map((expense) => [
-      expense.id,
-      expense.kind,
-      String(expense.amountCents),
-      expense.currency,
-      toIsoDate(expense.date),
-      expense.paymentMethod,
-      expense.categoryName,
-      expense.labelName,
-      expense.description
-    ])
-  ];
-  return stringifyCsv(rows);
-}
-
 export async function parseExpenseWorkbook(buffer: ArrayBuffer, fileName = "Ausgaben_2026.xlsx"): Promise<ExpenseFormatRow[]> {
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.load(buffer);
+  const dataSheet = workbook.getWorksheet(dataSheetName);
+  if (dataSheet) return parseDataSheet(dataSheet);
+
   const workbookYear = getWorkbookYear(fileName) ?? new Date().getFullYear();
   const rows: ExpenseFormatRow[] = [];
 
@@ -106,9 +85,10 @@ export async function parseExpenseWorkbook(buffer: ArrayBuffer, fileName = "Ausg
         currency: "EUR",
         date: new Date(Date.UTC(workbookYear, sheetInfo.month, day)),
         paymentMethod,
+        store,
         categoryName,
         labelName: label,
-        description: [name, store].filter(Boolean).join(" · ") || categoryName || "Excel Import"
+        description: name || categoryName || "Excel Import"
       });
     });
   }
@@ -121,6 +101,43 @@ export async function buildExpenseWorkbook(expenses: ExpenseExportRow[], year: n
   workbook.creator = "Family App";
   workbook.created = new Date();
   const categories = [...new Set(expenses.map((expense) => expense.categoryName).filter(Boolean))].sort((a, b) => a.localeCompare(b, "de"));
+
+  const dataSheet = workbook.addWorksheet(dataSheetName);
+  dataSheet.columns = [
+    { key: "id", width: 28 },
+    { key: "kind", width: 12 },
+    { key: "amountCents", width: 14 },
+    { key: "currency", width: 10 },
+    { key: "date", width: 13 },
+    { key: "paymentMethod", width: 16 },
+    { key: "store", width: 20 },
+    { key: "categoryName", width: 18 },
+    { key: "labelName", width: 18 },
+    { key: "contractId", width: 28 },
+    { key: "contractProvider", width: 22 },
+    { key: "contractType", width: 18 },
+    { key: "description", width: 32 }
+  ];
+  dataSheet.addRow(dataSheetHeader);
+  for (const expense of [...expenses].sort((a, b) => b.date.getTime() - a.date.getTime())) {
+    dataSheet.addRow([
+      expense.id,
+      expense.kind,
+      expense.amountCents,
+      expense.currency,
+      toIsoDate(expense.date),
+      expense.paymentMethod,
+      expense.store,
+      expense.categoryName,
+      expense.labelName,
+      expense.contractId ?? "",
+      expense.contractProvider ?? "",
+      expense.contractType ?? "",
+      expense.description
+    ]);
+  }
+  dataSheet.getRow(1).font = { bold: true };
+  dataSheet.views = [{ state: "frozen", ySplit: 1 }];
 
   for (const sheetInfo of monthSheets) {
     const worksheet = workbook.addWorksheet(sheetInfo.name);
@@ -157,6 +174,7 @@ export async function buildExpenseWorkbook(expenses: ExpenseExportRow[], year: n
       worksheet.getCell(rowNumber, 3).value = expense.date;
       worksheet.getCell(rowNumber, 4).value = expense.categoryName;
       worksheet.getCell(rowNumber, 5).value = expense.description;
+      worksheet.getCell(rowNumber, 6).value = expense.store || undefined;
       worksheet.getCell(rowNumber, 7).value = signedAmount;
       worksheet.getCell(rowNumber, 8).value = expense.paymentMethod === "Nicht angegeben" ? undefined : expense.paymentMethod;
       worksheet.getCell(rowNumber, 3).numFmt = "dd.mm.yyyy";
@@ -191,60 +209,7 @@ export async function buildExpenseWorkbook(expenses: ExpenseExportRow[], year: n
   return workbook.xlsx.writeBuffer();
 }
 
-function parseCsv(content: string) {
-  const delimiter = detectCsvDelimiter(content);
-  const rows: string[][] = [];
-  let row: string[] = [];
-  let cell = "";
-  let quoted = false;
-
-  for (let index = 0; index < content.length; index += 1) {
-    const char = content[index];
-    const next = content[index + 1];
-    if (char === "\"" && quoted && next === "\"") {
-      cell += "\"";
-      index += 1;
-    } else if (char === "\"") {
-      quoted = !quoted;
-    } else if (char === delimiter && !quoted) {
-      row.push(cell);
-      cell = "";
-    } else if ((char === "\n" || char === "\r") && !quoted) {
-      if (char === "\r" && next === "\n") index += 1;
-      row.push(cell);
-      rows.push(row);
-      row = [];
-      cell = "";
-    } else {
-      cell += char;
-    }
-  }
-
-  if (cell || row.length > 0) {
-    row.push(cell);
-    rows.push(row);
-  }
-  return rows;
-}
-
-function normalizeWrappedCsvRows(rows: string[][]) {
-  if (!rows[0] || rows[0].length !== 1 || !rows[0][0].includes(",")) return rows;
-  return rows.map((row) => {
-    if (row.length !== 1) return row;
-    const reparsed = parseCsv(row[0]);
-    return reparsed[0] ?? row;
-  });
-}
-
-function detectCsvDelimiter(content: string) {
-  const firstLine = content.split(/\r?\n/, 1)[0] ?? "";
-  const candidates = [",", ";", "\t"];
-  return candidates
-    .map((delimiter) => ({ delimiter, count: firstLine.split(delimiter).length }))
-    .sort((a, b) => b.count - a.count)[0]?.delimiter ?? ",";
-}
-
-function normalizeCsvHeader(value: string) {
+function normalizeWorkbookHeader(value: string) {
   return value
     .replace(/^\uFEFF/, "")
     .trim()
@@ -252,41 +217,87 @@ function normalizeCsvHeader(value: string) {
     .toLowerCase();
 }
 
-function csvColumnIndexes(header: string[]) {
+function parseDataSheet(worksheet: ExcelJS.Worksheet): ExpenseFormatRow[] {
+  const header = findDataSheetHeader(worksheet);
+  const missing = dataRequiredFields.filter((field) => header.indexes[field] < 0);
+  if (missing.length > 0) {
+    throw new Error(`Excel-Datenblatt braucht die Spalten: ${dataRequiredFields.join(", ")}.`);
+  }
+
+  const rows: ExpenseFormatRow[] = [];
+  worksheet.eachRow((row, rowNumber) => {
+    if (rowNumber <= header.rowNumber) return;
+    const date = cellDate(row.getCell(header.indexes.date + 1));
+    const amountCents = cellInteger(row.getCell(header.indexes.amountCents + 1));
+    if (!date || amountCents === null) return;
+    rows.push({
+      id: header.indexes.id >= 0 ? cellText(row.getCell(header.indexes.id + 1)) || undefined : undefined,
+      kind: normalizeTransactionKind(cellText(row.getCell(header.indexes.kind + 1))),
+      amountCents: Math.abs(amountCents),
+      currency: cellText(row.getCell(header.indexes.currency + 1)) || "EUR",
+      date,
+      paymentMethod: header.indexes.paymentMethod >= 0 ? cellText(row.getCell(header.indexes.paymentMethod + 1)) || "Nicht angegeben" : "Nicht angegeben",
+      store: header.indexes.store >= 0 ? cellText(row.getCell(header.indexes.store + 1)) : "",
+      categoryName: cellText(row.getCell(header.indexes.category + 1)),
+      labelName: cellText(row.getCell(header.indexes.label + 1)),
+      contractId: header.indexes.contractId >= 0 ? cellText(row.getCell(header.indexes.contractId + 1)) || undefined : undefined,
+      contractProvider: header.indexes.contractProvider >= 0 ? cellText(row.getCell(header.indexes.contractProvider + 1)) || undefined : undefined,
+      contractType: header.indexes.contractType >= 0 ? cellText(row.getCell(header.indexes.contractType + 1)) || undefined : undefined,
+      description: cellText(row.getCell(header.indexes.description + 1)) || "Excel Import"
+    });
+  });
+  return rows;
+}
+
+function findDataSheetHeader(worksheet: ExcelJS.Worksheet) {
+  const maxRow = Math.min(worksheet.rowCount, dataHeaderScanLimit);
+  let bestMatch = {
+    rowNumber: 1,
+    indexes: dataColumnIndexes(rowHeaderNames(worksheet.getRow(1))),
+    matchCount: 0
+  };
+
+  for (let rowNumber = 1; rowNumber <= maxRow; rowNumber += 1) {
+    const indexes = dataColumnIndexes(rowHeaderNames(worksheet.getRow(rowNumber)));
+    const matchCount = dataRequiredFields.filter((field) => indexes[field] >= 0).length;
+    if (matchCount > bestMatch.matchCount) {
+      bestMatch = { rowNumber, indexes, matchCount };
+    }
+    if (matchCount === dataRequiredFields.length) return { rowNumber, indexes };
+  }
+
+  return { rowNumber: bestMatch.rowNumber, indexes: bestMatch.indexes };
+}
+
+function rowHeaderNames(row: ExcelJS.Row) {
+  return Array.from({ length: row.cellCount }, (_, index) => normalizeWorkbookHeader(cellText(row.getCell(index + 1))));
+}
+
+function dataColumnIndexes(header: string[]) {
   return {
-    id: findCsvColumn(header, ["id", "expenseid", "expense_id", "eintragsid"]),
-    kind: findCsvColumn(header, ["kind", "type", "art", "typ"]),
-    amountCents: findCsvColumn(header, ["amountcents", "amount_cents", "betragcent", "betragcents", "betrag_cent", "betrag_cents", "amount", "betrag"]),
-    currency: findCsvColumn(header, ["currency", "währung", "waehrung"]),
-    date: findCsvColumn(header, ["date", "datum"]),
-    paymentMethod: findCsvColumn(header, ["paymentmethod", "payment_method", "bezahlart", "zahlungsart", "zahlungsmethode"]),
-    category: findCsvColumn(header, ["category", "kategorie"]),
-    label: findCsvColumn(header, ["label", "projekt", "project"]),
-    description: findCsvColumn(header, ["description", "beschreibung", "notiz", "notes"])
+    id: findWorkbookColumn(header, ["id", "expenseid", "expense_id", "eintragsid"]),
+    kind: findWorkbookColumn(header, ["kind", "type", "art", "typ"]),
+    amountCents: findWorkbookColumn(header, ["amountcents", "amount_cents", "betragcent", "betragcents", "betrag_cent", "betrag_cents"]),
+    currency: findWorkbookColumn(header, ["currency", "währung", "waehrung", "wahrung"]),
+    date: findWorkbookColumn(header, ["date", "datum"]),
+    paymentMethod: findWorkbookColumn(header, ["paymentmethod", "payment_method", "bezahlart", "zahlungsart", "zahlungsmethode"]),
+    store: findWorkbookColumn(header, ["store", "shop", "laden", "haendler", "händler", "merchant"]),
+    category: findWorkbookColumn(header, ["category", "kategorie"]),
+    label: findWorkbookColumn(header, ["label", "projekt", "project"]),
+    contractId: findWorkbookColumn(header, ["contractid", "contract_id", "vertragid", "vertrag_id"]),
+    contractProvider: findWorkbookColumn(header, ["contractprovider", "contract_provider", "vertraganbieter", "vertrag_anbieter", "anbieter"]),
+    contractType: findWorkbookColumn(header, ["contracttype", "contract_type", "vertragart", "vertragsart"]),
+    description: findWorkbookColumn(header, ["description", "beschreibung", "notiz", "notes"])
   };
 }
 
-function findCsvColumn(header: string[], names: string[]) {
+function findWorkbookColumn(header: string[], names: string[]) {
   return header.findIndex((field) => names.includes(field.replace(/[\s-]/g, "")));
 }
 
 function normalizeTransactionKind(value: string | undefined) {
   const normalized = String(value ?? "").trim().toLowerCase();
   return ["income", "einnahme", "in"].includes(normalized) ? "INCOME" as const : "EXPENSE" as const;
-}
-
-function parseCsvAmountCents(value: string | undefined) {
-  const text = String(value ?? "0").trim();
-  if (!text.includes(",") && !text.includes(".") && /^-?\d+$/.test(text)) {
-    return Math.abs(Number(text));
-  }
-  return Math.abs(parseEuroToCents(text));
-}
-
-function stringifyCsv(rows: string[][]) {
-  return rows
-    .map((row) => row.map((cell) => `"${String(cell).replace(/"/g, "\"\"")}"`).join(","))
-    .join("\n");
 }
 
 function getWorkbookYear(fileName: string) {
@@ -321,6 +332,11 @@ function cellNumber(cell: ExcelJS.Cell) {
   if (!text) return null;
   const parsed = Number(text);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function cellInteger(cell: ExcelJS.Cell) {
+  const value = cellNumber(cell);
+  return value === null ? null : Math.round(value);
 }
 
 function daysInMonth(year: number, month: number) {

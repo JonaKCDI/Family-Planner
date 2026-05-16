@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { CheckCircle2, Circle, LoaderCircle, PlayCircle } from "lucide-react";
+import { LoaderCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { updateTaskStatus } from "@/lib/actions";
 import { enqueueOfflineTaskStatus } from "@/lib/offline-sync";
@@ -14,10 +14,10 @@ type TaskStatusControlProps = {
 };
 
 const statusOptions = [
-  { value: "OPEN", label: "Offen", className: "status-open", icon: Circle },
-  { value: "IN_PROGRESS", label: "In Arbeit", className: "status-progress", icon: PlayCircle },
-  { value: "DONE", label: "Erledigt", className: "status-done", icon: CheckCircle2 }
-] satisfies { value: TaskStatus; label: string; className: string; icon: typeof Circle }[];
+  { value: "OPEN", label: "Offen" },
+  { value: "IN_PROGRESS", label: "In Arbeit" },
+  { value: "DONE", label: "Erledigt" }
+] satisfies { value: TaskStatus; label: string }[];
 
 export function TaskStatusControl({ taskId, initialStatus }: TaskStatusControlProps) {
   const router = useRouter();
@@ -41,21 +41,25 @@ export function TaskStatusControl({ taskId, initialStatus }: TaskStatusControlPr
   }
 
   return (
-    <div className="task-status-control" role="radiogroup" aria-label="Aufgabenstatus">
-      {statusOptions.map((option) => (
-        <button
-          className={`status-option ${option.className}${status === option.value ? " active" : ""}`}
-          type="button"
-          role="radio"
-          aria-checked={status === option.value}
+    <label className="task-status-control">
+      <span>Status</span>
+      <div className="status-select-wrap">
+        <select
+          className={`status-select ${statusClassName(status)}`}
+          value={status}
           disabled={isPending}
-          onClick={() => changeStatus(option.value)}
-          key={option.value}
+          onChange={(event) => changeStatus(event.currentTarget.value as TaskStatus)}
         >
-          {isPending && status === option.value ? <LoaderCircle className="spin" size={16} /> : <option.icon size={16} />}
-          <span>{option.label}</span>
-        </button>
-      ))}
-    </div>
+          {statusOptions.map((option) => <option value={option.value} key={option.value}>{option.label}</option>)}
+        </select>
+        {isPending ? <LoaderCircle className="spin status-select-spinner" size={16} /> : null}
+      </div>
+    </label>
   );
+}
+
+function statusClassName(status: TaskStatus) {
+  if (status === "IN_PROGRESS") return "status-progress";
+  if (status === "DONE" || status === "ARCHIVED") return "status-done";
+  return "status-open";
 }

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import ExcelJS from "exceljs";
-import { buildExpenseWorkbook, parseExpenseCsv, parseExpenseWorkbook, stringifyExpenseCsv, type ExpenseExportRow } from "../src/lib/expense-formats";
+import { buildExpenseWorkbook, parseExpenseWorkbook } from "../src/lib/expense-formats";
 import { parseEuroToCents } from "../src/lib/format";
 import { buildCategoryRows, buildLabelRows, buildPeriodRows, sumByKind } from "../src/lib/expense-analytics";
 
@@ -36,29 +36,6 @@ describe("expense analytics", () => {
   });
 });
 
-describe("CSV format", () => {
-  test("round-trips the canonical app CSV", () => {
-    const rows: ExpenseExportRow[] = [{
-      id: "exp_1",
-      kind: "EXPENSE",
-      amountCents: 2371,
-      currency: "EUR",
-      date: new Date("2026-02-01T00:00:00.000Z"),
-      paymentMethod: "Kreditkarte",
-      categoryName: "Urlaub",
-      labelName: "Lappland",
-      description: "Nahrung"
-    }];
-    expect(parseExpenseCsv(stringifyExpenseCsv(rows))[0]).toMatchObject({
-      id: "exp_1",
-      kind: "EXPENSE",
-      amountCents: 2371,
-      categoryName: "Urlaub",
-      labelName: "Lappland"
-    });
-  });
-});
-
 describe("Excel workbook format", () => {
   test("imports signed workbook rows and normalizes to workbook year and sheet month", async () => {
     const workbook = new ExcelJS.Workbook();
@@ -89,7 +66,8 @@ describe("Excel workbook format", () => {
       categoryName: "Urlaub",
       labelName: "Lappland",
       paymentMethod: "Kreditkarte",
-      description: "Nahrung · Lidl"
+      store: "Lidl",
+      description: "Nahrung"
     });
     expect(rows[0].date.toISOString().slice(0, 10)).toBe("2026-02-01");
     expect(rows[1]).toMatchObject({ kind: "INCOME", amountCents: 111100, paymentMethod: "Nicht angegeben" });
@@ -103,6 +81,7 @@ describe("Excel workbook format", () => {
       currency: "EUR",
       date: new Date(2026, 1, 2),
       paymentMethod: "Karte",
+      store: "Aral",
       categoryName: "Urlaub",
       labelName: "Lappland",
       description: "Tanken"
@@ -112,7 +91,85 @@ describe("Excel workbook format", () => {
     const worksheet = workbook.getWorksheet("Februar");
     expect(worksheet?.getCell("B3").value).toBe("Label");
     expect(worksheet?.getCell("D4").value).toBe("Urlaub");
+    expect(worksheet?.getCell("F4").value).toBe("Aral");
     expect(worksheet?.getCell("G4").value).toBe(-6);
     expect(workbook.getWorksheet("gesamt")).toBeTruthy();
+  });
+
+  test("round-trips the canonical Excel data sheet with contract links", async () => {
+    const buffer = await buildExpenseWorkbook([{
+      id: "exp_2",
+      kind: "EXPENSE",
+      amountCents: 1299,
+      currency: "EUR",
+      date: new Date("2026-05-12T00:00:00.000Z"),
+      paymentMethod: "Lastschrift",
+      store: "Stadtwerke Portal",
+      categoryName: "Wohnen",
+      labelName: "",
+      contractId: "contract_1",
+      contractProvider: "Stadtwerke",
+      contractType: "Strom",
+      description: "Abschlag"
+    }], 2026);
+
+    expect((await parseExpenseWorkbook(buffer, "Ausgaben-Jona.xlsx"))[0]).toMatchObject({
+      id: "exp_2",
+      kind: "EXPENSE",
+      amountCents: 1299,
+      categoryName: "Wohnen",
+      store: "Stadtwerke Portal",
+      contractId: "contract_1",
+      contractProvider: "Stadtwerke",
+      contractType: "Strom",
+      description: "Abschlag"
+    });
+  });
+
+  test("imports Daten sheet when the table starts lower and further right", async () => {
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet("Daten");
+    worksheet.getCell("B2").value = "Meine alte Ausgabenliste";
+    [
+      "beschreibung",
+      "laden",
+      "label",
+      "datum",
+      "kategorie",
+      "betragCents",
+      "art",
+      "waehrung",
+      "zahlungsart"
+    ].forEach((header, index) => {
+      worksheet.getCell(6, 4 + index).value = header;
+    });
+    [
+      "Tankstelle",
+      "Shell",
+      "Auto",
+      "2026-04-12",
+      "Mobilität",
+      4250,
+      "EXPENSE",
+      "EUR",
+      "Karte"
+    ].forEach((value, index) => {
+      worksheet.getCell(7, 4 + index).value = value;
+    });
+
+    const rows = await parseExpenseWorkbook(await workbook.xlsx.writeBuffer(), "Ausgaben_2026.xlsx");
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      kind: "EXPENSE",
+      amountCents: 4250,
+      currency: "EUR",
+      categoryName: "Mobilität",
+      labelName: "Auto",
+      paymentMethod: "Karte",
+      store: "Shell",
+      description: "Tankstelle"
+    });
+    expect(rows[0].date.toISOString().slice(0, 10)).toBe("2026-04-12");
   });
 });

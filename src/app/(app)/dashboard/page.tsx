@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { requireSession } from "@/lib/auth";
+import { getContractNextCancellationDate } from "@/lib/contracts";
 import { formatDate, formatMoney } from "@/lib/format";
+import { isImportantTask, taskRank } from "@/lib/tasks";
 import {
   getVisibleCategories,
   getVisibleContracts,
@@ -29,9 +31,11 @@ export default async function DashboardPage() {
   const openTasks = tasks
     .filter((task) => task.status === "OPEN" || task.status === "IN_PROGRESS")
     .sort((a, b) => taskRank(b) - taskRank(a));
-  const urgentTasks = openTasks.filter((task) => task.priority === "HIGH" || task.priority === "URGENT");
+  const importantTasks = openTasks.filter(isImportantTask);
   const nextContracts = contracts
-    .filter((contract) => contract.status === "ACTIVE" && contract.nextCancellationDate)
+    .filter((contract) => contract.status === "ACTIVE")
+    .map((contract) => ({ ...contract, nextCancellationDate: getContractNextCancellationDate(contract) }))
+    .filter((contract) => contract.nextCancellationDate)
     .sort((a, b) => new Date(a.nextCancellationDate ?? 0).getTime() - new Date(b.nextCancellationDate ?? 0).getTime())
     .slice(0, 3);
 
@@ -50,7 +54,7 @@ export default async function DashboardPage() {
         <DashboardStat label="Ausgaben" value={formatMoney(spending)} detail={`${monthEntries.length} Einträge`} tone="red" />
         <DashboardStat label="Saldo" value={formatMoney(saldo)} detail={saldo < 0 ? "Unter Plan prüfen" : "Aktueller Stand"} tone={saldo < 0 ? "red" : "green"} />
         <DashboardStat label="Budget" value={formatMoney(budgetLeft)} detail={`${formatMoney(budget)} geplant`} tone={budgetLeft < 0 ? "red" : "blue"} />
-        <DashboardStat label="Aufgaben" value={`${openTasks.length} offen`} detail={`${urgentTasks.length} priorisiert`} tone={urgentTasks.length > 0 ? "amber" : "blue"} />
+        <DashboardStat label="Aufgaben" value={`${openTasks.length} offen`} detail={`${importantTasks.length} wichtig`} tone={importantTasks.length > 0 ? "amber" : "blue"} />
       </section>
 
       <div className="dashboard-grid">
@@ -87,12 +91,12 @@ export default async function DashboardPage() {
             {openTasks.length === 0 ? <p className="empty-inline">Alles erledigt.</p> : null}
             {openTasks.slice(0, 4).map((task) => (
               <article className="task-item" key={task.id}>
-                <span className={`task-check ${task.priority === "URGENT" || task.priority === "HIGH" ? "urgent" : ""}`} />
+                <span className={`task-check ${isImportantTask(task) ? "urgent" : ""}`} />
                 <div>
                   <strong>{task.title}</strong>
                   <span className="item-meta">{task.assignee?.name ?? "Nicht zugewiesen"} · Fällig: {formatDate(task.dueDate)}</span>
                 </div>
-                <span className={`status-chip ${task.priority === "URGENT" || task.priority === "HIGH" ? "danger-chip" : "warning-chip"}`}>
+                <span className={`status-chip ${isImportantTask(task) ? "danger-chip" : "warning-chip"}`}>
                   {priorityLabels[task.priority]}
                 </span>
               </article>
@@ -146,10 +150,10 @@ export default async function DashboardPage() {
         </section>
       </div>
 
-      {urgentTasks.length > 0 ? (
+      {importantTasks.length > 0 ? (
         <section className="priority-strip">
-          <strong>{urgentTasks.length} priorisierte Aufgaben</strong>
-          <span>Die wichtigsten offenen Punkte sind im Cockpit sichtbar und bleiben über Aufgaben erreichbar.</span>
+          <strong>{importantTasks.length} wichtige Aufgaben</strong>
+          <span>Wichtig bedeutet: überfällig, heute fällig, dringend markiert, bald fällig oder hoch priorisiert mit naher Deadline.</span>
           <Link className="button secondary" href="/aufgaben">Aufgaben prüfen</Link>
         </section>
       ) : null}
@@ -183,13 +187,6 @@ function isSameMonth(date: Date, compare: Date) {
 
 function sumByKind(entries: Awaited<ReturnType<typeof getVisibleExpenses>>, kind: "EXPENSE" | "INCOME") {
   return entries.filter((entry) => entry.kind === kind).reduce((sum, entry) => sum + entry.amountCents, 0);
-}
-
-function taskRank(task: Awaited<ReturnType<typeof getVisibleTasks>>[number]) {
-  const priority = { LOW: 5, MEDIUM: 18, HIGH: 34, URGENT: 50 }[task.priority];
-  const status = task.status === "IN_PROGRESS" ? 100 : 50;
-  const due = task.dueDate ? Math.max(0, 40 - Math.floor((new Date(task.dueDate).getTime() - Date.now()) / 86400000)) : 0;
-  return status + priority + due;
 }
 
 function buildFinanceBars(entries: Awaited<ReturnType<typeof getVisibleExpenses>>) {

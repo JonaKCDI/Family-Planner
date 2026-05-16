@@ -1,8 +1,10 @@
 import { updateContract } from "@/lib/actions";
 import { requireSession } from "@/lib/auth";
+import { getContractNextCancellationDate, toAnnualCancellationInputValue } from "@/lib/contracts";
 import { formatDate, formatMoney, toDateInputValue } from "@/lib/format";
-import { getDocumentsForLinkedEntities, getVisibleContracts } from "@/lib/queries";
+import { getDocumentsForLinkedEntities, getVisibleContractPayments, getVisibleContracts } from "@/lib/queries";
 import { ActionModal } from "@/components/action-modal";
+import { ContractPayments } from "@/components/contract-payments";
 import { EmptyState, PageHeader, ScopeSelect } from "@/components/ui";
 
 type ContractsPageProps = {
@@ -26,13 +28,30 @@ export default async function ContractsPage({ searchParams }: ContractsPageProps
     groups[key] = [...(groups[key] ?? []), document];
     return groups;
   }, {});
+  const payments = await getVisibleContractPayments(
+    session.family.id,
+    session.user.id,
+    visibleContracts.map((contract) => contract.id)
+  );
+  const paymentsByContract = payments.reduce<Record<string, typeof payments>>((groups, payment) => {
+    const key = payment.contractId ?? "";
+    groups[key] = [...(groups[key] ?? []), payment];
+    return groups;
+  }, {});
   const activeCosts = visibleContracts
     .filter((contract) => contract.status === "ACTIVE")
     .reduce((sum, contract) => sum + contract.costCents, 0);
+  const nextCancellationByContract = Object.fromEntries(
+    visibleContracts.map((contract) => [contract.id, getContractNextCancellationDate(contract)])
+  );
+  const nextCancellationDate = visibleContracts
+    .map((contract) => nextCancellationByContract[contract.id])
+    .filter((date): date is Date => Boolean(date))
+    .sort((a, b) => a.getTime() - b.getTime())[0];
 
   return (
     <>
-      <PageHeader title="Verträge" description="Überblick über Versicherungen, Abos, Energie, Internet und Fristen." />
+      <PageHeader title="Verträge" />
       <form className="search-bar">
         <label>
           <span>Verträge durchsuchen</span>
@@ -45,7 +64,7 @@ export default async function ContractsPage({ searchParams }: ContractsPageProps
         <div className="stat"><span>Aktive Kosten</span><strong>{formatMoney(activeCosts)}</strong></div>
         <div className="stat"><span>Verträge</span><strong>{visibleContracts.length}</strong></div>
         <div className="stat"><span>Aktiv</span><strong>{visibleContracts.filter((contract) => contract.status === "ACTIVE").length}</strong></div>
-        <div className="stat"><span>Nächste Frist</span><strong>{formatDate(visibleContracts.find((contract) => contract.nextCancellationDate)?.nextCancellationDate)}</strong></div>
+        <div className="stat"><span>Nächste Kündigung</span><strong>{formatDate(nextCancellationDate)}</strong></div>
       </section>
       <section className="panel">
         <h2 className="section-title">Vertragsübersicht</h2>
@@ -54,16 +73,23 @@ export default async function ContractsPage({ searchParams }: ContractsPageProps
           {visibleContracts.map((contract) => {
             const linkedDocuments = documentsByContract[contract.id] ?? [];
             const primaryDocument = linkedDocuments[0];
+            const contractPayments = paymentsByContract[contract.id] ?? [];
+            const paymentTotal = contractPayments.reduce((sum, payment) => sum + payment.amountCents, 0);
+            const nextCancellation = nextCancellationByContract[contract.id];
             return (
-              <article className="card" key={contract.id}>
-                <div className="row">
+              <details className="card contract-card" key={contract.id} open>
+                <summary className="contract-summary">
                   <div>
-                    <strong>{contract.provider}</strong>
-                    <span className="muted">{contract.contractType} · {billingLabels[contract.billingInterval]} · {contract.owner.name}</span>
-                    <p>{formatMoney(contract.costCents, contract.currency)} · Kündigungsfrist: {formatDate(contract.nextCancellationDate)}</p>
+                    <div className="contract-title-row">
+                      <strong>{contract.provider}</strong>
+                      <span className="muted">{contract.contractType} · {billingLabels[contract.billingInterval]} · {contract.owner.name}</span>
+                    </div>
+                    <p>{formatMoney(contract.costCents, contract.currency)} · Kündigung spätestens: {formatDate(nextCancellation)}</p>
                     <div className="badge-row">
                       <span className="badge">{statusLabels[contract.status]}</span>
                       <span className="badge">{contract.scope === "FAMILY" ? "Familie" : "Privat"}</span>
+                      {contract.autoRenewal ? <span className="badge">Verlängert sich {renewalLabels[contract.renewalInterval]}</span> : null}
+                      <span className="badge">{contractPayments.length} Zahlungen · {formatMoney(paymentTotal, contract.currency)}</span>
                       {linkedDocuments.map((document) => (
                         <a className="badge link-badge" href={document.url} key={document.id} target="_blank" rel="noreferrer">
                           {document.title}
@@ -71,6 +97,8 @@ export default async function ContractsPage({ searchParams }: ContractsPageProps
                       ))}
                     </div>
                   </div>
+                </summary>
+                <div className="contract-body">
                   <ActionModal title="Vertrag bearbeiten" trigger="Bearbeiten">
                     <form action={updateContract} className="form form-grid modal-form">
                       <input type="hidden" name="id" value={contract.id} />
@@ -89,7 +117,19 @@ export default async function ContractsPage({ searchParams }: ContractsPageProps
                       </label>
                       <label>Startdatum<input name="startDate" type="date" defaultValue={toDateInputValue(contract.startDate)} required /></label>
                       <label>Ende/Laufzeit bis<input name="endDate" type="date" defaultValue={toDateInputValue(contract.endDate)} /></label>
+                      <label>Kündigung spätestens am<input name="cancellationDeadline" type="date" defaultValue={toAnnualCancellationInputValue(contract.cancellationDeadlineMonth, contract.cancellationDeadlineDay)} /></label>
                       <label>Kündigungsfrist in Tagen<input name="cancellationNoticeDays" type="number" min="0" defaultValue={contract.cancellationNoticeDays ?? ""} /></label>
+                      <input type="hidden" name="renewalAnchorDay" value={contract.renewalAnchorDay ?? ""} />
+                      <label className="checkbox-field"><input name="autoRenewal" type="checkbox" defaultChecked={contract.autoRenewal} /> Verlängert sich automatisch</label>
+                      <label>
+                        Verlängerung
+                        <select name="renewalInterval" defaultValue={contract.renewalInterval}>
+                          <option value="MONTHLY">Monatlich</option>
+                          <option value="QUARTERLY">Quartalsweise</option>
+                          <option value="YEARLY">Jährlich</option>
+                        </select>
+                      </label>
+                      <p className="muted full-span">Bei automatischer Verlängerung ist „Ende/Laufzeit bis“ der nächste Vertrags- oder Verlängerungstermin. Die App rollt die Kündigungsfrist danach automatisch weiter.</p>
                       <label>
                         Status
                         <select name="status" defaultValue={contract.status}>
@@ -110,8 +150,19 @@ export default async function ContractsPage({ searchParams }: ContractsPageProps
                       <button className="button full-span" type="submit">Änderungen speichern</button>
                     </form>
                   </ActionModal>
+                  <ContractPayments
+                    payments={contractPayments.map((payment) => ({
+                      id: payment.id,
+                      date: payment.date.toISOString(),
+                      description: payment.description,
+                      amountCents: payment.amountCents,
+                      currency: payment.currency
+                    }))}
+                    totalCents={paymentTotal}
+                    currency={contract.currency}
+                  />
                 </div>
-              </article>
+              </details>
             );
           })}
         </div>
@@ -146,6 +197,14 @@ const billingLabels = {
   QUARTERLY: "Quartalsweise",
   ONCE: "Einmalig",
   OTHER: "Sonstiges"
+};
+
+const renewalLabels = {
+  MONTHLY: "monatlich",
+  YEARLY: "jährlich",
+  QUARTERLY: "quartalsweise",
+  ONCE: "einmalig",
+  OTHER: "individuell"
 };
 
 const statusLabels = {

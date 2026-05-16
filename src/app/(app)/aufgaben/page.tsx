@@ -2,6 +2,7 @@ import { updateTask } from "@/lib/actions";
 import { requireSession } from "@/lib/auth";
 import { formatDate, toDateInputValue } from "@/lib/format";
 import { getFamilyMembers, getVisibleTasks } from "@/lib/queries";
+import { daysUntil, taskRank, taskUrgency } from "@/lib/tasks";
 import { ActionModal } from "@/components/action-modal";
 import { TaskStatusControl } from "@/components/task-status-control";
 import { EmptyState, PageHeader, ScopeSelect } from "@/components/ui";
@@ -25,7 +26,7 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
 
   return (
     <>
-      <PageHeader title="Aufgaben" description="Automatisch nach Status, Wichtigkeit und Deadline sortiert." />
+      <PageHeader title="Aufgaben" />
 
       <form className="search-bar">
         <label>
@@ -47,7 +48,6 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
         <div className="section-head">
           <div>
             <h2 className="section-title">Priorisierte Aufgaben</h2>
-            <p className="muted">In Arbeit zuerst, dann offene Aufgaben nach Dringlichkeit und Priorität.</p>
           </div>
         </div>
         <div className="task-priority-list">
@@ -120,37 +120,6 @@ function TaskCard({ task, members, completed = false }: { task: TaskLike; member
   );
 }
 
-function taskRank(task: TaskLike) {
-  const statusWeight = task.status === "IN_PROGRESS" ? 100 : task.status === "OPEN" ? 50 : -100;
-  return statusWeight + priorityWeight[task.priority] + dueDateWeight(task.dueDate);
-}
-
-function dueDateWeight(date: Date | string | null) {
-  if (!date) return 0;
-  const days = daysUntil(date);
-  if (days < 0) return 60;
-  if (days === 0) return 52;
-  if (days <= 2) return 42;
-  if (days <= 7) return 26;
-  if (days <= 14) return 14;
-  return 4;
-}
-
-function daysUntil(date: Date | string | null | undefined) {
-  if (!date) return 999;
-  const today = startOfDay(new Date());
-  const due = startOfDay(new Date(date));
-  return Math.ceil((due.getTime() - today.getTime()) / 86400000);
-}
-
-function taskUrgency(task: TaskLike) {
-  const days = daysUntil(task.dueDate);
-  if (days < 0) return { label: "Überfällig", className: "task-critical", chipClass: "danger-chip" };
-  if (days === 0 || task.priority === "URGENT") return { label: "Dringend", className: "task-critical", chipClass: "danger-chip" };
-  if (days <= 3 || task.priority === "HIGH") return { label: "Bald wichtig", className: "task-warning", chipClass: "warning-chip" };
-  return { label: "Planbar", className: "task-calm", chipClass: "calm-chip" };
-}
-
 function taskStatusTone(status: TaskLike["status"]) {
   if (status === "IN_PROGRESS") return { label: "In Arbeit", className: "status-progress" };
   if (status === "DONE" || status === "ARCHIVED") return { label: "Erledigt", className: "status-done" };
@@ -171,17 +140,6 @@ function matchesTask(task: TaskLike, query: string) {
 function normalizeSearch(value: unknown) {
   return String(value ?? "").trim().toLowerCase();
 }
-
-function startOfDay(date: Date) {
-  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
-}
-
-const priorityWeight = {
-  LOW: 5,
-  MEDIUM: 18,
-  HIGH: 34,
-  URGENT: 50
-};
 
 const priorityLabels = {
   LOW: "Niedrig",

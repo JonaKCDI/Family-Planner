@@ -15,6 +15,7 @@ export async function verifyPassword(password: string, passwordHash: string) {
 }
 
 export async function createSession(userId: string) {
+  await cleanupExpiredSessions();
   const token = randomBytes(32).toString("hex");
   const expiresAt = new Date(Date.now() + SESSION_DAYS * 24 * 60 * 60 * 1000);
 
@@ -66,6 +67,9 @@ export async function getCurrentSession() {
   });
 
   if (!session || session.expiresAt < new Date() || session.user.status !== "ACTIVE") {
+    if (session?.expiresAt && session.expiresAt < new Date()) {
+      await db.session.deleteMany({ where: { id: session.id } });
+    }
     return null;
   }
 
@@ -87,4 +91,12 @@ export async function requireSession() {
 
 function sessionCookieName() {
   return process.env.SESSION_COOKIE_NAME ?? "family_app_session";
+}
+
+export async function cleanupExpiredSessions() {
+  await db.session.deleteMany({
+    where: {
+      expiresAt: { lt: new Date() }
+    }
+  });
 }

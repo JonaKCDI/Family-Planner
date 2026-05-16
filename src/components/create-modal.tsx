@@ -11,10 +11,12 @@ import {
   createTask
 } from "@/lib/actions";
 import { enqueueOfflineExpenseCreate, enqueueOfflineTaskCreate } from "@/lib/offline-sync";
+import { ModalPortal } from "@/components/modal-portal";
 
 type CreateModalProps = {
   categories: { id: string; name: string }[];
   labels: { id: string; name: string }[];
+  contracts: { id: string; provider: string; contractType: string; status: string }[];
   members: { id: string; userId: string; user: { name: string } }[];
 };
 
@@ -34,7 +36,7 @@ const typeByPath: Record<string, CreateType> = {
   "/dokumente": "document"
 };
 
-export function CreateModal({ categories, labels, members }: CreateModalProps) {
+export function CreateModal({ categories, labels, contracts, members }: CreateModalProps) {
   const pathname = usePathname();
   const pageType = typeByPath[pathname];
   const shouldShow = pathname === "/dashboard" || Boolean(pageType);
@@ -44,6 +46,10 @@ export function CreateModal({ categories, labels, members }: CreateModalProps) {
   const [type, setType] = useState<CreateType>(defaultType);
   const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
   const selectedType = allowedTypes.some((item) => item.id === type) ? type : defaultType;
+  function openCreateModal() {
+    setType(defaultType);
+    setOpen(true);
+  }
 
   if (!shouldShow) return null;
 
@@ -54,52 +60,63 @@ export function CreateModal({ categories, labels, members }: CreateModalProps) {
         type="button"
         aria-label="Neu erstellen"
         title="Neu erstellen"
-        onClick={() => {
-          setType(defaultType);
-          setOpen(true);
-        }}
+        onClick={openCreateModal}
       >
         <Plus aria-hidden="true" size={28} strokeWidth={2.4} />
       </button>
       {open ? (
-        <div className="modal-backdrop" role="presentation">
-          <section className="create-modal" role="dialog" aria-modal="true" aria-labelledby="create-modal-title">
-            <div className="modal-head">
-              <div>
-                <span className="eyebrow">Neu erstellen</span>
-                <h2 id="create-modal-title">{createTypes.find((item) => item.id === selectedType)?.label}</h2>
+        <ModalPortal>
+          <div className="modal-backdrop" role="presentation">
+            <section className="modal-panel create-dialog" role="dialog" aria-modal="true" aria-labelledby="create-modal-title">
+              <div className="modal-head">
+                <div>
+                  <span className="eyebrow">Neu erstellen</span>
+                  <h2 id="create-modal-title">{createTypes.find((item) => item.id === selectedType)?.label}</h2>
+                </div>
+                <button className="icon-button" type="button" aria-label="Schließen" title="Schließen" onClick={() => setOpen(false)}>
+                  <X size={20} />
+                </button>
               </div>
-              <button className="icon-button" type="button" aria-label="Schließen" title="Schließen" onClick={() => setOpen(false)}>
-                <X size={20} />
-              </button>
-            </div>
-            {allowedTypes.length > 1 ? (
-              <div className="create-type-grid">
-                {allowedTypes.map((item) => (
-                  <button
-                    className={selectedType === item.id ? "create-type active" : "create-type"}
-                    type="button"
-                    onClick={() => setType(item.id)}
-                    key={item.id}
-                  >
-                    <strong><item.icon size={17} />{item.label}</strong>
-                    <span>{item.detail}</span>
-                  </button>
-                ))}
-              </div>
-            ) : null}
-            {selectedType === "expense" ? <ExpenseForm categories={categories} labels={labels} today={today} onSubmit={() => setOpen(false)} /> : null}
-            {selectedType === "task" ? <TaskForm members={members} onSubmit={() => setOpen(false)} /> : null}
-            {selectedType === "contract" ? <ContractForm today={today} onSubmit={() => setOpen(false)} /> : null}
-            {selectedType === "document" ? <DocumentForm onSubmit={() => setOpen(false)} /> : null}
-          </section>
-        </div>
+              {allowedTypes.length > 1 ? (
+                <div className="create-type-grid">
+                  {allowedTypes.map((item) => (
+                    <button
+                      className={selectedType === item.id ? "create-type active" : "create-type"}
+                      type="button"
+                      onClick={() => setType(item.id)}
+                      key={item.id}
+                    >
+                      <strong><item.icon size={17} />{item.label}</strong>
+                      <span>{item.detail}</span>
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+              {selectedType === "expense" ? <ExpenseForm categories={categories} labels={labels} contracts={contracts} today={today} onSubmit={() => setOpen(false)} /> : null}
+              {selectedType === "task" ? <TaskForm members={members} onSubmit={() => setOpen(false)} /> : null}
+              {selectedType === "contract" ? <ContractForm today={today} onSubmit={() => setOpen(false)} /> : null}
+              {selectedType === "document" ? <DocumentForm onSubmit={() => setOpen(false)} /> : null}
+            </section>
+          </div>
+        </ModalPortal>
       ) : null}
     </>
   );
 }
 
-function ExpenseForm({ categories, labels, today, onSubmit }: { categories: CreateModalProps["categories"]; labels: CreateModalProps["labels"]; today: string; onSubmit: () => void }) {
+function ExpenseForm({
+  categories,
+  labels,
+  contracts,
+  today,
+  onSubmit
+}: {
+  categories: CreateModalProps["categories"];
+  labels: CreateModalProps["labels"];
+  contracts: CreateModalProps["contracts"];
+  today: string;
+  onSubmit: () => void;
+}) {
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     if (navigator.onLine) {
       onSubmit();
@@ -116,10 +133,12 @@ function ExpenseForm({ categories, labels, today, onSubmit }: { categories: Crea
       <label>Art<select name="kind" defaultValue="EXPENSE"><option value="EXPENSE">Ausgabe</option><option value="INCOME">Einnahme</option></select></label>
       <label>Betrag in EUR<input name="amount" inputMode="decimal" placeholder="42,50" required /></label>
       <label>Datum<input name="date" type="date" defaultValue={today} required /></label>
+      <label>Beschreibung<input name="description" placeholder="Wocheneinkauf, Dienstreise, Rückerstattung ..." required /></label>
       <label>Bezahlart<input name="paymentMethod" list="payment-methods" placeholder="Karte, Bar, Überweisung ..." /></label>
+      <label>Laden<input name="store" placeholder="Rewe, Lidl, Amazon ..." /></label>
       <label>Kategorie<select name="categoryId" defaultValue=""><option value="">Keine Kategorie</option>{categories.map((category) => <option value={category.id} key={category.id}>{category.name}</option>)}</select></label>
       <label>Label / Projekt<select name="labelId" defaultValue=""><option value="">Kein Label</option>{labels.map((label) => <option value={label.id} key={label.id}>{label.name}</option>)}</select></label>
-      <label>Beschreibung<input name="description" placeholder="Wocheneinkauf, Dienstreise, Rückerstattung ..." required /></label>
+      <label>Vertrag<select name="contractId" defaultValue=""><option value="">Kein Vertrag</option>{contracts.filter((contract) => contract.status === "ACTIVE").map((contract) => <option value={contract.id} key={contract.id}>{contract.provider} · {contract.contractType}</option>)}</select></label>
       <PaymentMethods />
       <fieldset className="fieldset full-span">
         <legend>Drive-Link optional verknüpfen</legend>
@@ -165,7 +184,18 @@ function ContractForm({ today, onSubmit }: { today: string; onSubmit: () => void
       <label>Intervall<select name="billingInterval" defaultValue="MONTHLY"><option value="MONTHLY">Monatlich</option><option value="YEARLY">Jährlich</option><option value="QUARTERLY">Quartalsweise</option><option value="ONCE">Einmalig</option><option value="OTHER">Sonstiges</option></select></label>
       <label>Startdatum<input name="startDate" type="date" defaultValue={today} required /></label>
       <label>Ende/Laufzeit bis<input name="endDate" type="date" /></label>
+      <label>Kündigung spätestens am<input name="cancellationDeadline" type="date" /></label>
       <label>Kündigungsfrist in Tagen<input name="cancellationNoticeDays" type="number" min="0" /></label>
+      <label className="checkbox-field"><input name="autoRenewal" type="checkbox" /> Verlängert sich automatisch</label>
+      <label>
+        Verlängerung
+        <select name="renewalInterval" defaultValue="MONTHLY">
+          <option value="MONTHLY">Monatlich</option>
+          <option value="QUARTERLY">Quartalsweise</option>
+          <option value="YEARLY">Jährlich</option>
+        </select>
+      </label>
+      <p className="muted full-span">Bei automatisch verlängerten Verträgen ist „Ende/Laufzeit bis“ der nächste Vertrags- oder Verlängerungstermin. Die App rollt die Kündigungsfrist danach automatisch weiter.</p>
       <label>Status<select name="status" defaultValue="ACTIVE"><option value="ACTIVE">Aktiv</option><option value="DRAFT">Entwurf</option><option value="CANCELLED">Gekündigt</option><option value="EXPIRED">Ausgelaufen</option></select></label>
       <label>Sichtbarkeit<select name="scope" defaultValue="FAMILY"><option value="FAMILY">Familie</option><option value="PRIVATE">Privat</option></select></label>
       <label className="full-span">Notizen<textarea name="description" /></label>

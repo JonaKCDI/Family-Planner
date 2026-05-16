@@ -1,3 +1,5 @@
+import { parseEuroInputToCents } from "@/lib/validation";
+
 export function formatMoney(amountCents: number, currency = "EUR") {
   return new Intl.NumberFormat("de-DE", {
     style: "currency",
@@ -24,9 +26,5 @@ export function toDateInputValue(date: Date | string | null | undefined) {
 }
 
 export function parseEuroToCents(value: FormDataEntryValue | null) {
-  const normalized = String(value ?? "0")
-    .replace(/\./g, "")
-    .replace(",", ".")
-    .trim();
-  return Math.round(Number(normalized) * 100);
+  return parseEuroInputToCents(value);
 }

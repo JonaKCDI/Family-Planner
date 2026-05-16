@@ -1,11 +1,11 @@
 import type { ReactNode } from "react";
 
-export function PageHeader({ title, description }: { title: string; description: string }) {
+export function PageHeader({ title, description }: { title: string; description?: string }) {
   return (
     <div className="page-head">
       <div>
         <h1>{title}</h1>
-        <p className="muted">{description}</p>
+        {description ? <p className="muted">{description}</p> : null}
       </div>
     </div>
   );

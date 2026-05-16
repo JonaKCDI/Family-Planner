@@ -1,19 +1,22 @@
 import Link from "next/link";
-import { LogOut, UsersRound } from "lucide-react";
+import Image from "next/image";
 import { logout } from "@/lib/actions";
 import { requireSession } from "@/lib/auth";
-import { getExpenseLabels, getFamilyMembers, getVisibleCategories } from "@/lib/queries";
+import { getExpenseLabels, getFamilyMembers, getVisibleCategories, getVisibleContracts } from "@/lib/queries";
 import { CreateModal } from "@/components/create-modal";
+import { GlobalSubmitIndicator } from "@/components/global-submit-indicator";
 import { Nav } from "@/components/nav";
 import { OfflineSyncStatus } from "@/components/offline-sync-status";
+import { LogoutForm } from "@/components/logout-form";
 
 export const dynamic = "force-dynamic";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const session = await requireSession();
-  const [categories, labels, members] = await Promise.all([
+  const [categories, labels, contracts, members] = await Promise.all([
     getVisibleCategories(session.family.id, session.user.id, "EXPENSE"),
     getExpenseLabels(session.family.id, session.user.id),
+    getVisibleContracts(session.family.id, session.user.id),
     getFamilyMembers(session.family.id)
   ]);
 
@@ -22,28 +25,24 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <header className="topbar">
         <Link className="brand" href="/dashboard">
           <span className="brand-mark" aria-hidden="true">
-            <UsersRound size={21} strokeWidth={2.3} />
+            <Image src="/icon.svg" alt="" width={34} height={34} priority />
           </span>
           <span className="brand-copy">
             <strong>Familien-App</strong>
             <span>{session.family.name} · {session.user.name}</span>
           </span>
         </Link>
-        <form action={logout}>
-          <button className="button secondary button-icon" type="submit">
-            <LogOut size={17} />
-            Logout
-          </button>
-        </form>
+        <LogoutForm action={logout} />
       </header>
       <div className="app-frame">
         <Nav />
         <main className="content">
+          <GlobalSubmitIndicator />
           <OfflineSyncStatus />
           {children}
         </main>
       </div>
-      <CreateModal categories={categories} labels={labels} members={members} />
+      <CreateModal categories={categories} labels={labels} contracts={contracts} members={members} />
     </div>
   );
 }

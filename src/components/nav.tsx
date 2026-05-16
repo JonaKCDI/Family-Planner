@@ -17,10 +17,10 @@ export function Nav() {
   const pathname = usePathname();
 
   return (
-    <nav className="nav" aria-label="Hauptnavigation">
+    <nav className="app-nav" aria-label="Hauptnavigation">
       {items.map((item) => (
         <Link className={pathname.startsWith(item.href) ? "active" : ""} href={item.href} key={item.href} title={item.label}>
-          <span className="nav-icon" aria-hidden="true">
+          <span className="app-nav-icon" aria-hidden="true">
             <item.icon size={18} strokeWidth={2.2} />
           </span>
           <strong>{item.label}</strong>

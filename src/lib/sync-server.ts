@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { db } from "@/lib/db";
-import { getExpenseLabels, getFamilyMembers, getVisibleCategories, getVisibleExpenses, getVisibleTasks } from "@/lib/queries";
+import { getExpenseLabels, getFamilyMembers, getVisibleCategories, getVisibleContracts, getVisibleExpenses, getVisibleTasks } from "@/lib/queries";
+import { resolveExpenseCategoryId, resolveExpenseLabelId, resolveTaskAssigneeId, resolveVisibleContractId } from "@/lib/relations";
+import { parseIsoDateTime, parseOptionalDateInput, parseRequiredDateInput, parseSyncAmountCents } from "@/lib/validation";
 
 type SyncSession = {
   user: { id: string };
@@ -10,12 +12,14 @@ type SyncSession = {
 const expenseDataSchema = z.object({
   id: z.string().optional(),
   kind: z.enum(["EXPENSE", "INCOME"]).default("EXPENSE"),
-  amountCents: z.number().int(),
+  amountCents: z.unknown().transform((value) => parseSyncAmountCents(value)),
   currency: z.string().default("EUR"),
   date: z.string(),
   paymentMethod: z.string().default("Nicht angegeben"),
+  store: z.string().default(""),
   categoryId: z.string().nullable().optional(),
   labelId: z.string().nullable().optional(),
+  contractId: z.string().nullable().optional(),
   description: z.string().min(1)
 });
 
@@ -47,11 +51,12 @@ export const pushSchema = z.object({
 });
 
 export async function buildSyncBootstrap(session: SyncSession) {
-  const [expenses, tasks, categories, labels, members] = await Promise.all([
+  const [expenses, tasks, categories, labels, contracts, members] = await Promise.all([
     getVisibleExpenses(session.family.id, session.user.id),
     getVisibleTasks(session.family.id, session.user.id),
     getVisibleCategories(session.family.id, session.user.id, "EXPENSE"),
     getExpenseLabels(session.family.id, session.user.id),
+    getVisibleContracts(session.family.id, session.user.id),
     getFamilyMembers(session.family.id)
   ]);
 
@@ -61,6 +66,11 @@ export async function buildSyncBootstrap(session: SyncSession) {
     tasks: tasks.map(serializeTask),
     categories,
     labels,
+    contracts: contracts.map((contract) => ({
+      id: contract.id,
+      provider: contract.provider,
+      contractType: contract.contractType
+    })),
     members: members.map((member) => ({
       id: member.id,
       userId: member.userId,
@@ -70,7 +80,7 @@ export async function buildSyncBootstrap(session: SyncSession) {
 }
 
 export async function buildSyncPull(session: SyncSession, since: string | null) {
-  const sinceDate = since ? new Date(since) : new Date(0);
+  const sinceDate = since ? parseIsoDateTime(since) : new Date(0);
   const [expenses, tasks] = await Promise.all([
     db.expense.findMany({
       where: {
@@ -78,7 +88,7 @@ export async function buildSyncPull(session: SyncSession, since: string | null) 
         ownerUserId: session.user.id,
         updatedAt: { gt: sinceDate }
       },
-      include: { category: true, label: true, owner: true },
+      include: { category: true, label: true, contract: true, owner: true },
       orderBy: { updatedAt: "asc" }
     }),
     db.task.findMany({
@@ -130,39 +140,53 @@ export async function applySyncPush(session: SyncSession, input: z.infer<typeof 
 async function applyExpenseChange(session: SyncSession, change: z.infer<typeof syncChangeSchema>) {
   const id = change.entityId ?? change.localId;
   if (!id) throw new Error("Ausgaben-Sync braucht eine ID.");
+  const changedAt = parseIsoDateTime(change.changedAt);
   if (change.action === "delete") {
     const existing = await db.expense.findFirst({ where: { id, familyId: session.family.id, ownerUserId: session.user.id } });
-    if (!existing || existing.updatedAt <= new Date(change.changedAt)) {
+    if (!existing || existing.updatedAt <= changedAt) {
       await db.expense.deleteMany({ where: { id, familyId: session.family.id, ownerUserId: session.user.id } });
     }
     return { id };
   }
 
   const data = expenseDataSchema.parse(change.data);
+  const categoryId = await resolveExpenseCategoryId(session.family.id, session.user.id, data.categoryId || null);
+  const labelId = await resolveExpenseLabelId(session.family.id, session.user.id, data.labelId || null);
+  const contractId = await resolveVisibleContractId(session.family.id, session.user.id, data.contractId || null);
   const persisted = {
     familyId: session.family.id,
     ownerUserId: session.user.id,
     kind: data.kind,
     amountCents: data.amountCents,
     currency: data.currency,
-    date: new Date(data.date),
+    date: parseRequiredDateInput(data.date),
     paymentMethod: data.paymentMethod || "Nicht angegeben",
-    categoryId: data.categoryId || null,
-    labelId: data.labelId || null,
+    store: data.store || "",
+    categoryId,
+    labelId,
+    contractId,
     description: data.description,
     scope: "PRIVATE" as const
   };
 
   if (change.action === "create") {
-    return db.expense.upsert({
-      where: { id },
-      create: { id, ...persisted },
-      update: persisted
-    });
+    const existing = await db.expense.findUnique({ where: { id }, select: { familyId: true, ownerUserId: true, updatedAt: true } });
+    if (existing && (existing.familyId !== session.family.id || existing.ownerUserId !== session.user.id)) {
+      throw new Error("Diese Offline-Ausgabe darf nicht überschrieben werden.");
+    }
+    if (!existing) return db.expense.create({ data: { id, ...persisted } });
+    if (existing.updatedAt <= changedAt) {
+      await db.expense.updateMany({ where: { id, familyId: session.family.id, ownerUserId: session.user.id }, data: persisted });
+    }
+    return { id };
   }
 
   const existing = await db.expense.findFirst({ where: { id, familyId: session.family.id, ownerUserId: session.user.id } });
-  if (!existing || existing.updatedAt <= new Date(change.changedAt)) {
+  if (!existing) {
+    const conflicting = await db.expense.findUnique({ where: { id }, select: { id: true } });
+    if (conflicting) throw new Error("Diese Ausgabe ist nicht verfügbar.");
+  }
+  if (!existing || existing.updatedAt <= changedAt) {
     await db.expense.updateMany({ where: { id, familyId: session.family.id, ownerUserId: session.user.id }, data: persisted });
   }
   return { id };
@@ -171,11 +195,12 @@ async function applyExpenseChange(session: SyncSession, change: z.infer<typeof s
 async function applyTaskChange(session: SyncSession, change: z.infer<typeof syncChangeSchema>) {
   const id = change.entityId ?? change.localId;
   if (!id) throw new Error("Aufgaben-Sync braucht eine ID.");
+  const changedAt = parseIsoDateTime(change.changedAt);
   if (change.action === "delete") {
     const existing = await db.task.findFirst({
       where: { id, familyId: session.family.id, OR: [{ ownerUserId: session.user.id }, { assignedToUserId: session.user.id }] }
     });
-    if (!existing || existing.updatedAt <= new Date(change.changedAt)) {
+    if (!existing || existing.updatedAt <= changedAt) {
       await db.task.deleteMany({
         where: {
           id,
@@ -189,47 +214,58 @@ async function applyTaskChange(session: SyncSession, change: z.infer<typeof sync
 
   if (change.action === "create") {
     const data = taskDataSchema.parse(change.data);
-    return db.task.upsert({
-      where: { id },
-      create: {
-        id,
-        familyId: session.family.id,
-        ownerUserId: session.user.id,
-        assignedToUserId: data.assignedToUserId || null,
-        title: data.title,
-        description: data.description || null,
-        status: data.status,
-        priority: data.priority,
-        dueDate: data.dueDate ? new Date(data.dueDate) : null,
-        scope: data.scope
-      },
-      update: {
-        assignedToUserId: data.assignedToUserId || null,
-        title: data.title,
-        description: data.description || null,
-        status: data.status,
-        priority: data.priority,
-        dueDate: data.dueDate ? new Date(data.dueDate) : null,
-        scope: data.scope
-      }
-    });
+    const assignedToUserId = await resolveTaskAssigneeId(session.family.id, data.assignedToUserId || null);
+    const persisted = {
+      assignedToUserId,
+      title: data.title,
+      description: data.description || null,
+      status: data.status,
+      priority: data.priority,
+      dueDate: parseOptionalDateInput(data.dueDate),
+      scope: data.scope
+    };
+    const existing = await db.task.findUnique({ where: { id }, select: { familyId: true, ownerUserId: true, updatedAt: true } });
+    if (existing && (existing.familyId !== session.family.id || existing.ownerUserId !== session.user.id)) {
+      throw new Error("Diese Offline-Aufgabe darf nicht überschrieben werden.");
+    }
+    if (!existing) {
+      return db.task.create({
+        data: {
+          id,
+          familyId: session.family.id,
+          ownerUserId: session.user.id,
+          ...persisted
+        }
+      });
+    }
+    if (existing.updatedAt <= changedAt) {
+      await db.task.updateMany({ where: { id, familyId: session.family.id, ownerUserId: session.user.id }, data: persisted });
+    }
+    return { id };
   }
 
   const patch = taskPatchSchema.parse(change.data);
+  const assignedToUserId = patch.assignedToUserId !== undefined
+    ? await resolveTaskAssigneeId(session.family.id, patch.assignedToUserId || null)
+    : undefined;
   const updateData = {
-    ...(patch.assignedToUserId !== undefined ? { assignedToUserId: patch.assignedToUserId || null } : {}),
+    ...(patch.assignedToUserId !== undefined ? { assignedToUserId } : {}),
     ...(patch.title !== undefined ? { title: patch.title } : {}),
     ...(patch.description !== undefined ? { description: patch.description || null } : {}),
     ...(patch.status !== undefined ? { status: patch.status } : {}),
     ...(patch.priority !== undefined ? { priority: patch.priority } : {}),
-    ...(patch.dueDate !== undefined ? { dueDate: patch.dueDate ? new Date(patch.dueDate) : null } : {}),
+    ...(patch.dueDate !== undefined ? { dueDate: parseOptionalDateInput(patch.dueDate) } : {}),
     ...(patch.scope !== undefined ? { scope: patch.scope } : {})
   };
 
   const existing = await db.task.findFirst({
     where: { id, familyId: session.family.id, OR: [{ ownerUserId: session.user.id }, { assignedToUserId: session.user.id }] }
   });
-  if (!existing || existing.updatedAt <= new Date(change.changedAt)) {
+  if (!existing) {
+    const conflicting = await db.task.findUnique({ where: { id }, select: { id: true } });
+    if (conflicting) throw new Error("Diese Aufgabe ist nicht verfügbar.");
+  }
+  if (!existing || existing.updatedAt <= changedAt) {
     await db.task.updateMany({
       where: {
         id,
@@ -250,12 +286,15 @@ function serializeExpense(expense: Awaited<ReturnType<typeof getVisibleExpenses>
     currency: expense.currency,
     date: expense.date.toISOString(),
     paymentMethod: expense.paymentMethod,
+    store: expense.store,
     categoryId: expense.categoryId,
     labelId: expense.labelId,
+    contractId: expense.contractId,
     description: expense.description,
     updatedAt: expense.updatedAt.toISOString(),
     category: expense.category,
-    label: expense.label
+    label: expense.label,
+    contract: expense.contract ? { id: expense.contract.id, provider: expense.contract.provider, contractType: expense.contract.contractType } : null
   };
 }
 

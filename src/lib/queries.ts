@@ -26,16 +26,44 @@ export async function getVisibleExpenses(familyId: string, userId: string) {
       familyId,
       ownerUserId: userId
     },
-    include: { category: true, owner: true, label: true },
+    include: { category: true, label: true, contract: true },
     orderBy: { date: "desc" }
   });
 }
 
 export async function getExpenseLabels(familyId: string, userId: string) {
-  return db.expenseLabel.findMany({
+  const labels = await db.expenseLabel.findMany({
     where: { familyId, ownerUserId: userId },
+    include: {
+      expenses: {
+        select: { date: true },
+        orderBy: { date: "desc" },
+        take: 1
+      }
+    },
     orderBy: { name: "asc" }
   });
+
+  const staleCutoff = new Date();
+  staleCutoff.setFullYear(staleCutoff.getFullYear() - 2);
+
+  return labels
+    .map(({ expenses, ...label }) => ({
+      ...label,
+      lastUsedAt: expenses[0]?.date ?? null
+    }))
+    .sort((a, b) => {
+      const aLastUsed = a.lastUsedAt?.getTime() ?? null;
+      const bLastUsed = b.lastUsedAt?.getTime() ?? null;
+      const aRecent = aLastUsed !== null && a.lastUsedAt !== null && a.lastUsedAt >= staleCutoff;
+      const bRecent = bLastUsed !== null && b.lastUsedAt !== null && b.lastUsedAt >= staleCutoff;
+
+      if (aRecent !== bRecent) return aRecent ? -1 : 1;
+      if (aLastUsed !== null && bLastUsed !== null && aLastUsed !== bLastUsed) return bLastUsed - aLastUsed;
+      if (aLastUsed !== null && bLastUsed === null) return -1;
+      if (aLastUsed === null && bLastUsed !== null) return 1;
+      return a.name.localeCompare(b.name, "de");
+    });
 }
 
 export async function getDocumentsForLinkedEntities(
@@ -75,6 +103,20 @@ export async function getVisibleContracts(familyId: string, userId: string) {
     },
     include: { owner: true },
     orderBy: [{ status: "asc" }, { nextCancellationDate: "asc" }]
+  });
+}
+
+export async function getVisibleContractPayments(familyId: string, userId: string, contractIds: string[]) {
+  if (contractIds.length === 0) return [];
+  return db.expense.findMany({
+    where: {
+      familyId,
+      ownerUserId: userId,
+      kind: "EXPENSE",
+      contractId: { in: contractIds }
+    },
+    include: { category: true, label: true, contract: true },
+    orderBy: { date: "desc" }
   });
 }
 
