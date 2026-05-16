@@ -54,7 +54,3 @@ ALTER TABLE "DocumentReference"
   ALTER COLUMN "linkedEntityType" TYPE "LinkedEntityType" USING "linkedEntityType"::text::"LinkedEntityType",
   ALTER COLUMN "linkedEntityType" SET DEFAULT 'GENERAL';
 DROP TYPE "LinkedEntityType_old";
-
-DROP TYPE IF EXISTS "CalendarProvider";
-DROP TYPE IF EXISTS "CalendarVisibility";
-DROP TYPE IF EXISTS "CalendarSource";
