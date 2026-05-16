@@ -31,7 +31,7 @@ export async function createSession(userId: string) {
   cookieStore.set(sessionCookieName(), token, {
     httpOnly: true,
     sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    secure: shouldUseSecureSessionCookie(),
     expires: expiresAt,
     path: "/"
   });
@@ -91,6 +91,10 @@ export async function requireSession() {
 
 function sessionCookieName() {
   return process.env.SESSION_COOKIE_NAME ?? "family_app_session";
+}
+
+function shouldUseSecureSessionCookie() {
+  return (process.env.APP_URL ?? "").trim().toLowerCase().startsWith("https://");
 }
 
 export async function cleanupExpiredSessions() {
