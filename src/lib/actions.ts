@@ -110,6 +110,8 @@ export async function createExpense(formData: FormData) {
   });
 
   revalidatePath("/ausgaben");
+  revalidatePath("/dashboard");
+  redirect(actionReturnTo(formData, "/ausgaben"));
 }
 
 export async function createExpenseLabel(formData: FormData) {
@@ -285,6 +287,7 @@ export async function updateExpense(formData: FormData) {
 
   revalidatePath("/ausgaben");
   revalidatePath("/dashboard");
+  redirect(actionReturnTo(formData, "/ausgaben"));
 }
 
 export async function exportExpensesToSynologyExcel(formData: FormData) {
@@ -385,6 +388,8 @@ export async function deleteExpense(formData: FormData) {
     where: ownedExpenseWhere(session.family.id, session.user.id, id)
   });
   revalidatePath("/ausgaben");
+  revalidatePath("/dashboard");
+  redirect(actionReturnTo(formData, "/ausgaben"));
 }
 
 export async function mergeExpenseCategories(formData: FormData) {
@@ -820,6 +825,13 @@ function optionalText(formData: FormData, key: string) {
 
 function paymentMethodValue(formData: FormData) {
   return optionalText(formData, "paymentMethod") ?? "Nicht angegeben";
+}
+
+function actionReturnTo(formData: FormData, fallback: string) {
+  const value = optionalText(formData, "returnTo");
+  if (!value) return fallback;
+  if (!value.startsWith("/") || value.startsWith("//") || value.includes("://")) return fallback;
+  return value;
 }
 
 function renewalIntervalValue(formData: FormData) {

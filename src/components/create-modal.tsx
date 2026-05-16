@@ -44,10 +44,12 @@ export function CreateModal({ categories, labels, contracts, members }: CreateMo
   const defaultType = allowedTypes[0]?.id ?? "expense";
   const [open, setOpen] = useState(false);
   const [type, setType] = useState<CreateType>(defaultType);
+  const [returnTo, setReturnTo] = useState(pathname);
   const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
   const selectedType = allowedTypes.some((item) => item.id === type) ? type : defaultType;
   function openCreateModal() {
     setType(defaultType);
+    setReturnTo(`${window.location.pathname}${window.location.search}`);
     setOpen(true);
   }
 
@@ -92,7 +94,7 @@ export function CreateModal({ categories, labels, contracts, members }: CreateMo
                   ))}
                 </div>
               ) : null}
-              {selectedType === "expense" ? <ExpenseForm categories={categories} labels={labels} contracts={contracts} today={today} onSubmit={() => setOpen(false)} /> : null}
+              {selectedType === "expense" ? <ExpenseForm categories={categories} labels={labels} contracts={contracts} today={today} returnTo={returnTo} onSubmit={() => setOpen(false)} /> : null}
               {selectedType === "task" ? <TaskForm members={members} onSubmit={() => setOpen(false)} /> : null}
               {selectedType === "contract" ? <ContractForm today={today} onSubmit={() => setOpen(false)} /> : null}
               {selectedType === "document" ? <DocumentForm onSubmit={() => setOpen(false)} /> : null}
@@ -109,12 +111,14 @@ function ExpenseForm({
   labels,
   contracts,
   today,
+  returnTo,
   onSubmit
 }: {
   categories: CreateModalProps["categories"];
   labels: CreateModalProps["labels"];
   contracts: CreateModalProps["contracts"];
   today: string;
+  returnTo: string;
   onSubmit: () => void;
 }) {
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -130,6 +134,7 @@ function ExpenseForm({
 
   return (
     <form action={createExpense} className="form form-grid modal-form" onSubmit={handleSubmit}>
+      <input type="hidden" name="returnTo" value={returnTo} />
       <label>Art<select name="kind" defaultValue="EXPENSE"><option value="EXPENSE">Ausgabe</option><option value="INCOME">Einnahme</option></select></label>
       <label>Betrag in EUR<input name="amount" inputMode="decimal" placeholder="42,50" required /></label>
       <label>Datum<input name="date" type="date" defaultValue={today} required /></label>

@@ -63,6 +63,7 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
   const documentsByExpense = groupBy(documents.map(toExpenseDocumentItem), (document) => document.linkedEntityId ?? "");
   const expenseListEntries = initialEntries.map(toExpenseListItem);
   const expenseListLoadUrl = buildExpenseListLoadUrl(params);
+  const returnTo = getRawExpensesHref(params);
 
   return (
     <>
@@ -271,6 +272,7 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
             contracts={contracts.map((contract) => ({ id: contract.id, provider: contract.provider, contractType: contract.contractType }))}
             initialDocumentsByExpense={documentsByExpense}
             loadUrl={expenseListLoadUrl}
+            returnTo={returnTo}
             pageSize={100}
           />
         )}

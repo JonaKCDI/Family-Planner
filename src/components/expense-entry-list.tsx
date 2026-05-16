@@ -26,6 +26,7 @@ type ExpenseEntryListProps = {
   contracts: ExpenseEntryContractOption[];
   initialDocumentsByExpense: Record<string, ExpenseDocumentItem[]>;
   loadUrl: string;
+  returnTo: string;
   pageSize?: number;
 };
 
@@ -37,6 +38,7 @@ export function ExpenseEntryList({
   contracts,
   initialDocumentsByExpense,
   loadUrl,
+  returnTo,
   pageSize = 100
 }: ExpenseEntryListProps) {
   const [entries, setEntries] = useState(initialEntries);
@@ -70,6 +72,7 @@ export function ExpenseEntryList({
           categories={categories}
           labels={labels}
           contracts={contracts}
+          returnTo={returnTo}
           key={expense.id}
         />
       ))}
@@ -87,13 +90,15 @@ function ExpenseEntryRow({
   linkedDocuments,
   categories,
   labels,
-  contracts
+  contracts,
+  returnTo
 }: {
   expense: ExpenseListItem;
   linkedDocuments: ExpenseDocumentItem[];
   categories: ExpenseEntryOption[];
   labels: ExpenseEntryOption[];
   contracts: ExpenseEntryContractOption[];
+  returnTo: string;
 }) {
   const [loaded, setLoaded] = useState(false);
   const primaryDocument = linkedDocuments[0];
@@ -136,11 +141,13 @@ function ExpenseEntryRow({
           <div className="entry-actions">
             <form action={deleteExpense}>
               <input type="hidden" name="id" value={expense.id} />
+              <input type="hidden" name="returnTo" value={returnTo} />
               <button className="button secondary danger-subtle" type="submit">Löschen</button>
             </form>
             <ActionModal title="Eintrag bearbeiten" trigger="Bearbeiten">
               <form action={updateExpense} className="form form-grid modal-form">
                 <input type="hidden" name="id" value={expense.id} />
+                <input type="hidden" name="returnTo" value={returnTo} />
                 <label>
                   Art
                   <select name="kind" defaultValue={expense.kind}>
