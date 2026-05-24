@@ -29,7 +29,8 @@ export function ActionModal({ title, trigger, wide = false, children }: ActionMo
               aria-modal="true"
               aria-labelledby={`action-modal-${trigger}`}
               onSubmit={(event) => {
-                if (!event.defaultPrevented) setOpen(false);
+                const form = event.target instanceof HTMLFormElement ? event.target : null;
+                if (!event.defaultPrevented && form?.method.toLowerCase() === "get") window.setTimeout(() => setOpen(false), 0);
               }}
             >
               <div className="modal-head">

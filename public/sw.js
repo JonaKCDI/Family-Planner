@@ -67,7 +67,7 @@ async function networkOnlyNavigation(request) {
     return await fetch(request);
   } catch {
     return new Response(
-      "<!doctype html><html lang=\"de\"><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Offline</title><body style=\"font-family:system-ui,sans-serif;margin:2rem;line-height:1.4\"><h1>Offline</h1><p>Die Familien-App ist gerade nicht erreichbar. Öffne sie erneut, sobald die Verbindung zur Synology wieder steht.</p></body></html>",
+      "<!doctype html><html lang=\"de\"><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1,viewport-fit=cover\"><title>Offline</title><body style=\"font-family:system-ui,sans-serif;margin:0;padding:calc(2rem + env(safe-area-inset-top)) calc(2rem + env(safe-area-inset-right)) calc(2rem + env(safe-area-inset-bottom)) calc(2rem + env(safe-area-inset-left));line-height:1.4\"><h1>Offline</h1><p>Die Familien-App ist gerade nicht erreichbar. Öffne sie erneut, sobald die Verbindung zur Synology wieder steht.</p></body></html>",
       { headers: { "Content-Type": "text/html; charset=utf-8" } }
     );
   }

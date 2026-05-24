@@ -11,6 +11,9 @@ export const metadata: Metadata = {
     statusBarStyle: "default",
     title: "Familie"
   },
+  other: {
+    "apple-mobile-web-app-capable": "yes"
+  },
   icons: {
     icon: [
       { url: "/icon.svg", type: "image/svg+xml" },
@@ -24,6 +27,7 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
+  viewportFit: "cover",
   themeColor: "#256f68"
 };
 

@@ -1957,6 +1957,134 @@ body {
   color: var(--muted);
 }
 
+.combobox-field {
+  display: grid;
+  gap: 0.3rem;
+  min-width: 0;
+  color: #34383d;
+  font-size: 0.9rem;
+}
+
+.combobox-control {
+  position: relative;
+  min-width: 0;
+}
+
+.combobox-input {
+  min-width: 0;
+  width: 100%;
+  border: 1px solid #cfc9bd;
+  border-radius: 7px;
+  background: #fff;
+  padding: 0.68rem 2.2rem 0.68rem 0.72rem;
+}
+
+.combobox-clear {
+  position: absolute;
+  top: 50%;
+  right: 0.45rem;
+  display: inline-flex;
+  width: 28px;
+  height: 28px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: #f0f4f3;
+  color: var(--muted);
+  cursor: pointer;
+  font-weight: 900;
+  transform: translateY(-50%);
+}
+
+.combobox-options {
+  position: absolute;
+  top: calc(100% + 0.25rem);
+  right: 0;
+  left: 0;
+  z-index: 20;
+  display: grid;
+  max-height: min(280px, 42vh);
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 18px 42px rgba(32, 33, 36, 0.18);
+  padding: 0.35rem;
+}
+
+.combobox-option {
+  display: grid;
+  min-width: 0;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: #24282c;
+  cursor: pointer;
+  padding: 0.55rem 0.6rem;
+  text-align: left;
+}
+
+.combobox-option span,
+.combobox-option small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.combobox-option small,
+.combobox-empty {
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.combobox-option:hover,
+.combobox-option.active {
+  background: var(--accent-soft);
+  color: var(--accent-dark);
+}
+
+.combobox-empty {
+  padding: 0.55rem 0.6rem;
+}
+
+.label-management-list {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.label-management-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.6rem;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  padding: 0.65rem;
+}
+
+.label-management-row > div {
+  display: grid;
+  gap: 0.12rem;
+  min-width: 0;
+}
+
+.label-management-row strong,
+.label-management-row span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.label-management-row.archived {
+  background: #fbfaf6;
+}
+
+.label-management-row.archived strong {
+  color: var(--muted);
+}
+
 .compact-fieldset {
   gap: 0.45rem;
 }
@@ -3512,5 +3640,137 @@ body,
   .filter-actions {
     min-width: 0;
     max-width: 100%;
+  }
+}
+
+/* iOS/PWA polish: keep touch forms readable and reserve room around the home indicator. */
+@media (max-width: 900px), (max-height: 760px), (max-aspect-ratio: 4/5) {
+  .topbar,
+  .brand,
+  .brand-copy,
+  .page-head,
+  .search-bar,
+  .stats,
+  .stat,
+  .panel,
+  .task-priority-list,
+  .priority-task,
+  .priority-task-body,
+  .priority-task-body > *,
+  .task-title-row,
+  .task-actions,
+  .task-status-control,
+  .status-select-wrap,
+  .expense-list,
+  .expense-row,
+  .expense-row summary,
+  .expense-row summary > *,
+  .expense-detail,
+  .expense-detail > *,
+  .expense-detail-meta,
+  .entry-actions,
+  .modal-head,
+  .modal-panel,
+  .modal-panel > *,
+  .create-type-grid,
+  .create-type,
+  .combobox-field,
+  .combobox-control,
+  .combobox-options,
+  .label-management-list,
+  .label-management-row {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .form input,
+  .form select,
+  .form textarea,
+  .inline-form input,
+  .inline-form select,
+  .inline-form textarea,
+  .inline-control select,
+  .source-row select,
+  .search-bar input,
+  .combobox-input,
+  .status-select {
+    font-size: 16px;
+  }
+
+  .content {
+    padding-bottom: calc(7.25rem + env(safe-area-inset-bottom));
+  }
+
+  .app-nav {
+    padding: 0.4rem max(0.35rem, env(safe-area-inset-right)) max(0.9rem, calc(0.45rem + env(safe-area-inset-bottom))) max(0.35rem, env(safe-area-inset-left));
+  }
+
+  .fab-button {
+    bottom: calc(6.95rem + env(safe-area-inset-bottom));
+  }
+
+  .priority-task-body p,
+  .priority-task-body .muted,
+  .task-title-row strong,
+  .expense-detail-meta .badge,
+  .entry-actions .button {
+    overflow-wrap: anywhere;
+  }
+
+  .task-actions,
+  .task-actions > *,
+  .task-actions .button,
+  .task-status-control,
+  .status-select-wrap,
+  .status-select {
+    width: 100%;
+  }
+
+  .entry-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    justify-content: stretch;
+  }
+
+  .entry-actions > *,
+  .entry-actions form,
+  .entry-actions .button {
+    width: 100%;
+  }
+
+  .label-management-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .label-management-row .button {
+    width: 100%;
+  }
+
+  .expense-row summary {
+    grid-template-columns: minmax(4.35rem, 0.42fr) minmax(0, 1fr);
+    padding-right: 1.75rem;
+  }
+
+  .expense-row summary > strong,
+  .expense-row summary .expense-overview-tags {
+    grid-column: 2;
+  }
+
+  .expense-row summary > strong {
+    max-width: 100%;
+    justify-self: start;
+    text-align: left;
+  }
+
+  .expense-overview-tags {
+    overflow: hidden;
+  }
+
+  .overview-tag {
+    min-width: 0;
+  }
+
+  .modal-panel {
+    padding-bottom: calc(1rem + env(safe-area-inset-bottom));
   }
 }

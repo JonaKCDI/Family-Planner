@@ -1,4 +1,5 @@
 import { buildExpensesHref, type ExpenseFilterParams } from "@/lib/expense-filter-url";
+import { SearchableSelect } from "@/components/searchable-select";
 
 type ExpenseFilterFormProps = {
   params: ExpenseFilterParams;
@@ -21,20 +22,8 @@ export function ExpenseFilterForm({ params, categories, labels }: ExpenseFilterF
           <label>Bis<input name="to" type="date" defaultValue={params.to ?? ""} /></label>
         </div>
       </fieldset>
-      <label>
-        Kategorie
-        <select name="category" defaultValue={params.category ?? ""}>
-          <option value="">Alle Kategorien</option>
-          {categories.map((category) => <option value={category.id} key={category.id}>{category.name}</option>)}
-        </select>
-      </label>
-      <label>
-        Label
-        <select name="label" defaultValue={params.label ?? ""}>
-          <option value="">Alle Labels</option>
-          {labels.map((label) => <option value={label.id} key={label.id}>{label.name}</option>)}
-        </select>
-      </label>
+      <SearchableSelect name="category" label="Kategorie" options={categories} defaultValue={params.category} emptyLabel="Alle Kategorien" placeholder="Kategorie suchen oder auswählen" />
+      <SearchableSelect name="label" label="Label" options={labels} defaultValue={params.label} emptyLabel="Alle Labels" placeholder="Label suchen oder auswählen" />
       <div className="filter-actions full-span">
         <button className="button" type="submit">Anwenden</button>
         <a className="button secondary" href={buildExpensesHref(params, { q: undefined, category: undefined, label: undefined, from: undefined, to: undefined })}>Filter löschen</a>

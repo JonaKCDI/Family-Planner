@@ -31,9 +31,13 @@ export async function getVisibleExpenses(familyId: string, userId: string) {
   });
 }
 
-export async function getExpenseLabels(familyId: string, userId: string) {
+export async function getExpenseLabels(familyId: string, userId: string, options: { includeArchived?: boolean } = {}) {
   const labels = await db.expenseLabel.findMany({
-    where: { familyId, ownerUserId: userId },
+    where: {
+      familyId,
+      ownerUserId: userId,
+      ...(options.includeArchived ? {} : { archivedAt: null })
+    },
     include: {
       expenses: {
         select: { date: true },
@@ -53,6 +57,7 @@ export async function getExpenseLabels(familyId: string, userId: string) {
       lastUsedAt: expenses[0]?.date ?? null
     }))
     .sort((a, b) => {
+      if (Boolean(a.archivedAt) !== Boolean(b.archivedAt)) return a.archivedAt ? 1 : -1;
       const aLastUsed = a.lastUsedAt?.getTime() ?? null;
       const bLastUsed = b.lastUsedAt?.getTime() ?? null;
       const aRecent = aLastUsed !== null && a.lastUsedAt !== null && a.lastUsedAt >= staleCutoff;

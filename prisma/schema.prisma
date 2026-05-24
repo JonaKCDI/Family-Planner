@@ -170,6 +170,7 @@ model ExpenseLabel {
   name        String
   color       String   @default("#16776f")
   budgetCents Int      @default(0)
+  archivedAt  DateTime?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   family      Family   @relation(fields: [familyId], references: [id], onDelete: Cascade)

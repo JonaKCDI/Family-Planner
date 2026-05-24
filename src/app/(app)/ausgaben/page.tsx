@@ -1,4 +1,5 @@
 import {
+  archiveExpenseLabel,
   createCategory,
   createExpenseLabel,
   exportExpensesToSynologyExcel,
@@ -6,6 +7,7 @@ import {
   importExpensesFromUploadedXlsx,
   mergeExpenseCategories,
   mergeExpenseLabels,
+  unarchiveExpenseLabel,
   updateCategory,
 } from "@/lib/actions";
 import { redirect } from "next/navigation";
@@ -30,17 +32,18 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
   const canonicalHref = getCanonicalExpensesHref(params);
   if (canonicalHref !== getRawExpensesHref(params)) redirect(canonicalHref);
   await ensureDueContractExpenses(session.family.id, session.user.id);
-  const [expenses, categories, labels, contracts] = await Promise.all([
+  const [expenses, categories, labels, allLabels, contracts] = await Promise.all([
     getVisibleExpenses(session.family.id, session.user.id),
     getVisibleCategories(session.family.id, session.user.id, "EXPENSE"),
     getExpenseLabels(session.family.id, session.user.id),
+    getExpenseLabels(session.family.id, session.user.id, { includeArchived: true }),
     getVisibleContracts(session.family.id, session.user.id)
   ]);
   const query = normalizeSearch(params.q);
   const currentMonthKey = getMonthKey();
   const currentYear = Number(currentMonthKey.slice(0, 4));
   const years = [...new Set([currentYear, ...expenses.map((entry) => new Date(entry.date).getFullYear())])].sort((a, b) => b - a);
-  const range = getRange(params, currentMonthKey);
+  const range = getRange(params, currentMonthKey, expenses);
   const exportYear = range.from.getFullYear();
   const selectedEntries = expenses
     .filter((entry) => isInRange(entry.date, range.from, range.to))
@@ -58,7 +61,7 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
   const yearlyRows = buildPeriodRows(expenses, categories, "year");
   const comparison = buildYearComparison(expenses, categories, Number(params.compareA ?? years[0]), Number(params.compareB ?? years[1] ?? years[0]));
   const pie = buildPie(categoryRows);
-  const activeFilterChips = buildActiveFilterChips(params, categories, labels, range);
+  const activeFilterChips = buildActiveFilterChips(params, categories, allLabels, range);
   const initialEntryLimit = getInitialEntryLimit(range.mode);
   const initialEntries = selectedEntries.slice(0, initialEntryLimit);
   const documents = await getDocumentsForLinkedEntities(session.family.id, session.user.id, "EXPENSE", initialEntries.map((expense) => expense.id));
@@ -161,6 +164,32 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
             <details className="setup-card">
               <summary>
                 <span>
+                  <strong>Labels verwalten</strong>
+                  <small>Aktive Labels nach letzter Nutzung, archivierte am Ende</small>
+                </span>
+              </summary>
+              <div className="label-management-list">
+                {allLabels.length === 0 ? <EmptyState>Noch keine Labels vorhanden.</EmptyState> : null}
+                {allLabels.map((label) => (
+                  <div className={label.archivedAt ? "label-management-row archived" : "label-management-row"} key={label.id}>
+                    <div>
+                      <strong>{label.name}</strong>
+                      <span className="muted">
+                        {label.archivedAt ? "Archiviert" : "Aktiv"}{" · "}{label.lastUsedAt ? `Zuletzt genutzt: ${formatDate(label.lastUsedAt)}` : "Noch nicht genutzt"}
+                      </span>
+                    </div>
+                    <form action={label.archivedAt ? unarchiveExpenseLabel : archiveExpenseLabel}>
+                      <input type="hidden" name="id" value={label.id} />
+                      <button className="button secondary" type="submit">{label.archivedAt ? "Wieder aktivieren" : "Archivieren"}</button>
+                    </form>
+                  </div>
+                ))}
+              </div>
+            </details>
+
+            <details className="setup-card">
+              <summary>
+                <span>
                   <strong>Zusammenführen</strong>
                   <small>Typo-Daten in das richtige Ziel schieben</small>
                 </span>
@@ -172,17 +201,17 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
                     Von
                     <select name="sourceLabelId" required defaultValue="">
                       <option value="" disabled>Typo wählen</option>
-                      {labels.map((label) => <option value={label.id} key={label.id}>{label.name}</option>)}
+                      {allLabels.map((label) => <option value={label.id} key={label.id}>{label.name}{label.archivedAt ? " (archiviert)" : ""}</option>)}
                     </select>
                   </label>
                   <label>
                     Nach
                     <select name="targetLabelId" required defaultValue="">
                       <option value="" disabled>Ziel wählen</option>
-                      {labels.map((label) => <option value={label.id} key={label.id}>{label.name}</option>)}
+                      {allLabels.map((label) => <option value={label.id} key={label.id}>{label.name}{label.archivedAt ? " (archiviert)" : ""}</option>)}
                     </select>
                   </label>
-                  <button className="button secondary" type="submit" disabled={labels.length < 2}>Labels zusammenführen</button>
+                  <button className="button secondary" type="submit" disabled={allLabels.length < 2}>Labels zusammenführen</button>
                 </form>
                 <form action={mergeExpenseCategories} className="form compact">
                   <strong>Kategorien</strong>
@@ -420,7 +449,7 @@ function FilterHiddenFields({
   );
 }
 
-function getRange(params: Awaited<ExpensesPageProps["searchParams"]>, currentMonthKey: string) {
+function getRange(params: Awaited<ExpensesPageProps["searchParams"]>, currentMonthKey: string, expenses: ExpenseLike[]) {
   const fallbackMonth = monthRange(currentMonthKey) ?? monthRange(getMonthKey())!;
   if (params.from || params.to) {
     return {
@@ -436,6 +465,9 @@ function getRange(params: Awaited<ExpensesPageProps["searchParams"]>, currentMon
   if (params.year) {
     const year = Number(params.year);
     return { mode: "year" as const, from: new Date(year, 0, 1), to: endOfDay(new Date(year, 11, 31)) };
+  }
+  if (hasFacetFilter(params)) {
+    return allExpenseRange(expenses) ?? { mode: "month" as const, key: currentMonthKey, ...fallbackMonth };
   }
   return { mode: "month" as const, key: currentMonthKey, ...fallbackMonth };
 }
@@ -468,6 +500,20 @@ function monthRange(monthKey: string) {
 function endOfDay(date: Date) {
   date.setHours(23, 59, 59, 999);
   return date;
+}
+
+function allExpenseRange(expenses: ExpenseLike[]) {
+  if (expenses.length === 0) return null;
+  const times = expenses.map((expense) => new Date(expense.date).getTime());
+  return {
+    mode: "all" as const,
+    from: new Date(Math.min(...times)),
+    to: endOfDay(new Date(Math.max(...times)))
+  };
+}
+
+function hasFacetFilter(params: Awaited<ExpensesPageProps["searchParams"]>) {
+  return Boolean(params.q || params.category || params.label);
 }
 
 function isInRange(date: Date, from: Date, to: Date) {
@@ -616,6 +662,12 @@ function buildActiveFilterChips(
   range: ReturnType<typeof getRange>
 ) {
   const chips: { label: string; clear: Partial<Awaited<ExpensesPageProps["searchParams"]>> }[] = [];
+  if (range.mode === "year" && params.year) {
+    chips.push({ label: params.year, clear: { year: undefined } });
+  }
+  if (range.mode === "month" && params.month) {
+    chips.push({ label: `Monat: ${params.month}`, clear: { month: undefined } });
+  }
   if (params.q) chips.push({ label: `Suche: ${params.q}`, clear: { q: undefined } });
   if (params.category) {
     chips.push({

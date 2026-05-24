@@ -139,8 +139,37 @@ export async function createExpenseLabel(formData: FormData) {
     },
     update: {
       color: chooseCategoryColor(name, existingLabels, submittedColor),
-      budgetCents: parseOptionalEuroInputToCents(formData.get("budget"))
+      budgetCents: parseOptionalEuroInputToCents(formData.get("budget")),
+      archivedAt: null
     }
+  });
+
+  revalidatePath("/ausgaben");
+}
+
+export async function archiveExpenseLabel(formData: FormData) {
+  const session = await requireSession();
+  await db.expenseLabel.updateMany({
+    where: {
+      id: requiredText(formData, "id"),
+      familyId: session.family.id,
+      ownerUserId: session.user.id
+    },
+    data: { archivedAt: new Date() }
+  });
+
+  revalidatePath("/ausgaben");
+}
+
+export async function unarchiveExpenseLabel(formData: FormData) {
+  const session = await requireSession();
+  await db.expenseLabel.updateMany({
+    where: {
+      id: requiredText(formData, "id"),
+      familyId: session.family.id,
+      ownerUserId: session.user.id
+    },
+    data: { archivedAt: null }
   });
 
   revalidatePath("/ausgaben");

@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { deleteExpense, updateExpense } from "@/lib/actions";
 import type { ExpenseDocumentItem, ExpenseListItem } from "@/lib/expense-list";
 import { formatDate, formatMoney, toDateInputValue } from "@/lib/format";
 import { ActionModal } from "@/components/action-modal";
+import { SearchableSelect, type SearchableSelectOption } from "@/components/searchable-select";
 
 export type ExpenseEntryOption = {
   id: string;
@@ -45,6 +46,12 @@ export function ExpenseEntryList({
   const [documentsByExpense, setDocumentsByExpense] = useState(initialDocumentsByExpense);
   const [loading, setLoading] = useState(false);
   const hasMore = entries.length < totalCount;
+
+  useEffect(() => {
+    setEntries(initialEntries);
+    setDocumentsByExpense(initialDocumentsByExpense);
+    setLoading(false);
+  }, [initialEntries, initialDocumentsByExpense]);
 
   async function loadMore() {
     if (loading || !hasMore) return;
@@ -102,6 +109,8 @@ function ExpenseEntryRow({
 }) {
   const [loaded, setLoaded] = useState(false);
   const primaryDocument = linkedDocuments[0];
+  const categoryOptions = includeSelectedOption(categories, expense.category ? { id: expense.category.id, name: expense.category.name } : null);
+  const labelOptions = includeSelectedOption(labels, expense.label ? { id: expense.label.id, name: expense.label.name, meta: "archiviert" } : null);
 
   return (
     <details className="expense-row" onToggle={(event) => { if (event.currentTarget.open) setLoaded(true); }}>
@@ -160,20 +169,8 @@ function ExpenseEntryRow({
                 <label>Beschreibung<input name="description" defaultValue={expense.description} required /></label>
                 <label>Bezahlart<input name="paymentMethod" list="payment-methods" defaultValue={expense.paymentMethod} /></label>
                 <label>Laden<input name="store" defaultValue={expense.store} placeholder="Rewe, Lidl, Amazon ..." /></label>
-                <label>
-                  Kategorie
-                  <select name="categoryId" defaultValue={expense.categoryId ?? ""}>
-                    <option value="">Keine Kategorie</option>
-                    {categories.map((category) => <option value={category.id} key={category.id}>{category.name}</option>)}
-                  </select>
-                </label>
-                <label>
-                  Label / Projekt
-                  <select name="labelId" defaultValue={expense.labelId ?? ""}>
-                    <option value="">Kein Label</option>
-                    {labels.map((label) => <option value={label.id} key={label.id}>{label.name}</option>)}
-                  </select>
-                </label>
+                <SearchableSelect name="categoryId" label="Kategorie" options={categoryOptions} defaultValue={expense.categoryId} emptyLabel="Keine Kategorie" placeholder="Kategorie suchen oder auswählen" />
+                <SearchableSelect name="labelId" label="Label / Projekt" options={labelOptions} defaultValue={expense.labelId} emptyLabel="Kein Label" placeholder="Label suchen oder auswählen" />
                 <label>
                   Vertrag
                   <select name="contractId" defaultValue={expense.contractId ?? ""}>
@@ -214,4 +211,9 @@ function PaymentMethods() {
 function formatEuroInput(amountCents: number) {
   if (amountCents === 0) return "";
   return (amountCents / 100).toFixed(2).replace(".", ",");
+}
+
+function includeSelectedOption<T extends SearchableSelectOption>(options: T[], selected: SearchableSelectOption | null) {
+  if (!selected || options.some((option) => option.id === selected.id)) return options;
+  return [selected, ...options];
 }

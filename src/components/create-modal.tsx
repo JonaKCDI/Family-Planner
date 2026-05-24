@@ -12,6 +12,7 @@ import {
 } from "@/lib/actions";
 import { enqueueOfflineExpenseCreate, enqueueOfflineTaskCreate } from "@/lib/offline-sync";
 import { ModalPortal } from "@/components/modal-portal";
+import { SearchableSelect } from "@/components/searchable-select";
 
 type CreateModalProps = {
   categories: { id: string; name: string }[];
@@ -141,8 +142,8 @@ function ExpenseForm({
       <label>Beschreibung<input name="description" placeholder="Wocheneinkauf, Dienstreise, Rückerstattung ..." required /></label>
       <label>Bezahlart<input name="paymentMethod" list="payment-methods" placeholder="Karte, Bar, Überweisung ..." /></label>
       <label>Laden<input name="store" placeholder="Rewe, Lidl, Amazon ..." /></label>
-      <label>Kategorie<select name="categoryId" defaultValue=""><option value="">Keine Kategorie</option>{categories.map((category) => <option value={category.id} key={category.id}>{category.name}</option>)}</select></label>
-      <label>Label / Projekt<select name="labelId" defaultValue=""><option value="">Kein Label</option>{labels.map((label) => <option value={label.id} key={label.id}>{label.name}</option>)}</select></label>
+      <SearchableSelect name="categoryId" label="Kategorie" options={categories} emptyLabel="Keine Kategorie" placeholder="Kategorie suchen oder auswählen" />
+      <SearchableSelect name="labelId" label="Label / Projekt" options={labels} emptyLabel="Kein Label" placeholder="Label suchen oder auswählen" />
       <label>Vertrag<select name="contractId" defaultValue=""><option value="">Kein Vertrag</option>{contracts.filter((contract) => contract.status === "ACTIVE").map((contract) => <option value={contract.id} key={contract.id}>{contract.provider} · {contract.contractType}</option>)}</select></label>
       <PaymentMethods />
       <fieldset className="fieldset full-span">
