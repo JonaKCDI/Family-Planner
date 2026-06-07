@@ -43,6 +43,14 @@ This document is the current product and deployment map for the Family App.
 - The workbook contains one export year. It has a canonical `Daten` sheet for robust round-trip import/export plus readable monthly sheets.
 - Excel import/export is a personal expense safety/import feature, not a full database backup.
 
+## Mileage
+
+- The Kilometer tab tracks family-shared cars and fuel/odometer entries.
+- Fuel entries store date, odometer, liters, cost, and notes; driven kilometers, l/100 km, €/l, totals, and averages are derived from the car history.
+- Active family members can add/edit/delete tank stops. Admins manage cars.
+- Mileage Excel import/export uses one all-time workbook per car in the mounted folder configured by `MILEAGE_EXCEL_DIR`.
+- Docker Compose mounts `${MILEAGE_EXCEL_HOST_DIR:-./data/mileage}` to `/data/mileage`.
+
 ## Tasks
 
 - Tasks support title, description, assignee, priority, due date, status, and visibility.
@@ -79,7 +87,7 @@ This document is the current product and deployment map for the Family App.
 - The Docker entrypoint waits for PostgreSQL before starting the app.
 - `prisma migrate deploy` runs during container startup.
 - The backup service runs `pg_dump | gzip` on an interval and prunes old dumps based on `BACKUP_RETENTION_DAYS`.
-- Required deployment folders are the PostgreSQL volume, backup folder, and optional mounted Excel folder.
+- Required deployment folders are the PostgreSQL volume, backup folder, and optional mounted Excel folders.
 - Restore uses the generated `.sql.gz` files with `psql` into an empty database.
 - Reverse proxy/HTTPS is recommended for external access and for a smooth iPhone PWA experience.
 
@@ -91,6 +99,6 @@ This document is the current product and deployment map for the Family App.
 
 ## Verification Coverage
 
-- Unit tests cover money parsing, expense analytics, Excel import/export, contract cancellation schedules, and task importance.
+- Unit tests cover money parsing, expense analytics, mileage calculations, Excel import/export, contract cancellation schedules, and task importance.
 - Production build validates Prisma generation and the Next.js bundle.
 - The recommended closure check is `npm.cmd run lint`, `npm.cmd run test`, and `npm.cmd run build`.

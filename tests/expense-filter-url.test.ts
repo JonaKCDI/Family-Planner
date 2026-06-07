@@ -53,6 +53,22 @@ describe("expense filter URLs", () => {
     expect(buildExpensesHref({}, { month: "2026-05" })).toBe("/ausgaben?month=2026-05");
   });
 
+  test("direct period jump keeps active finance facets", () => {
+    expect(buildPeriodHref({
+      from: "2026-01-01",
+      to: "2026-01-31",
+      q: "tanken",
+      category: "cat_mobility",
+      label: "label_auto"
+    }, { month: "2026-12" })).toBe("/ausgaben?month=2026-12&label=label_auto&category=cat_mobility&q=tanken");
+
+    expect(buildPeriodHref({
+      month: "2026-12",
+      q: "tanken",
+      category: "cat_mobility"
+    }, { year: "2025" })).toBe("/ausgaben?year=2025&category=cat_mobility&q=tanken");
+  });
+
   test("canonical URL removes impossible period combinations", () => {
     const conflicted = {
       year: "2026",
@@ -86,5 +102,13 @@ describe("expense filter URLs", () => {
       label: "",
       q: ""
     })).toBe("/ausgaben?from=2026-02-01&category=cat_1");
+  });
+
+  test("canonical URL combines separate native month and year controls", () => {
+    expect(getCanonicalExpensesHref({
+      year: "2026",
+      month: "01",
+      q: "auto"
+    })).toBe("/ausgaben?month=2026-01&q=auto");
   });
 });

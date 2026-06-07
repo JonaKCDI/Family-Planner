@@ -36,6 +36,12 @@ body {
   overflow-x: hidden;
 }
 
+html.modal-scroll-locked,
+body.modal-scroll-locked {
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
 a {
   color: inherit;
   text-decoration: none;
@@ -65,6 +71,25 @@ textarea {
   background: rgba(246, 245, 241, 0.94);
   padding: 0.8rem 1rem;
   backdrop-filter: blur(12px);
+}
+
+.topbar-actions {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.topbar-icon-link {
+  display: inline-flex;
+  width: 42px;
+  height: 42px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #cfc9bd;
+  border-radius: 7px;
+  background: #fff;
+  color: #24282c;
 }
 
 .brand {
@@ -221,7 +246,8 @@ textarea {
   font-size: 0.9rem;
 }
 
-.inline-form input {
+.inline-form input,
+.inline-form select {
   min-width: 0;
   border: 1px solid #cfc9bd;
   border-radius: 7px;
@@ -1016,6 +1042,27 @@ textarea {
 }
 
 @media (max-width: 700px) {
+  .topbar {
+    gap: 0.55rem;
+  }
+
+  .topbar-actions {
+    gap: 0.3rem;
+  }
+
+  .topbar-icon-link,
+  .topbar-actions .button-icon {
+    width: 42px;
+    min-width: 42px;
+    height: 42px;
+    padding: 0;
+  }
+
+  .topbar-actions .button-icon {
+    font-size: 0;
+    gap: 0;
+  }
+
   .content {
     padding-bottom: calc(5.5rem + env(safe-area-inset-bottom));
   }
@@ -1821,9 +1868,86 @@ body {
   gap: 0.75rem;
 }
 
+.car-setup-card {
+  background: linear-gradient(180deg, #ffffff 0%, #fbfaf6 100%);
+}
+
+.car-setup-grid {
+  align-items: start;
+}
+
+.car-create-form,
+.car-editor-list {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  padding: 0.8rem;
+}
+
+.car-create-form.form.compact {
+  border-top: 1px solid var(--line);
+}
+
+.car-editor-list {
+  gap: 0.55rem;
+}
+
+.car-editor {
+  box-shadow: none;
+}
+
+.car-editor summary {
+  background: #fbfaf6;
+}
+
 .excel-actions {
   display: grid;
   gap: 0.55rem;
+}
+
+.excel-car-picker {
+  display: inline-grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  justify-self: start;
+  width: min(360px, 100%);
+  gap: 0.55rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  padding: 0.45rem 0.5rem 0.45rem 0.65rem;
+}
+
+.excel-car-picker > span {
+  color: var(--muted);
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
+.excel-car-picker select {
+  min-width: 0;
+  width: 100%;
+  border: 0;
+  border-radius: 6px;
+  background: #fbfaf6;
+  color: #10201f;
+  padding: 0.42rem 0.5rem;
+  font-weight: 900;
+}
+
+.mileage-excel-form,
+.upload-form {
+  display: grid;
+  align-content: start;
+  gap: 0.45rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  padding: 0.7rem;
+}
+
+.mileage-excel-form.form.compact {
+  border-top: 1px solid var(--line);
 }
 
 .setup-action-row {
@@ -1851,13 +1975,17 @@ body {
   opacity: 0.55;
 }
 
-.upload-form {
+.upload-form label {
   display: grid;
-  gap: 0.45rem;
+  gap: 0.3rem;
+  color: #34383d;
+  font-size: 0.9rem;
 }
 
-.upload-form input {
+.upload-form input,
+.upload-form select {
   min-width: 0;
+  width: 100%;
   border: 1px solid #cfc9bd;
   border-radius: 7px;
   background: #fff;
@@ -1917,6 +2045,75 @@ body {
   border-color: var(--accent);
   background: var(--accent-soft);
   color: var(--accent-dark);
+}
+
+.filter-period-jump {
+  display: grid;
+  align-content: start;
+  gap: 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfaf6;
+  padding: 0.7rem;
+}
+
+.filter-jump-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.5rem;
+  align-items: end;
+}
+
+.filter-jump-form label {
+  display: grid;
+  gap: 0.25rem;
+  color: #34383d;
+  font-size: 0.86rem;
+}
+
+.filter-jump-form input,
+.filter-jump-form select {
+  min-width: 0;
+  width: 100%;
+  border: 1px solid #cfc9bd;
+  border-radius: 7px;
+  background: #fff;
+  padding: 0.58rem 0.65rem;
+}
+
+.filter-jump-form .button {
+  min-height: 38px;
+  padding-inline: 0.75rem;
+}
+
+.period-picker-fieldset {
+  background: #fbfaf6;
+}
+
+.period-select-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(7rem, 0.75fr);
+  gap: 0.55rem;
+}
+
+.period-jump-row {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.period-jump-form {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+}
+
+.car-tabs a {
+  border-radius: 7px;
+}
+
+@media (min-width: 760px) {
+  .period-jump-row {
+    grid-template-columns: repeat(2, minmax(220px, 320px));
+  }
 }
 
 .active-filter-row {
@@ -2121,6 +2318,98 @@ body {
 .expense-detail-meta .label-badge {
   border-color: transparent;
   color: #fff;
+}
+
+.mileage-row summary {
+  grid-template-columns: minmax(5.5rem, 0.55fr) minmax(11rem, 1fr) minmax(27rem, 1.4fr) minmax(6rem, auto);
+  gap: 0.65rem;
+}
+
+.mileage-row summary span {
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+}
+
+.mileage-date {
+  color: #10201f;
+  font-variant-numeric: tabular-nums;
+}
+
+.mileage-main {
+  display: grid;
+  gap: 0.08rem;
+  min-width: 0;
+}
+
+.mileage-odometer {
+  color: #10201f;
+  font-weight: 900;
+}
+
+.mileage-row summary .mileage-main small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mileage-values {
+  display: grid;
+  grid-template-columns: minmax(4.8rem, 0.8fr) minmax(7.8rem, 1.25fr) minmax(5.8rem, 0.9fr) minmax(5.4rem, 0.85fr);
+  gap: 0.45rem;
+  min-width: 0;
+  width: 100%;
+  justify-self: stretch;
+}
+
+.mileage-value,
+.mileage-detail-grid span {
+  display: grid;
+  min-width: 0;
+  gap: 0.08rem;
+}
+
+.mileage-value small,
+.mileage-detail-grid small {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mileage-value b,
+.mileage-detail-grid b {
+  min-width: 0;
+  color: #071015;
+  font-size: 0.88rem;
+  font-weight: 900;
+  overflow-wrap: anywhere;
+}
+
+@media (min-width: 701px) {
+  .mileage-value b {
+    white-space: nowrap;
+  }
+}
+
+.mileage-cost {
+  font-variant-numeric: tabular-nums;
+}
+
+.expense-detail > .mileage-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.55rem;
+}
+
+.mileage-detail-grid span {
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #fff;
+  padding: 0.55rem;
 }
 
 .analysis-tabs {
@@ -2950,6 +3239,14 @@ details > summary {
   grid-template-columns: minmax(78px, 0.65fr) minmax(0, 1.25fr) minmax(128px, 0.75fr) minmax(104px, auto);
 }
 
+.mileage-row summary {
+  grid-template-columns: minmax(5.5rem, 0.55fr) minmax(11rem, 1fr) minmax(27rem, 1.4fr) minmax(6rem, auto);
+}
+
+.mileage-row .mileage-values {
+  grid-template-columns: minmax(4.8rem, 0.8fr) minmax(7.8rem, 1.25fr) minmax(5.8rem, 0.9fr) minmax(5.4rem, 0.85fr);
+}
+
 .expense-overview-tags {
   display: flex;
   min-width: 0;
@@ -3032,6 +3329,40 @@ details > summary {
   .expense-row summary strong {
     grid-column: 3;
     grid-row: 1;
+  }
+
+  .mileage-row summary {
+    grid-template-columns: 72px minmax(0, 1fr) minmax(92px, auto);
+  }
+
+  .mileage-row .mileage-values {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.28rem 0.45rem;
+  }
+
+  .mileage-row .mileage-value {
+    grid-template-columns: minmax(0, 0.78fr) minmax(0, 1fr);
+    align-items: baseline;
+    gap: 0.25rem;
+  }
+
+  .mileage-row .mileage-value small {
+    font-size: 0.66rem;
+  }
+
+  .mileage-row .mileage-value b {
+    font-size: 0.78rem;
+  }
+
+  .mileage-row summary > .mileage-cost {
+    grid-column: 3;
+    grid-row: 1;
+  }
+
+  .expense-detail > .mileage-detail-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
@@ -3258,6 +3589,7 @@ details > summary {
 
 .modal-panel {
   display: grid;
+  align-content: start;
   gap: 1rem;
   width: min(720px, calc(100vw - 2rem));
   max-height: min(88dvh, 860px);
@@ -3583,6 +3915,11 @@ body,
     max-width: 100%;
   }
 
+  .modal-panel .excel-car-picker {
+    width: min(360px, 100%);
+    justify-self: start;
+  }
+
   .expense-filter-form .filter-actions {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
@@ -3668,6 +4005,8 @@ body,
   .expense-detail,
   .expense-detail > *,
   .expense-detail-meta,
+  .mileage-values,
+  .mileage-detail-grid,
   .entry-actions,
   .modal-head,
   .modal-panel,
@@ -3772,5 +4111,44 @@ body,
 
   .modal-panel {
     padding-bottom: calc(1rem + env(safe-area-inset-bottom));
+  }
+}
+
+@media (min-width: 701px) and (max-width: 900px), (min-width: 701px) and (max-height: 760px), (min-width: 701px) and (max-aspect-ratio: 4/5) {
+  .mileage-row summary {
+    grid-template-columns: minmax(5.5rem, 0.55fr) minmax(11rem, 1fr) minmax(27rem, 1.4fr) minmax(6rem, auto);
+  }
+
+  .mileage-row .mileage-values {
+    grid-column: auto;
+    grid-row: auto;
+    grid-template-columns: minmax(4.8rem, 0.8fr) minmax(7.8rem, 1.25fr) minmax(5.8rem, 0.9fr) minmax(5.4rem, 0.85fr);
+  }
+
+  .mileage-row summary > .mileage-cost {
+    grid-column: 4;
+    grid-row: 1;
+    justify-self: end;
+    text-align: right;
+  }
+}
+
+@media (max-width: 700px) {
+  .mileage-row summary {
+    grid-template-columns: 72px minmax(0, 1fr) minmax(92px, auto);
+    padding-right: 1.75rem;
+  }
+
+  .mileage-row .mileage-values {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .mileage-row summary > .mileage-cost {
+    grid-column: 3;
+    grid-row: 1;
+    justify-self: end;
+    text-align: right;
   }
 }

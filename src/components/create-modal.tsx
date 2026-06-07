@@ -2,12 +2,13 @@
 
 import type { FormEvent } from "react";
 import { useMemo, useState } from "react";
-import { ClipboardCheck, Euro, FileText, Plus, ScrollText, X } from "lucide-react";
+import { ClipboardCheck, Euro, FileText, Fuel, Plus, ScrollText, X } from "lucide-react";
 import { usePathname } from "next/navigation";
 import {
   createContract,
   createDocumentReference,
   createExpense,
+  createFuelEntry,
   createTask
 } from "@/lib/actions";
 import { enqueueOfflineExpenseCreate, enqueueOfflineTaskCreate } from "@/lib/offline-sync";
@@ -19,12 +20,14 @@ type CreateModalProps = {
   labels: { id: string; name: string }[];
   contracts: { id: string; provider: string; contractType: string; status: string }[];
   members: { id: string; userId: string; user: { name: string } }[];
+  cars: { id: string; name: string; licensePlate: string }[];
 };
 
-type CreateType = "expense" | "task" | "contract" | "document";
+type CreateType = "expense" | "fuel" | "task" | "contract" | "document";
 
 const createTypes = [
   { id: "expense", label: "Ausgabe", detail: "Ausgabe oder Einnahme erfassen", icon: Euro },
+  { id: "fuel", label: "Tankstopp", detail: "Kilometerstand und Verbrauch erfassen", icon: Fuel },
   { id: "task", label: "Aufgabe", detail: "To-do mit Priorität und Deadline", icon: ClipboardCheck },
   { id: "contract", label: "Vertrag", detail: "Abo, Versicherung oder Frist", icon: ScrollText },
   { id: "document", label: "Dokument", detail: "HTTPS-Verweis speichern", icon: FileText }
@@ -32,12 +35,13 @@ const createTypes = [
 
 const typeByPath: Record<string, CreateType> = {
   "/ausgaben": "expense",
+  "/kilometer": "fuel",
   "/aufgaben": "task",
   "/vertraege": "contract",
   "/dokumente": "document"
 };
 
-export function CreateModal({ categories, labels, contracts, members }: CreateModalProps) {
+export function CreateModal({ categories, labels, contracts, members, cars }: CreateModalProps) {
   const pathname = usePathname();
   const pageType = typeByPath[pathname];
   const shouldShow = pathname === "/dashboard" || Boolean(pageType);
@@ -96,6 +100,7 @@ export function CreateModal({ categories, labels, contracts, members }: CreateMo
                 </div>
               ) : null}
               {selectedType === "expense" ? <ExpenseForm categories={categories} labels={labels} contracts={contracts} today={today} returnTo={returnTo} onSubmit={() => setOpen(false)} /> : null}
+              {selectedType === "fuel" ? <FuelForm cars={cars} today={today} returnTo={returnTo} onSubmit={() => setOpen(false)} /> : null}
               {selectedType === "task" ? <TaskForm members={members} onSubmit={() => setOpen(false)} /> : null}
               {selectedType === "contract" ? <ContractForm today={today} onSubmit={() => setOpen(false)} /> : null}
               {selectedType === "document" ? <DocumentForm onSubmit={() => setOpen(false)} /> : null}
@@ -151,6 +156,40 @@ function ExpenseForm({
         <label>Dokumenttitel<input name="documentTitle" placeholder="Rechnung, Beleg, Nachweis ..." /></label>
         <label>Drive-Link<input name="documentUrl" type="url" placeholder="https://drive.google.com/..." /></label>
       </fieldset>
+      <button className="button full-span" type="submit">Speichern</button>
+    </form>
+  );
+}
+
+function FuelForm({
+  cars,
+  today,
+  returnTo,
+  onSubmit
+}: {
+  cars: CreateModalProps["cars"];
+  today: string;
+  returnTo: string;
+  onSubmit: () => void;
+}) {
+  if (cars.length === 0) {
+    return <div className="empty">Noch kein aktives Auto vorhanden. Admins können Autos im Kilometer-Setup anlegen.</div>;
+  }
+
+  return (
+    <form action={createFuelEntry} className="form form-grid modal-form" onSubmit={onSubmit}>
+      <input type="hidden" name="returnTo" value={returnTo} />
+      <label>
+        Auto
+        <select name="carId" defaultValue={cars[0]?.id ?? ""} required>
+          {cars.map((car) => <option value={car.id} key={car.id}>{car.name}{car.licensePlate ? ` · ${car.licensePlate}` : ""}</option>)}
+        </select>
+      </label>
+      <label>Datum<input name="date" type="date" defaultValue={today} required /></label>
+      <label>Kilometerstand<input name="odometerKm" type="number" inputMode="numeric" min="0" required /></label>
+      <label>Liter<input name="liters" inputMode="decimal" placeholder="45,34" required /></label>
+      <label>Betrag in EUR<input name="cost" inputMode="decimal" placeholder="71,01" required /></label>
+      <label className="full-span">Bemerkung<input name="note" placeholder="Urlaub, bezahlt von ..., Werkstatt ..." /></label>
       <button className="button full-span" type="submit">Speichern</button>
     </form>
   );

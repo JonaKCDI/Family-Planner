@@ -1,6 +1,6 @@
 "use client";
 
-import { ClipboardCheck, Euro, FileText, Home, ScrollText, Settings } from "lucide-react";
+import { Car, ClipboardCheck, Euro, FileText, Home, ScrollText } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -8,9 +8,9 @@ const items = [
   { href: "/dashboard", label: "Cockpit", icon: Home },
   { href: "/aufgaben", label: "Aufgaben", icon: ClipboardCheck },
   { href: "/ausgaben", label: "Finanzen", icon: Euro },
+  { href: "/kilometer", label: "Kilometer", icon: Car },
   { href: "/vertraege", label: "Verträge", icon: ScrollText },
-  { href: "/dokumente", label: "Dokumente", icon: FileText },
-  { href: "/einstellungen", label: "Einstellungen", icon: Settings }
+  { href: "/dokumente", label: "Dokumente", icon: FileText }
 ];
 
 export function Nav() {

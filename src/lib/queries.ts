@@ -71,6 +71,27 @@ export async function getExpenseLabels(familyId: string, userId: string, options
     });
 }
 
+export async function getVisibleCars(familyId: string, options: { includeArchived?: boolean } = {}) {
+  return db.car.findMany({
+    where: {
+      familyId,
+      ...(options.includeArchived ? {} : { archivedAt: null })
+    },
+    orderBy: [{ archivedAt: "asc" }, { name: "asc" }]
+  });
+}
+
+export async function getFuelEntriesForCar(familyId: string, carId: string) {
+  return db.fuelEntry.findMany({
+    where: {
+      familyId,
+      carId
+    },
+    include: { car: true, creator: true },
+    orderBy: [{ date: "desc" }, { odometerKm: "desc" }]
+  });
+}
+
 export async function getDocumentsForLinkedEntities(
   familyId: string,
   userId: string,

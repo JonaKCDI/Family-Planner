@@ -35,9 +35,11 @@ Optional kann ein Excel-Ordner für die eigenen Ausgaben gesetzt werden:
 ```powershell
 EXPENSE_EXCEL_HOST_DIR="Z:\FamilyApp\expenses"
 EXPENSE_EXCEL_DIR="/data/expenses"
+MILEAGE_EXCEL_HOST_DIR="Z:\FamilyApp\mileage"
+MILEAGE_EXCEL_DIR="/data/mileage"
 ```
 
-In Docker wird `EXPENSE_EXCEL_HOST_DIR` nach `/data/expenses` gemountet. In der App unter **Ausgaben > Setup** lassen sich die persönlichen Ausgaben als Excel-Datei importieren oder exportieren. Pro Nutzer und Jahr entsteht eine Datei wie `Ausgaben-Jona-2026.xlsx`. Der Download/Upload funktioniert zusätzlich lokal ohne Synology-Pfad.
+In Docker wird `EXPENSE_EXCEL_HOST_DIR` nach `/data/expenses` gemountet; `MILEAGE_EXCEL_HOST_DIR` wird nach `/data/mileage` gemountet. In der App unter **Ausgaben > Setup** lassen sich die persönlichen Ausgaben als Excel-Datei importieren oder exportieren. Unter **Kilometer > Setup** lassen sich Verbrauchsdateien pro Auto importieren oder exportieren.
 
 ## Implementierungsstand
 
@@ -65,6 +67,8 @@ APP_PORT="3000"
 POSTGRES_PASSWORD="ein-langes-zufaelliges-passwort"
 EXPENSE_EXCEL_HOST_DIR="/volume1/docker/family-app/expenses"
 EXPENSE_EXCEL_DIR="/data/expenses"
+MILEAGE_EXCEL_HOST_DIR="/volume1/docker/family-app/mileage"
+MILEAGE_EXCEL_DIR="/data/mileage"
 BACKUP_DIR="/volume1/docker/family-app/backups"
 BACKUP_RETENTION_DAYS="30"
 ```

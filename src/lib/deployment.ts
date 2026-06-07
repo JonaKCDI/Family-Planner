@@ -8,6 +8,7 @@ export type DeploymentFact = {
 export function buildDeploymentFacts(): DeploymentFact[] {
   const appUrl = process.env.APP_URL || "nicht gesetzt";
   const expenseExcelDir = process.env.EXPENSE_EXCEL_DIR || "nicht gesetzt";
+  const mileageExcelDir = process.env.MILEAGE_EXCEL_DIR || "nicht gesetzt";
   const backupRetention = process.env.BACKUP_RETENTION_DAYS || "30";
   const backupInterval = process.env.BACKUP_INTERVAL_SECONDS || "86400";
 
@@ -29,6 +30,12 @@ export function buildDeploymentFacts(): DeploymentFact[] {
       value: expenseExcelDir,
       ok: expenseExcelDir.startsWith("/data/expenses"),
       hint: "Sollte im Container normalerweise der gemountete Ordner /data/expenses sein."
+    },
+    {
+      label: "Kilometer-Ablage",
+      value: mileageExcelDir,
+      ok: mileageExcelDir.startsWith("/data/mileage"),
+      hint: "Sollte im Container normalerweise der gemountete Ordner /data/mileage sein."
     },
     {
       label: "Backup-Plan",

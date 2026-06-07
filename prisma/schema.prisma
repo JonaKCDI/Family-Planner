@@ -93,6 +93,8 @@ model User {
   categories   Category[]
   expenses     Expense[]      @relation("ExpenseOwner")
   expenseLabels ExpenseLabel[]
+  cars          Car[]          @relation("CarCreator")
+  fuelEntries   FuelEntry[]    @relation("FuelEntryCreator")
   tasks         Task[]         @relation("TaskOwner")
   assignedTasks Task[]         @relation("TaskAssignee")
   contracts     Contract[]
@@ -127,6 +129,8 @@ model Family {
   categories Category[]
   expenses   Expense[]
   expenseLabels ExpenseLabel[]
+  cars       Car[]
+  fuelEntries FuelEntry[]
   tasks      Task[]
   contracts  Contract[]
   documents  DocumentReference[]
@@ -210,6 +214,47 @@ model Expense {
   @@index([ownerUserId])
   @@index([labelId])
   @@index([contractId])
+}
+
+model Car {
+  id              String      @id @default(cuid())
+  familyId        String
+  createdByUserId String?
+  name            String
+  licensePlate    String      @default("")
+  color           String      @default("#16776f")
+  notes           String      @default("")
+  archivedAt      DateTime?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  family          Family      @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  creator         User?       @relation("CarCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  fuelEntries     FuelEntry[]
+
+  @@index([familyId, archivedAt])
+  @@index([createdByUserId])
+}
+
+model FuelEntry {
+  id              String   @id @default(cuid())
+  familyId        String
+  carId           String
+  createdByUserId String?
+  date            DateTime
+  odometerKm      Int
+  litersMilli     Int
+  costCents       Int
+  note            String   @default("")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  family          Family   @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  car             Car      @relation(fields: [carId], references: [id], onDelete: Cascade)
+  creator         User?    @relation("FuelEntryCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  @@unique([carId, odometerKm])
+  @@index([familyId, date])
+  @@index([carId, date])
+  @@index([createdByUserId])
 }
 
 model Task {

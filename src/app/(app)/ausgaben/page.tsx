@@ -16,6 +16,7 @@ import { ensureDueContractExpenses } from "@/lib/contract-auto-expenses";
 import { toExpenseDocumentItem, toExpenseListItem } from "@/lib/expense-list";
 import { formatDate, formatMoney } from "@/lib/format";
 import { buildExpensesHref, buildPeriodHref, getCanonicalExpensesHref, getMonthKey, getRawExpensesHref, type ExpenseFilterParams } from "@/lib/expense-filter-url";
+import { formatMonthKeyLabel } from "@/lib/month-options";
 import { getDocumentsForLinkedEntities, getExpenseLabels, getVisibleCategories, getVisibleContracts, getVisibleExpenses } from "@/lib/queries";
 import { ActionModal } from "@/components/action-modal";
 import { ExpenseEntryList } from "@/components/expense-entry-list";
@@ -104,7 +105,7 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
 
       <section className="overview-actions">
         <ActionModal title="Ausgaben filtern" trigger="Filter">
-          <ExpenseFilterForm params={params} categories={categories} labels={labels} />
+          <ExpenseFilterForm params={params} categories={categories} labels={labels} years={years} currentMonthKey={currentMonthKey} />
         </ActionModal>
 
         <ActionModal title="Ausgaben-Setup" trigger="Setup" wide>
@@ -666,7 +667,7 @@ function buildActiveFilterChips(
     chips.push({ label: params.year, clear: { year: undefined } });
   }
   if (range.mode === "month" && params.month) {
-    chips.push({ label: `Monat: ${params.month}`, clear: { month: undefined } });
+    chips.push({ label: `Monat: ${formatMonthKeyLabel(params.month)}`, clear: { month: undefined } });
   }
   if (params.q) chips.push({ label: `Suche: ${params.q}`, clear: { q: undefined } });
   if (params.category) {

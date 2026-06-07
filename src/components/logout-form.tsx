@@ -29,7 +29,7 @@ export function LogoutForm({ action }: LogoutFormProps) {
 
   return (
     <form action={action} onSubmit={() => { void clearBrowserState(); }}>
-      <button className="button secondary button-icon" type="submit">
+      <button className="button secondary button-icon" type="submit" aria-label="Logout" title="Logout">
         <LogOut size={17} />
         Logout
       </button>

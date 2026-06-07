@@ -68,6 +68,33 @@ export function parseOptionalIntegerInput(
   return parsed.data;
 }
 
+export function parseRequiredIntegerInput(
+  value: FormDataEntryValue | string | number | null | undefined,
+  options: { min?: number; max?: number } = {}
+) {
+  const parsed = parseOptionalIntegerInput(value, options);
+  if (parsed === null) throw new Error("Bitte eine gültige ganze Zahl eingeben.");
+  return parsed;
+}
+
+export function parseDecimalInputToMilli(
+  value: FormDataEntryValue | string | number | null | undefined,
+  options: { min?: number; max?: number } = {}
+) {
+  const normalized = String(value ?? "")
+    .trim()
+    .replace(/\s/g, "")
+    .replace(/\./g, "")
+    .replace(",", ".");
+  const parsed = z.coerce.number().finite().safeParse(normalized);
+  if (!parsed.success) throw new Error("Bitte eine gültige Dezimalzahl eingeben.");
+  if (options.min !== undefined && parsed.data < options.min) throw new Error(`Die Zahl muss mindestens ${options.min} sein.`);
+  if (options.max !== undefined && parsed.data > options.max) throw new Error(`Die Zahl darf höchstens ${options.max} sein.`);
+  const milli = Math.round(parsed.data * 1000);
+  if (!Number.isSafeInteger(milli)) throw new Error("Die Zahl ist zu groß.");
+  return milli;
+}
+
 export function parseSyncAmountCents(value: unknown) {
   return z.number().int().finite().nonnegative().parse(value);
 }

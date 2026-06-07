@@ -10,10 +10,11 @@ import { resolveContractCancellationSchedule } from "@/lib/contracts";
 import { db } from "@/lib/db";
 import { ensureDueContractExpenses } from "@/lib/contract-auto-expenses";
 import { buildExpenseWorkbook, parseExpenseWorkbook, type ExpenseFormatRow } from "@/lib/expense-formats";
+import { buildFuelWorkbook, inferCarNameFromFuelFileName, parseFuelWorkbook, type FuelFormatRow } from "@/lib/mileage-formats";
 import { safeFilePart } from "@/lib/file-names";
-import { ownedExpenseWhere } from "@/lib/permissions";
+import { isFamilyAdmin, ownedExpenseWhere } from "@/lib/permissions";
 import { resolveDocumentLinkedEntityId, resolveExpenseCategoryId, resolveExpenseLabelId, resolveTaskAssigneeId, resolveVisibleContractId } from "@/lib/relations";
-import { parseEuroInputToCents, parseOptionalDateInput, parseOptionalEuroInputToCents, parseOptionalIntegerInput, parseRequiredDateInput } from "@/lib/validation";
+import { parseDecimalInputToMilli, parseEuroInputToCents, parseOptionalDateInput, parseOptionalEuroInputToCents, parseOptionalIntegerInput, parseRequiredDateInput, parseRequiredIntegerInput } from "@/lib/validation";
 
 const passwordSchema = z.string().min(10, "Das Passwort braucht mindestens 10 Zeichen.");
 const MAX_LOGIN_FAILURES = 5;
@@ -357,6 +358,201 @@ export async function exportExpensesToSynologyExcel(formData: FormData) {
   await mkdir(dirname(excelPath), { recursive: true });
   await writeFile(excelPath, Buffer.from(await buildExpenseWorkbook(rows, year)));
   revalidatePath("/ausgaben");
+}
+
+export async function createCar(formData: FormData) {
+  const session = await requireSession();
+  requireFamilyAdmin(session.role);
+  await db.car.create({
+    data: {
+      familyId: session.family.id,
+      createdByUserId: session.user.id,
+      name: requiredText(formData, "name"),
+      licensePlate: optionalText(formData, "licensePlate") ?? "",
+      color: optionalText(formData, "color") ?? "#16776f",
+      notes: optionalText(formData, "notes") ?? ""
+    }
+  });
+
+  revalidatePath("/kilometer");
+}
+
+export async function updateCar(formData: FormData) {
+  const session = await requireSession();
+  requireFamilyAdmin(session.role);
+  await db.car.updateMany({
+    where: { id: requiredText(formData, "id"), familyId: session.family.id },
+    data: {
+      name: requiredText(formData, "name"),
+      licensePlate: optionalText(formData, "licensePlate") ?? "",
+      color: optionalText(formData, "color") ?? "#16776f",
+      notes: optionalText(formData, "notes") ?? ""
+    }
+  });
+
+  revalidatePath("/kilometer");
+}
+
+export async function archiveCar(formData: FormData) {
+  const session = await requireSession();
+  requireFamilyAdmin(session.role);
+  await db.car.updateMany({
+    where: { id: requiredText(formData, "id"), familyId: session.family.id },
+    data: { archivedAt: new Date() }
+  });
+
+  revalidatePath("/kilometer");
+}
+
+export async function unarchiveCar(formData: FormData) {
+  const session = await requireSession();
+  requireFamilyAdmin(session.role);
+  await db.car.updateMany({
+    where: { id: requiredText(formData, "id"), familyId: session.family.id },
+    data: { archivedAt: null }
+  });
+
+  revalidatePath("/kilometer");
+}
+
+export async function createFuelEntry(formData: FormData) {
+  const session = await requireSession();
+  const car = await resolveFamilyCar(session.family.id, requiredText(formData, "carId"));
+  await db.fuelEntry.upsert({
+    where: {
+      carId_odometerKm: {
+        carId: car.id,
+        odometerKm: parseRequiredIntegerInput(formData.get("odometerKm"), { min: 0, max: 5000000 })
+      }
+    },
+    create: fuelEntryDataFromForm(formData, session.family.id, car.id, session.user.id),
+    update: fuelEntryDataFromForm(formData, session.family.id, car.id, session.user.id)
+  });
+
+  revalidatePath("/kilometer");
+  redirect(actionReturnTo(formData, `/kilometer?car=${car.id}`));
+}
+
+export async function updateFuelEntry(formData: FormData) {
+  const session = await requireSession();
+  const car = await resolveFamilyCar(session.family.id, requiredText(formData, "carId"));
+  const id = requiredText(formData, "id");
+  const odometerKm = parseRequiredIntegerInput(formData.get("odometerKm"), { min: 0, max: 5000000 });
+  const existingAtOdometer = await db.fuelEntry.findUnique({
+    where: { carId_odometerKm: { carId: car.id, odometerKm } },
+    select: { id: true }
+  });
+  if (existingAtOdometer && existingAtOdometer.id !== id) {
+    throw new Error("Für dieses Auto gibt es bereits einen Tankstopp mit diesem Kilometerstand.");
+  }
+
+  await db.fuelEntry.updateMany({
+    where: { id, familyId: session.family.id, carId: car.id },
+    data: fuelEntryDataFromForm(formData, session.family.id, car.id, session.user.id)
+  });
+
+  revalidatePath("/kilometer");
+  redirect(actionReturnTo(formData, `/kilometer?car=${car.id}`));
+}
+
+export async function deleteFuelEntry(formData: FormData) {
+  const session = await requireSession();
+  const car = await resolveFamilyCar(session.family.id, requiredText(formData, "carId"));
+  await db.fuelEntry.deleteMany({
+    where: { id: requiredText(formData, "id"), familyId: session.family.id, carId: car.id }
+  });
+
+  revalidatePath("/kilometer");
+  redirect(actionReturnTo(formData, `/kilometer?car=${car.id}`));
+}
+
+async function importFuelRows(familyId: string, userId: string, carId: string, rows: FuelFormatRow[]) {
+  for (const row of rows) {
+    const data = {
+      familyId,
+      carId,
+      createdByUserId: userId,
+      date: row.date,
+      odometerKm: row.odometerKm,
+      litersMilli: row.litersMilli,
+      costCents: row.costCents,
+      note: row.note
+    };
+
+    if (row.id) {
+      const existing = await db.fuelEntry.findUnique({
+        where: { id: row.id },
+        select: { familyId: true, carId: true }
+      });
+      if (existing) {
+        if (existing.familyId !== familyId || existing.carId !== carId) {
+          throw new Error(`Der importierte Tankstopp mit der ID ${row.id} gehört nicht zu diesem Auto.`);
+        }
+        await db.fuelEntry.update({ where: { id: row.id }, data });
+        continue;
+      }
+      await db.fuelEntry.create({ data: { id: row.id, ...data } });
+      continue;
+    }
+
+    await db.fuelEntry.upsert({
+      where: {
+        carId_odometerKm: {
+          carId,
+          odometerKm: row.odometerKm
+        }
+      },
+      create: data,
+      update: data
+    });
+  }
+}
+
+export async function importFuelFromUploadedXlsx(formData: FormData) {
+  const session = await requireSession();
+  const file = formData.get("xlsxFile");
+  if (!(file instanceof File) || file.size === 0) {
+    throw new Error("Bitte eine XLSX-Datei auswählen.");
+  }
+
+  const rows = await parseFuelWorkbook(await file.arrayBuffer(), file.name);
+  const carId = await resolveFuelImportCarId(formData, session.family.id, session.user.id, session.role, file.name);
+  await importFuelRows(session.family.id, session.user.id, carId, rows);
+  revalidatePath("/kilometer");
+  redirect(`/kilometer?car=${carId}`);
+}
+
+export async function importFuelFromSynologyExcel(formData: FormData) {
+  const session = await requireSession();
+  const car = await resolveFamilyCar(session.family.id, requiredText(formData, "carId"));
+  const excelPath = fuelExcelPathForCar(car.name);
+  const fileBuffer = await readFile(excelPath);
+  const rows = await parseFuelWorkbook(toArrayBuffer(fileBuffer), excelPath);
+  await importFuelRows(session.family.id, session.user.id, car.id, rows);
+  revalidatePath("/kilometer");
+  redirect(`/kilometer?car=${car.id}`);
+}
+
+export async function exportFuelToSynologyExcel(formData: FormData) {
+  const session = await requireSession();
+  const car = await resolveFamilyCar(session.family.id, requiredText(formData, "carId"));
+  const excelPath = fuelExcelPathForCar(car.name);
+  const entries = await db.fuelEntry.findMany({
+    where: { familyId: session.family.id, carId: car.id },
+    orderBy: [{ date: "asc" }, { odometerKm: "asc" }]
+  });
+  const rows = entries.map((entry) => ({
+    id: entry.id,
+    date: entry.date,
+    odometerKm: entry.odometerKm,
+    litersMilli: entry.litersMilli,
+    costCents: entry.costCents,
+    note: entry.note
+  }));
+
+  await mkdir(dirname(excelPath), { recursive: true });
+  await writeFile(excelPath, Buffer.from(await buildFuelWorkbook(rows, car.name)));
+  revalidatePath("/kilometer");
 }
 
 export async function createCategory(formData: FormData) {
@@ -961,6 +1157,66 @@ function expenseExcelPathForUser(userName: string, year: number) {
   const configuredDir = process.env.EXPENSE_EXCEL_DIR;
   if (!configuredDir) throw new Error("EXPENSE_EXCEL_DIR ist nicht gesetzt.");
   return join(configuredDir, `Ausgaben-${safeFilePart(userName)}-${year}.xlsx`);
+}
+
+function fuelExcelPathForCar(carName: string) {
+  const configuredDir = process.env.MILEAGE_EXCEL_DIR;
+  if (!configuredDir) throw new Error("MILEAGE_EXCEL_DIR ist nicht gesetzt.");
+  return join(configuredDir, `Verbrauch-${safeFilePart(carName)}.xlsx`);
+}
+
+function fuelEntryDataFromForm(formData: FormData, familyId: string, carId: string, userId: string) {
+  return {
+    familyId,
+    carId,
+    createdByUserId: userId,
+    date: parseRequiredDateInput(formData.get("date")),
+    odometerKm: parseRequiredIntegerInput(formData.get("odometerKm"), { min: 0, max: 5000000 }),
+    litersMilli: parseDecimalInputToMilli(formData.get("liters"), { min: 0.001, max: 10000 }),
+    costCents: parseEuroInputToCents(formData.get("cost")),
+    note: optionalText(formData, "note") ?? ""
+  };
+}
+
+async function resolveFamilyCar(familyId: string, carId: string) {
+  const car = await db.car.findFirst({
+    where: {
+      id: carId,
+      familyId,
+      archivedAt: null
+    }
+  });
+  if (!car) throw new Error("Das ausgewählte Auto ist nicht verfügbar.");
+  return car;
+}
+
+async function resolveFuelImportCarId(formData: FormData, familyId: string, userId: string, role: "ADMIN" | "MEMBER", fileName: string) {
+  const carId = optionalText(formData, "carId");
+  if (carId) return (await resolveFamilyCar(familyId, carId)).id;
+
+  requireFamilyAdmin(role);
+  const name = inferCarNameFromFuelFileName(fileName);
+  const existing = await db.car.findFirst({
+    where: {
+      familyId,
+      name,
+      archivedAt: null
+    }
+  });
+  if (existing) return existing.id;
+
+  const car = await db.car.create({
+    data: {
+      familyId,
+      createdByUserId: userId,
+      name
+    }
+  });
+  return car.id;
+}
+
+function requireFamilyAdmin(role: "ADMIN" | "MEMBER") {
+  if (!isFamilyAdmin(role)) throw new Error("Nur Admins können Autos verwalten.");
 }
 
 function exportYearFromFormData(formData: FormData) {

@@ -64,8 +64,9 @@ export default async function SettingsPage() {
             </div>
             <div className="setup-steps">
               <ol>
-                <li>In Synology Container Manager die `.env` Werte für `APP_URL`, `POSTGRES_PASSWORD`, `EXPENSE_EXCEL_HOST_DIR`, `EXPENSE_EXCEL_DIR` und `BACKUP_DIR` setzen.</li>
+                <li>In Synology Container Manager die `.env` Werte für `APP_URL`, `POSTGRES_PASSWORD`, `EXPENSE_EXCEL_HOST_DIR`, `EXPENSE_EXCEL_DIR`, `MILEAGE_EXCEL_HOST_DIR`, `MILEAGE_EXCEL_DIR` und `BACKUP_DIR` setzen.</li>
                 <li>`EXPENSE_EXCEL_HOST_DIR` als Ordner nach `/data/expenses` mounten, damit Excel-Import und -Export dauerhaft auf dem NAS liegen.</li>
+                <li>`MILEAGE_EXCEL_HOST_DIR` als Ordner nach `/data/mileage` mounten, damit Verbrauchsdateien pro Auto dauerhaft auf dem NAS liegen.</li>
                 <li>`BACKUP_DIR` als echten Synology-Ordner mounten und regelmäßig in Hyper Backup oder Snapshot Replication sichern.</li>
                 <li>Nach jeder Env-Änderung Container neu erstellen oder neu starten und danach Login, Excel-Export und Backup-Dateien prüfen.</li>
               </ol>

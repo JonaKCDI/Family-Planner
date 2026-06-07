@@ -63,6 +63,12 @@ function normalizeExpenseParams(params: ExpenseFilterParams) {
     if (value) next[key] = value;
   }
 
+  if (next.month && /^\d{2}$/.test(next.month) && next.year) {
+    next.month = `${next.year}-${next.month}`;
+  } else if (next.month && !/^\d{4}-\d{2}$/.test(next.month)) {
+    delete next.month;
+  }
+
   if (next.from || next.to) {
     delete next.year;
     delete next.month;

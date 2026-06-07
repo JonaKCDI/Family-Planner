@@ -4,6 +4,7 @@
 
 - [ ] Copy the full project to `/volume1/docker/family-app`.
 - [ ] Create `/volume1/docker/family-app/expenses`.
+- [ ] Create `/volume1/docker/family-app/mileage`.
 - [ ] Create `/volume1/docker/family-app/backups`.
 - [ ] Copy `deploy/synology/.env.example` to `deploy/synology/.env`.
 - [ ] Set a long random `POSTGRES_PASSWORD`.
@@ -27,6 +28,7 @@
 - [ ] Create one expense.
 - [ ] Download yearly Excel from **Ausgaben > Setup**.
 - [ ] Export Synology Excel and confirm a year-specific workbook, e.g. `Ausgaben-Jona-2026.xlsx`, appears in `expenses`.
+- [ ] Create one car in **Kilometer > Setup**, add one tank stop, and confirm a workbook like `Verbrauch-Seat-Leon.xlsx` appears in `mileage` after Synology export.
 - [ ] Create one task and change its status.
 - [ ] Create one contract and link an expense to it.
 - [ ] Confirm contract payments show in **Verträge**.

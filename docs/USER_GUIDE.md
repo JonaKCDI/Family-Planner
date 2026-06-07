@@ -49,6 +49,7 @@ Für eine frische Synology-Installation:
 
 ```text
 /volume1/docker/family-app/expenses
+/volume1/docker/family-app/mileage
 /volume1/docker/family-app/backups
 ```
 
@@ -84,6 +85,8 @@ POSTGRES_PASSWORD="bitte-ein-sehr-langes-zufaelliges-passwort-eintragen"
 
 EXPENSE_EXCEL_HOST_DIR="/volume1/docker/family-app/expenses"
 EXPENSE_EXCEL_DIR="/data/expenses"
+MILEAGE_EXCEL_HOST_DIR="/volume1/docker/family-app/mileage"
+MILEAGE_EXCEL_DIR="/data/mileage"
 
 BACKUP_DIR="/volume1/docker/family-app/backups"
 BACKUP_RETENTION_DAYS="30"
@@ -97,6 +100,8 @@ Wichtig:
 - `POSTGRES_PASSWORD` nur einmal setzen und danach nicht ohne Grund ändern.
 - `EXPENSE_EXCEL_HOST_DIR` ist der Synology-Ordner.
 - `EXPENSE_EXCEL_DIR` ist der Pfad im Container und bleibt normalerweise `/data/expenses`.
+- `MILEAGE_EXCEL_HOST_DIR` ist der Synology-Ordner für Verbrauchsdateien.
+- `MILEAGE_EXCEL_DIR` ist der Pfad im Container und bleibt normalerweise `/data/mileage`.
 - `BACKUP_INTERVAL_SECONDS="86400"` bedeutet ein Backup pro Tag.
 
 ## Start In Container Manager
@@ -221,9 +226,11 @@ Prüfe:
 ```env
 EXPENSE_EXCEL_HOST_DIR="/volume1/docker/family-app/expenses"
 EXPENSE_EXCEL_DIR="/data/expenses"
+MILEAGE_EXCEL_HOST_DIR="/volume1/docker/family-app/mileage"
+MILEAGE_EXCEL_DIR="/data/mileage"
 ```
 
-Der Ordner `expenses` muss existieren und für Container Manager beschreibbar sein.
+Die Ordner `expenses` und `mileage` müssen existieren und für Container Manager beschreibbar sein.
 
 ### Backups fehlen
 
@@ -270,4 +277,5 @@ Vorher unbedingt sicherstellen, dass du das richtige Backup und das richtige Pro
 | `prisma/` | Datenbankschema und Migrationen |
 | `scripts/backup-postgres.sh` | Backup-Automation |
 | `expenses/` | Excel-Ablage für persönliche Ausgaben |
+| `mileage/` | Excel-Ablage für Verbrauchsdateien pro Auto |
 | `backups/` | Datenbank-Backups |

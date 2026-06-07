@@ -12,6 +12,7 @@ Implemented modules:
 - **Cockpit:** overview of current spending, important tasks, contracts, and documents.
 - **Expenses:** personal income/expense tracking per user, with categories, labels/projects, payment method, search, filters, budget analysis, and yearly/monthly views.
 - **Excel safety flow:** local browser `.xlsx` download/upload plus Synology-mounted Excel import/export, one workbook per user and year.
+- **Kilometer:** family-shared car fuel logs with odometer, liters, cost, consumption analysis, car switching, and per-car Excel import/export.
 - **Tasks:** family/private tasks with assignee, priority, due date, single status control, important-task logic, and offline creation/status changes.
 - **Contracts:** provider, contract type, cost, payment interval, status, yearly cancellation date, cancellation notice, auto-renewal, linked expenses, payment overview, load more, and collapse/expand.
 - **Documents:** HTTPS-only references to Synology Drive/File Station, WebDAV, or external URLs. The app stores links, not files.
@@ -22,7 +23,7 @@ Implemented modules:
 
 1. Open the app URL.
 2. On first launch, create the family and first admin.
-3. Use the global floating plus button to create expenses, tasks, contracts, and document references.
+3. Use the global floating plus button to create expenses, tank stops, tasks, contracts, and document references.
 4. Use **Ausgaben > Setup** to manage categories, labels, and Excel import/export.
 5. Use **Verträge** to review costs, cancellation deadlines, auto-renewing contracts, linked payments, and documents.
 6. Use **Aufgaben** for task planning; important tasks are promoted when overdue, due today, urgent, high-priority with a near deadline, or in progress with a near deadline.
@@ -32,6 +33,7 @@ Implemented modules:
 ## Privacy And Security Readiness
 
 - Expenses are personal for reads, writes, deletes, Excel import/export, and sync. Admins cannot delete another user’s expenses.
+- Mileage entries are family-shared. Active family members can maintain tank stops; admins manage cars.
 - Submitted relation IDs are re-authorized server-side before writes.
 - Offline sync create no longer upserts blindly into existing IDs. Existing IDs must belong to the current user/family or the sync change fails.
 - Document links are validated against visible/current-user entities; general documents clear the linked entity ID.
@@ -65,6 +67,7 @@ Essential folders:
 ```text
 /volume1/docker/family-app
 /volume1/docker/family-app/expenses
+/volume1/docker/family-app/mileage
 /volume1/docker/family-app/backups
 ```
 
@@ -76,6 +79,8 @@ APP_PORT="3000"
 POSTGRES_PASSWORD="long-random-password"
 EXPENSE_EXCEL_HOST_DIR="/volume1/docker/family-app/expenses"
 EXPENSE_EXCEL_DIR="/data/expenses"
+MILEAGE_EXCEL_HOST_DIR="/volume1/docker/family-app/mileage"
+MILEAGE_EXCEL_DIR="/data/mileage"
 BACKUP_DIR="/volume1/docker/family-app/backups"
 BACKUP_RETENTION_DAYS="30"
 BACKUP_INTERVAL_SECONDS="86400"

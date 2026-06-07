@@ -18,6 +18,7 @@ Create:
 
 ```text
 /volume1/docker/family-app/expenses
+/volume1/docker/family-app/mileage
 /volume1/docker/family-app/backups
 ```
 
@@ -43,6 +44,8 @@ APP_PORT="3000"
 POSTGRES_PASSWORD="a-long-random-password"
 EXPENSE_EXCEL_HOST_DIR="/volume1/docker/family-app/expenses"
 EXPENSE_EXCEL_DIR="/data/expenses"
+MILEAGE_EXCEL_HOST_DIR="/volume1/docker/family-app/mileage"
+MILEAGE_EXCEL_DIR="/data/mileage"
 BACKUP_DIR="/volume1/docker/family-app/backups"
 BACKUP_RETENTION_DAYS="30"
 BACKUP_INTERVAL_SECONDS="86400"
@@ -75,6 +78,7 @@ Create the first admin. Then check:
 - Expense create/edit/delete.
 - Excel download/upload.
 - Synology Excel export/import.
+- Kilometer-Verbrauch exportieren/importieren.
 - Task create and status change.
 - Contract payment overview.
 - Document HTTPS reference.

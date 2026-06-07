@@ -1,8 +1,9 @@
 import Link from "next/link";
 import Image from "next/image";
+import { Settings } from "lucide-react";
 import { logout } from "@/lib/actions";
 import { requireSession } from "@/lib/auth";
-import { getExpenseLabels, getFamilyMembers, getVisibleCategories, getVisibleContracts } from "@/lib/queries";
+import { getExpenseLabels, getFamilyMembers, getVisibleCars, getVisibleCategories, getVisibleContracts } from "@/lib/queries";
 import { CreateModal } from "@/components/create-modal";
 import { GlobalSubmitIndicator } from "@/components/global-submit-indicator";
 import { Nav } from "@/components/nav";
@@ -13,11 +14,12 @@ export const dynamic = "force-dynamic";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const session = await requireSession();
-  const [categories, labels, contracts, members] = await Promise.all([
+  const [categories, labels, contracts, members, cars] = await Promise.all([
     getVisibleCategories(session.family.id, session.user.id, "EXPENSE"),
     getExpenseLabels(session.family.id, session.user.id),
     getVisibleContracts(session.family.id, session.user.id),
-    getFamilyMembers(session.family.id)
+    getFamilyMembers(session.family.id),
+    getVisibleCars(session.family.id)
   ]);
 
   return (
@@ -32,7 +34,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             <span>{session.family.name} · {session.user.name}</span>
           </span>
         </Link>
-        <LogoutForm action={logout} />
+        <div className="topbar-actions">
+          <Link className="topbar-icon-link" href="/einstellungen" aria-label="Einstellungen" title="Einstellungen">
+            <Settings size={19} strokeWidth={2.2} />
+          </Link>
+          <LogoutForm action={logout} />
+        </div>
       </header>
       <div className="app-frame">
         <Nav />
@@ -42,7 +49,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           {children}
         </main>
       </div>
-      <CreateModal categories={categories} labels={labels} contracts={contracts} members={members} />
+      <CreateModal categories={categories} labels={labels} contracts={contracts} members={members} cars={cars} />
     </div>
   );
 }
