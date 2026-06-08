@@ -16,6 +16,7 @@ export type AnalyticsLabel = {
   name: string;
   color: string;
   budgetCents: number;
+  lastUsedAt?: Date | string | null;
 };
 
 export type PeriodRow = { label: string; income: number; spending: number; budget: number; saldo: number };
@@ -55,20 +56,34 @@ export function buildCategoryRows(entries: AnalyticsExpense[], categories: Analy
 }
 
 export function buildLabelRows(entries: AnalyticsExpense[], labels: AnalyticsLabel[]) {
-  const rows = new Map<string, { amount: number; color: string; budget: number }>();
-  for (const label of labels) rows.set(label.name, { amount: 0, color: label.color, budget: label.budgetCents });
+  const rows = new Map<string, { amount: number; color: string; budget: number; neverUsed: boolean }>();
+  const labelsByName = new Map(labels.map((label) => [label.name, label]));
+  for (const label of labels) {
+    if (label.lastUsedAt !== null) continue;
+    rows.set(label.name, { amount: 0, color: label.color, budget: label.budgetCents, neverUsed: true });
+  }
   for (const entry of entries) {
     if (entry.kind !== "EXPENSE" || !entry.label) continue;
-    const current = rows.get(entry.label.name) ?? { amount: 0, color: entry.label.color, budget: entry.label.budgetCents };
+    const configuredLabel = labelsByName.get(entry.label.name);
+    const current = rows.get(entry.label.name) ?? {
+      amount: 0,
+      color: configuredLabel?.color ?? entry.label.color,
+      budget: configuredLabel?.budgetCents ?? entry.label.budgetCents,
+      neverUsed: false
+    };
     current.amount += entry.amountCents;
+    current.neverUsed = false;
     rows.set(entry.label.name, current);
   }
   return [...rows.entries()].map(([name, row]) => ({
     name,
-    ...row,
+    amount: row.amount,
+    color: row.color,
+    budget: row.budget,
+    neverUsed: row.neverUsed,
     remaining: row.budget - row.amount,
     budgetUsage: row.budget > 0 ? Math.min(100, (row.amount / row.budget) * 100) : row.amount > 0 ? 100 : 0
-  })).filter((row) => row.amount > 0 || row.budget > 0).sort((a, b) => b.amount - a.amount);
+  })).filter((row) => row.amount > 0 || row.neverUsed).sort((a, b) => b.amount - a.amount);
 }
 
 export function buildPeriodRows(entries: AnalyticsExpense[], categories: AnalyticsCategory[], mode: "month" | "year"): PeriodRow[] {

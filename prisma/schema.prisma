@@ -93,6 +93,7 @@ model User {
   categories   Category[]
   expenses     Expense[]      @relation("ExpenseOwner")
   expenseLabels ExpenseLabel[]
+  fuelExpenseSettings FuelExpenseSettings[]
   cars          Car[]          @relation("CarCreator")
   fuelEntries   FuelEntry[]    @relation("FuelEntryCreator")
   tasks         Task[]         @relation("TaskOwner")
@@ -129,6 +130,7 @@ model Family {
   categories Category[]
   expenses   Expense[]
   expenseLabels ExpenseLabel[]
+  fuelExpenseSettings FuelExpenseSettings[]
   cars       Car[]
   fuelEntries FuelEntry[]
   tasks      Task[]
@@ -163,6 +165,7 @@ model Category {
   family      Family       @relation(fields: [familyId], references: [id], onDelete: Cascade)
   owner       User?        @relation(fields: [ownerUserId], references: [id], onDelete: SetNull)
   expenses    Expense[]
+  fuelExpenseSettings FuelExpenseSettings[]
 
   @@index([familyId, type])
 }
@@ -180,6 +183,7 @@ model ExpenseLabel {
   family      Family   @relation(fields: [familyId], references: [id], onDelete: Cascade)
   owner       User     @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
   expenses    Expense[]
+  fuelExpenseSettings FuelExpenseSettings[]
 
   @@unique([ownerUserId, name])
   @@index([familyId, ownerUserId])
@@ -198,7 +202,9 @@ model Expense {
   categoryId  String?
   labelId     String?
   contractId  String?
+  fuelEntryId String?  @unique
   generatedByContract Boolean @default(false)
+  generatedByFuelEntry Boolean @default(false)
   description String
   scope       Scope    @default(FAMILY)
   createdAt   DateTime @default(now())
@@ -208,12 +214,36 @@ model Expense {
   category    Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   label       ExpenseLabel? @relation(fields: [labelId], references: [id], onDelete: SetNull)
   contract    Contract? @relation(fields: [contractId], references: [id], onDelete: SetNull)
+  fuelEntry   FuelEntry? @relation(fields: [fuelEntryId], references: [id], onDelete: SetNull)
 
   @@index([familyId, date])
   @@index([familyId, kind])
   @@index([ownerUserId])
   @@index([labelId])
   @@index([contractId])
+  @@index([fuelEntryId])
+}
+
+model FuelExpenseSettings {
+  id                   String   @id @default(cuid())
+  familyId             String
+  userId               String
+  autoCreateExpense    Boolean  @default(false)
+  defaultCategoryId    String?
+  defaultLabelId       String?
+  defaultPaymentMethod String   @default("")
+  defaultStore         String   @default("")
+  defaultDescription   String   @default("")
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  family               Family   @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  defaultCategory      Category? @relation(fields: [defaultCategoryId], references: [id], onDelete: SetNull)
+  defaultLabel         ExpenseLabel? @relation(fields: [defaultLabelId], references: [id], onDelete: SetNull)
+
+  @@unique([familyId, userId])
+  @@index([defaultCategoryId])
+  @@index([defaultLabelId])
 }
 
 model Car {
@@ -250,6 +280,7 @@ model FuelEntry {
   family          Family   @relation(fields: [familyId], references: [id], onDelete: Cascade)
   car             Car      @relation(fields: [carId], references: [id], onDelete: Cascade)
   creator         User?    @relation("FuelEntryCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  expense         Expense?
 
   @@unique([carId, odometerKm])
   @@index([familyId, date])

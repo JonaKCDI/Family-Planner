@@ -9,10 +9,13 @@ export type ExpenseListItem = {
   categoryId: string | null;
   labelId: string | null;
   contractId: string | null;
+  fuelEntryId: string | null;
+  generatedByFuelEntry: boolean;
   description: string;
   category: { id: string; name: string; color: string } | null;
   label: { id: string; name: string; color: string } | null;
   contract: { id: string; provider: string; contractType: string } | null;
+  fuelEntry: { id: string; odometerKm: number; car: { id: string; name: string } } | null;
 };
 
 export type ExpenseDocumentItem = {
@@ -33,10 +36,13 @@ export function toExpenseListItem(expense: {
   categoryId: string | null;
   labelId: string | null;
   contractId: string | null;
+  fuelEntryId: string | null;
+  generatedByFuelEntry: boolean;
   description: string;
   category: { id: string; name: string; color: string } | null;
   label: { id: string; name: string; color: string } | null;
   contract: { id: string; provider: string; contractType: string } | null;
+  fuelEntry: { id: string; odometerKm: number; car: { id: string; name: string } } | null;
 }): ExpenseListItem {
   return {
     id: expense.id,
@@ -49,10 +55,17 @@ export function toExpenseListItem(expense: {
     categoryId: expense.categoryId,
     labelId: expense.labelId,
     contractId: expense.contractId,
+    fuelEntryId: expense.fuelEntryId,
+    generatedByFuelEntry: expense.generatedByFuelEntry,
     description: expense.description,
     category: expense.category ? { id: expense.category.id, name: expense.category.name, color: expense.category.color } : null,
     label: expense.label ? { id: expense.label.id, name: expense.label.name, color: expense.label.color } : null,
-    contract: expense.contract ? { id: expense.contract.id, provider: expense.contract.provider, contractType: expense.contract.contractType } : null
+    contract: expense.contract ? { id: expense.contract.id, provider: expense.contract.provider, contractType: expense.contract.contractType } : null,
+    fuelEntry: expense.fuelEntry ? {
+      id: expense.fuelEntry.id,
+      odometerKm: expense.fuelEntry.odometerKm,
+      car: { id: expense.fuelEntry.car.id, name: expense.fuelEntry.car.name }
+    } : null
   };
 }
 

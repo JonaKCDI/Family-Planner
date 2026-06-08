@@ -26,7 +26,7 @@ export async function getVisibleExpenses(familyId: string, userId: string) {
       familyId,
       ownerUserId: userId
     },
-    include: { category: true, label: true, contract: true },
+    include: { category: true, label: true, contract: true, fuelEntry: { include: { car: true } } },
     orderBy: { date: "desc" }
   });
 }
@@ -69,6 +69,17 @@ export async function getExpenseLabels(familyId: string, userId: string, options
       if (aLastUsed === null && bLastUsed !== null) return 1;
       return a.name.localeCompare(b.name, "de");
     });
+}
+
+export async function getFuelExpenseSettings(familyId: string, userId: string) {
+  return db.fuelExpenseSettings.findUnique({
+    where: {
+      familyId_userId: {
+        familyId,
+        userId
+      }
+    }
+  });
 }
 
 export async function getVisibleCars(familyId: string, options: { includeArchived?: boolean } = {}) {
@@ -141,7 +152,7 @@ export async function getVisibleContractPayments(familyId: string, userId: strin
       kind: "EXPENSE",
       contractId: { in: contractIds }
     },
-    include: { category: true, label: true, contract: true },
+    include: { category: true, label: true, contract: true, fuelEntry: { include: { car: true } } },
     orderBy: { date: "desc" }
   });
 }

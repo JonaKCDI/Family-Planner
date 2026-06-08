@@ -32,6 +32,7 @@ export async function GET(request: Request) {
     contractId: expense.contractId ?? "",
     contractProvider: expense.contract?.provider ?? "",
     contractType: expense.contract?.contractType ?? "",
+    fuelEntryId: expense.fuelEntryId ?? "",
     description: expense.description
   }));
 

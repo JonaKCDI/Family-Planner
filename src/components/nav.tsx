@@ -8,7 +8,7 @@ const items = [
   { href: "/dashboard", label: "Cockpit", icon: Home },
   { href: "/aufgaben", label: "Aufgaben", icon: ClipboardCheck },
   { href: "/ausgaben", label: "Finanzen", icon: Euro },
-  { href: "/kilometer", label: "Kilometer", icon: Car },
+  { href: "/kilometer", label: "Auto", icon: Car },
   { href: "/vertraege", label: "Verträge", icon: ScrollText },
   { href: "/dokumente", label: "Dokumente", icon: FileText }
 ];

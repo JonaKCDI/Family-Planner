@@ -1,5 +1,6 @@
 "use client";
 
+import { Car } from "lucide-react";
 import { useEffect, useState } from "react";
 import { deleteExpense, updateExpense } from "@/lib/actions";
 import type { ExpenseDocumentItem, ExpenseListItem } from "@/lib/expense-list";
@@ -126,6 +127,7 @@ function ExpenseEntryRow({
           </span>
           {expense.label ? <span className="overview-tag label-overview-tag" style={{ background: expense.label.color }}>{expense.label.name}</span> : null}
           {expense.contract ? <span className="overview-tag">{expense.contract.provider}</span> : null}
+          {expense.fuelEntry ? <FuelEntryTag expense={expense} variant="overview" /> : null}
         </span>
         <strong className={expense.kind === "INCOME" ? "positive" : "negative"}>
           {expense.kind === "INCOME" ? "+" : "-"}{formatMoney(expense.amountCents, expense.currency)}
@@ -140,6 +142,7 @@ function ExpenseEntryRow({
             {expense.category ? <span className="badge" style={{ borderColor: expense.category.color }}>{expense.category.name}</span> : null}
             {expense.label ? <span className="badge label-badge" style={{ background: expense.label.color }}>{expense.label.name}</span> : null}
             {expense.contract ? <span className="badge">Vertrag: {expense.contract.provider} · {expense.contract.contractType}</span> : null}
+            {expense.fuelEntry ? <FuelEntryTag expense={expense} variant="detail" /> : null}
             {linkedDocuments.length === 0 ? <span className="badge">Kein Dokument</span> : null}
             {linkedDocuments.map((document) => (
               <a className="badge link-badge" href={document.url} key={document.id} target="_blank" rel="noreferrer">
@@ -192,6 +195,20 @@ function ExpenseEntryRow({
         </div>
       ) : null}
     </details>
+  );
+}
+
+function FuelEntryTag({ expense, variant }: { expense: ExpenseListItem; variant: "overview" | "detail" }) {
+  if (!expense.fuelEntry) return null;
+  const title = `${expense.generatedByFuelEntry ? "Automatisch aus Tankstopp erstellt" : "Verknüpfter Tankstopp"}: ${expense.fuelEntry.car.name}, ${expense.fuelEntry.odometerKm.toLocaleString("de-DE")} km`;
+  const className = variant === "overview" ? "overview-tag fuel-entry-tag" : "badge fuel-entry-tag";
+
+  return (
+    <span className={className} title={title} aria-label={title}>
+      <Car aria-hidden="true" size={14} strokeWidth={2.4} />
+      <span>{expense.fuelEntry.car.name}</span>
+      <small>{expense.fuelEntry.odometerKm.toLocaleString("de-DE")} km</small>
+    </span>
   );
 }
 

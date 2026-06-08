@@ -13,6 +13,7 @@ export type ExpenseFormatRow = {
   contractId?: string;
   contractProvider?: string;
   contractType?: string;
+  fuelEntryId?: string;
   description: string;
 };
 
@@ -34,6 +35,7 @@ const dataSheetHeader = [
   "vertragId",
   "vertragAnbieter",
   "vertragArt",
+  "tankstoppId",
   "beschreibung"
 ];
 const dataRequiredFields = ["kind", "amountCents", "currency", "date", "category", "label", "description"] as const;
@@ -116,6 +118,7 @@ export async function buildExpenseWorkbook(expenses: ExpenseExportRow[], year: n
     { key: "contractId", width: 28 },
     { key: "contractProvider", width: 22 },
     { key: "contractType", width: 18 },
+    { key: "fuelEntryId", width: 28 },
     { key: "description", width: 32 }
   ];
   dataSheet.addRow(dataSheetHeader);
@@ -133,6 +136,7 @@ export async function buildExpenseWorkbook(expenses: ExpenseExportRow[], year: n
       expense.contractId ?? "",
       expense.contractProvider ?? "",
       expense.contractType ?? "",
+      expense.fuelEntryId ?? "",
       expense.description
     ]);
   }
@@ -243,6 +247,7 @@ function parseDataSheet(worksheet: ExcelJS.Worksheet): ExpenseFormatRow[] {
       contractId: header.indexes.contractId >= 0 ? cellText(row.getCell(header.indexes.contractId + 1)) || undefined : undefined,
       contractProvider: header.indexes.contractProvider >= 0 ? cellText(row.getCell(header.indexes.contractProvider + 1)) || undefined : undefined,
       contractType: header.indexes.contractType >= 0 ? cellText(row.getCell(header.indexes.contractType + 1)) || undefined : undefined,
+      fuelEntryId: header.indexes.fuelEntryId >= 0 ? cellText(row.getCell(header.indexes.fuelEntryId + 1)) || undefined : undefined,
       description: cellText(row.getCell(header.indexes.description + 1)) || "Excel Import"
     });
   });
@@ -287,6 +292,7 @@ function dataColumnIndexes(header: string[]) {
     contractId: findWorkbookColumn(header, ["contractid", "contract_id", "vertragid", "vertrag_id"]),
     contractProvider: findWorkbookColumn(header, ["contractprovider", "contract_provider", "vertraganbieter", "vertrag_anbieter", "anbieter"]),
     contractType: findWorkbookColumn(header, ["contracttype", "contract_type", "vertragart", "vertragsart"]),
+    fuelEntryId: findWorkbookColumn(header, ["fuelentryid", "fuel_entry_id", "tankstoppid", "tankstopp_id"]),
     description: findWorkbookColumn(header, ["description", "beschreibung", "notiz", "notes"])
   };
 }

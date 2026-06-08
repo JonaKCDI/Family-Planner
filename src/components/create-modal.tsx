@@ -21,6 +21,14 @@ type CreateModalProps = {
   contracts: { id: string; provider: string; contractType: string; status: string }[];
   members: { id: string; userId: string; user: { name: string } }[];
   cars: { id: string; name: string; licensePlate: string }[];
+  fuelExpenseSettings: {
+    autoCreateExpense: boolean;
+    defaultCategoryId: string | null;
+    defaultLabelId: string | null;
+    defaultPaymentMethod: string;
+    defaultStore: string;
+    defaultDescription: string;
+  } | null;
 };
 
 type CreateType = "expense" | "fuel" | "task" | "contract" | "document";
@@ -41,7 +49,7 @@ const typeByPath: Record<string, CreateType> = {
   "/dokumente": "document"
 };
 
-export function CreateModal({ categories, labels, contracts, members, cars }: CreateModalProps) {
+export function CreateModal({ categories, labels, contracts, members, cars, fuelExpenseSettings }: CreateModalProps) {
   const pathname = usePathname();
   const pageType = typeByPath[pathname];
   const shouldShow = pathname === "/dashboard" || Boolean(pageType);
@@ -100,7 +108,17 @@ export function CreateModal({ categories, labels, contracts, members, cars }: Cr
                 </div>
               ) : null}
               {selectedType === "expense" ? <ExpenseForm categories={categories} labels={labels} contracts={contracts} today={today} returnTo={returnTo} onSubmit={() => setOpen(false)} /> : null}
-              {selectedType === "fuel" ? <FuelForm cars={cars} today={today} returnTo={returnTo} onSubmit={() => setOpen(false)} /> : null}
+              {selectedType === "fuel" ? (
+                <FuelForm
+                  cars={cars}
+                  categories={categories}
+                  labels={labels}
+                  settings={fuelExpenseSettings}
+                  today={today}
+                  returnTo={returnTo}
+                  onSubmit={() => setOpen(false)}
+                />
+              ) : null}
               {selectedType === "task" ? <TaskForm members={members} onSubmit={() => setOpen(false)} /> : null}
               {selectedType === "contract" ? <ContractForm today={today} onSubmit={() => setOpen(false)} /> : null}
               {selectedType === "document" ? <DocumentForm onSubmit={() => setOpen(false)} /> : null}
@@ -163,15 +181,22 @@ function ExpenseForm({
 
 function FuelForm({
   cars,
+  categories,
+  labels,
+  settings,
   today,
   returnTo,
   onSubmit
 }: {
   cars: CreateModalProps["cars"];
+  categories: CreateModalProps["categories"];
+  labels: CreateModalProps["labels"];
+  settings: CreateModalProps["fuelExpenseSettings"];
   today: string;
   returnTo: string;
   onSubmit: () => void;
 }) {
+  const [bookExpense, setBookExpense] = useState(Boolean(settings?.autoCreateExpense));
   if (cars.length === 0) {
     return <div className="empty">Noch kein aktives Auto vorhanden. Admins können Autos im Kilometer-Setup anlegen.</div>;
   }
@@ -190,6 +215,26 @@ function FuelForm({
       <label>Liter<input name="liters" inputMode="decimal" placeholder="45,34" required /></label>
       <label>Betrag in EUR<input name="cost" inputMode="decimal" placeholder="71,01" required /></label>
       <label className="full-span">Bemerkung<input name="note" placeholder="Urlaub, bezahlt von ..., Werkstatt ..." /></label>
+      <label className="checkbox-field full-span">
+        <input name="createExpenseFromFuel" type="checkbox" checked={bookExpense} onChange={(event) => setBookExpense(event.currentTarget.checked)} />
+        Als Ausgabe buchen
+      </label>
+      {bookExpense ? (
+        <fieldset className="fieldset full-span">
+          <legend>Ausgabe</legend>
+          <SearchableSelect name="expenseCategoryId" label="Kategorie" options={categories} defaultValue={settings?.defaultCategoryId} emptyLabel="Keine Kategorie" placeholder="Kategorie suchen oder auswählen" />
+          <SearchableSelect name="expenseLabelId" label="Label / Projekt" options={labels} defaultValue={settings?.defaultLabelId} emptyLabel="Kein Label" placeholder="Label suchen oder auswählen" />
+          <label>Bezahlart<input name="expensePaymentMethod" list="payment-methods" defaultValue={settings?.defaultPaymentMethod ?? ""} placeholder="Karte, Bar, Überweisung ..." /></label>
+          <label>Laden<input name="expenseStore" defaultValue={settings?.defaultStore ?? ""} placeholder="Tankstelle oder Händler" /></label>
+          <label className="full-span">Beschreibung<input name="expenseDescription" defaultValue={settings?.defaultDescription ?? ""} required /></label>
+          <fieldset className="fieldset full-span">
+            <legend>Drive-Link optional verknüpfen</legend>
+            <label>Dokumenttitel<input name="documentTitle" placeholder="Rechnung, Beleg, Nachweis ..." /></label>
+            <label>Drive-Link<input name="documentUrl" type="url" placeholder="https://drive.google.com/..." /></label>
+          </fieldset>
+          <PaymentMethods />
+        </fieldset>
+      ) : null}
       <button className="button full-span" type="submit">Speichern</button>
     </form>
   );

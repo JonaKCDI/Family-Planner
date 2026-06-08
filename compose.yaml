@@ -53,7 +53,8 @@ services:
       POSTGRES_PORT: 5432
       BACKUP_DIR: /backups
       BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-30}
-      BACKUP_INTERVAL_SECONDS: ${BACKUP_INTERVAL_SECONDS:-86400}
+      BACKUP_TIME: ${BACKUP_TIME:-01:00}
+      TZ: ${TZ:-Europe/Berlin}
     volumes:
       - ./scripts/backup-postgres.sh:/usr/local/bin/backup-postgres.sh:ro
       - ${BACKUP_DIR:-./data/backups}:/backups

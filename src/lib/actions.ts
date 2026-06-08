@@ -148,6 +148,83 @@ export async function createExpenseLabel(formData: FormData) {
   revalidatePath("/ausgaben");
 }
 
+export async function updateExpenseLabel(formData: FormData) {
+  const session = await requireSession();
+  const id = requiredText(formData, "id");
+  const name = requiredText(formData, "name");
+  const submittedColor = optionalText(formData, "color");
+
+  const [label, duplicate] = await Promise.all([
+    db.expenseLabel.findFirst({
+      where: {
+        id,
+        familyId: session.family.id,
+        ownerUserId: session.user.id
+      },
+      select: { id: true, name: true, color: true }
+    }),
+    db.expenseLabel.findFirst({
+      where: {
+        familyId: session.family.id,
+        ownerUserId: session.user.id,
+        name,
+        NOT: { id }
+      },
+      select: { id: true }
+    })
+  ]);
+  if (!label) throw new Error("Das ausgewählte Label ist nicht verfügbar.");
+  if (duplicate) throw new Error("Ein Label mit diesem Namen gibt es bereits. Bitte nutze Zusammenführen.");
+
+  await db.expenseLabel.update({
+    where: { id: label.id },
+    data: {
+      name,
+      color: submittedColor ?? label.color,
+      budgetCents: parseOptionalEuroInputToCents(formData.get("budget"))
+    }
+  });
+
+  revalidatePath("/ausgaben");
+  revalidatePath("/dashboard");
+}
+
+export async function deleteExpenseLabel(formData: FormData) {
+  const session = await requireSession();
+  const id = requiredText(formData, "id");
+  const [label, expenseCount, settingsCount] = await Promise.all([
+    db.expenseLabel.findFirst({
+      where: {
+        id,
+        familyId: session.family.id,
+        ownerUserId: session.user.id
+      },
+      select: { id: true }
+    }),
+    db.expense.count({
+      where: {
+        familyId: session.family.id,
+        ownerUserId: session.user.id,
+        labelId: id
+      }
+    }),
+    db.fuelExpenseSettings.count({
+      where: {
+        familyId: session.family.id,
+        userId: session.user.id,
+        defaultLabelId: id
+      }
+    })
+  ]);
+  if (!label) throw new Error("Das ausgewählte Label ist nicht verfügbar.");
+  if (expenseCount > 0) throw new Error("Dieses Label wird noch von Ausgaben genutzt. Bitte zuerst zusammenführen oder Zuordnungen entfernen.");
+  if (settingsCount > 0) throw new Error("Dieses Label ist noch im Auto-Setup hinterlegt. Bitte dort zuerst entfernen.");
+
+  await db.expenseLabel.delete({ where: { id: label.id } });
+  revalidatePath("/ausgaben");
+  revalidatePath("/dashboard");
+}
+
 export async function archiveExpenseLabel(formData: FormData) {
   const session = await requireSession();
   await db.expenseLabel.updateMany({
@@ -351,6 +428,7 @@ export async function exportExpensesToSynologyExcel(formData: FormData) {
       contractId: expense.contractId ?? "",
       contractProvider: expense.contract?.provider ?? "",
       contractType: expense.contract?.contractType ?? "",
+      fuelEntryId: expense.fuelEntryId ?? "",
       description: expense.description
     }))
   ];
@@ -415,21 +493,97 @@ export async function unarchiveCar(formData: FormData) {
   revalidatePath("/kilometer");
 }
 
-export async function createFuelEntry(formData: FormData) {
+export async function updateFuelExpenseSettings(formData: FormData) {
   const session = await requireSession();
-  const car = await resolveFamilyCar(session.family.id, requiredText(formData, "carId"));
-  await db.fuelEntry.upsert({
+  const categoryId = await resolveExpenseCategoryId(session.family.id, session.user.id, optionalText(formData, "defaultCategoryId"));
+  const labelId = await resolveExpenseLabelId(session.family.id, session.user.id, optionalText(formData, "defaultLabelId"));
+
+  await db.fuelExpenseSettings.upsert({
     where: {
-      carId_odometerKm: {
-        carId: car.id,
-        odometerKm: parseRequiredIntegerInput(formData.get("odometerKm"), { min: 0, max: 5000000 })
+      familyId_userId: {
+        familyId: session.family.id,
+        userId: session.user.id
       }
     },
-    create: fuelEntryDataFromForm(formData, session.family.id, car.id, session.user.id),
-    update: fuelEntryDataFromForm(formData, session.family.id, car.id, session.user.id)
+    create: {
+      familyId: session.family.id,
+      userId: session.user.id,
+      autoCreateExpense: formData.get("autoCreateExpense") === "on",
+      defaultCategoryId: categoryId,
+      defaultLabelId: labelId,
+      defaultPaymentMethod: optionalText(formData, "defaultPaymentMethod") ?? "",
+      defaultStore: optionalText(formData, "defaultStore") ?? "",
+      defaultDescription: optionalText(formData, "defaultDescription") ?? ""
+    },
+    update: {
+      autoCreateExpense: formData.get("autoCreateExpense") === "on",
+      defaultCategoryId: categoryId,
+      defaultLabelId: labelId,
+      defaultPaymentMethod: optionalText(formData, "defaultPaymentMethod") ?? "",
+      defaultStore: optionalText(formData, "defaultStore") ?? "",
+      defaultDescription: optionalText(formData, "defaultDescription") ?? ""
+    }
   });
 
   revalidatePath("/kilometer");
+}
+
+export async function createFuelEntry(formData: FormData) {
+  const session = await requireSession();
+  const car = await resolveFamilyCar(session.family.id, requiredText(formData, "carId"));
+  const odometerKm = parseRequiredIntegerInput(formData.get("odometerKm"), { min: 0, max: 5000000 });
+  const existingAtOdometer = await db.fuelEntry.findUnique({
+    where: {
+      carId_odometerKm: {
+        carId: car.id,
+        odometerKm
+      }
+    }
+  });
+  if (existingAtOdometer) {
+    throw new Error("Für dieses Auto gibt es bereits einen Tankstopp mit diesem Kilometerstand.");
+  }
+
+  const fuelData = fuelEntryDataFromForm(formData, session.family.id, car.id, session.user.id, odometerKm);
+  if (formData.get("createExpenseFromFuel") === "on") {
+    const categoryId = await resolveExpenseCategoryId(session.family.id, session.user.id, optionalText(formData, "expenseCategoryId"));
+    const labelId = await resolveExpenseLabelId(session.family.id, session.user.id, optionalText(formData, "expenseLabelId"));
+    const expenseDescription = requiredText(formData, "expenseDescription");
+    const expense = await db.$transaction(async (tx) => {
+      const fuelEntry = await tx.fuelEntry.create({ data: fuelData });
+      return tx.expense.create({
+        data: {
+          familyId: session.family.id,
+          ownerUserId: session.user.id,
+          kind: "EXPENSE",
+          amountCents: fuelData.costCents,
+          currency: "EUR",
+          date: fuelData.date,
+          paymentMethod: paymentMethodValue(formData, "expensePaymentMethod"),
+          store: optionalText(formData, "expenseStore") ?? "",
+          categoryId,
+          labelId,
+          description: expenseDescription,
+          scope: "PRIVATE",
+          fuelEntryId: fuelEntry.id,
+          generatedByFuelEntry: true
+        }
+      });
+    });
+    await createLinkedDocumentIfPresent(formData, {
+      familyId: session.family.id,
+      ownerUserId: session.user.id,
+      linkedEntityType: "EXPENSE",
+      linkedEntityId: expense.id,
+      scope: expense.scope
+    });
+  } else {
+    await db.fuelEntry.create({ data: fuelData });
+  }
+
+  revalidatePath("/kilometer");
+  revalidatePath("/ausgaben");
+  revalidatePath("/dashboard");
   redirect(actionReturnTo(formData, `/kilometer?car=${car.id}`));
 }
 
@@ -446,12 +600,26 @@ export async function updateFuelEntry(formData: FormData) {
     throw new Error("Für dieses Auto gibt es bereits einen Tankstopp mit diesem Kilometerstand.");
   }
 
+  const fuelData = fuelEntryDataFromForm(formData, session.family.id, car.id, session.user.id, odometerKm);
   await db.fuelEntry.updateMany({
     where: { id, familyId: session.family.id, carId: car.id },
-    data: fuelEntryDataFromForm(formData, session.family.id, car.id, session.user.id)
+    data: fuelData
+  });
+  await db.expense.updateMany({
+    where: {
+      familyId: session.family.id,
+      fuelEntryId: id,
+      generatedByFuelEntry: true
+    },
+    data: {
+      amountCents: fuelData.costCents,
+      date: fuelData.date
+    }
   });
 
   revalidatePath("/kilometer");
+  revalidatePath("/ausgaben");
+  revalidatePath("/dashboard");
   redirect(actionReturnTo(formData, `/kilometer?car=${car.id}`));
 }
 
@@ -539,6 +707,7 @@ export async function exportFuelToSynologyExcel(formData: FormData) {
   const excelPath = fuelExcelPathForCar(car.name);
   const entries = await db.fuelEntry.findMany({
     where: { familyId: session.family.id, carId: car.id },
+    include: { expense: true },
     orderBy: [{ date: "asc" }, { odometerKm: "asc" }]
   });
   const rows = entries.map((entry) => ({
@@ -547,6 +716,7 @@ export async function exportFuelToSynologyExcel(formData: FormData) {
     odometerKm: entry.odometerKm,
     litersMilli: entry.litersMilli,
     costCents: entry.costCents,
+    expenseId: entry.expense?.id ?? "",
     note: entry.note
   }));
 
@@ -603,6 +773,42 @@ export async function updateCategory(formData: FormData) {
     }
   });
 
+  revalidatePath("/ausgaben");
+  revalidatePath("/dashboard");
+}
+
+export async function deleteCategory(formData: FormData) {
+  const session = await requireSession();
+  const id = requiredText(formData, "id");
+  const categoryWhere = {
+    id,
+    familyId: session.family.id,
+    type: "EXPENSE" as const,
+    ...(session.role === "ADMIN" ? {} : { ownerUserId: session.user.id })
+  };
+  const [category, expenseCount, settingsCount] = await Promise.all([
+    db.category.findFirst({
+      where: categoryWhere,
+      select: { id: true }
+    }),
+    db.expense.count({
+      where: {
+        familyId: session.family.id,
+        categoryId: id
+      }
+    }),
+    db.fuelExpenseSettings.count({
+      where: {
+        familyId: session.family.id,
+        defaultCategoryId: id
+      }
+    })
+  ]);
+  if (!category) throw new Error("Die ausgewählte Kategorie ist nicht verfügbar.");
+  if (expenseCount > 0) throw new Error("Diese Kategorie wird noch von Ausgaben genutzt. Bitte zuerst zusammenführen oder Zuordnungen entfernen.");
+  if (settingsCount > 0) throw new Error("Diese Kategorie ist noch im Auto-Setup hinterlegt. Bitte dort zuerst entfernen.");
+
+  await db.category.delete({ where: { id: category.id } });
   revalidatePath("/ausgaben");
   revalidatePath("/dashboard");
 }
@@ -1062,8 +1268,8 @@ function optionalText(formData: FormData, key: string) {
   return value || null;
 }
 
-function paymentMethodValue(formData: FormData) {
-  return optionalText(formData, "paymentMethod") ?? "Nicht angegeben";
+function paymentMethodValue(formData: FormData, key = "paymentMethod") {
+  return optionalText(formData, key) ?? "Nicht angegeben";
 }
 
 function actionReturnTo(formData: FormData, fallback: string) {
@@ -1165,13 +1371,13 @@ function fuelExcelPathForCar(carName: string) {
   return join(configuredDir, `Verbrauch-${safeFilePart(carName)}.xlsx`);
 }
 
-function fuelEntryDataFromForm(formData: FormData, familyId: string, carId: string, userId: string) {
+function fuelEntryDataFromForm(formData: FormData, familyId: string, carId: string, userId: string, odometerKm?: number) {
   return {
     familyId,
     carId,
     createdByUserId: userId,
     date: parseRequiredDateInput(formData.get("date")),
-    odometerKm: parseRequiredIntegerInput(formData.get("odometerKm"), { min: 0, max: 5000000 }),
+    odometerKm: odometerKm ?? parseRequiredIntegerInput(formData.get("odometerKm"), { min: 0, max: 5000000 }),
     litersMilli: parseDecimalInputToMilli(formData.get("liters"), { min: 0.001, max: 10000 }),
     costCents: parseEuroInputToCents(formData.get("cost")),
     note: optionalText(formData, "note") ?? ""

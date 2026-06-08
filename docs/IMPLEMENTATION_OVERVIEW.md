@@ -86,7 +86,7 @@ This document is the current product and deployment map for the Family App.
 
 - The Docker entrypoint waits for PostgreSQL before starting the app.
 - `prisma migrate deploy` runs during container startup.
-- The backup service runs `pg_dump | gzip` on an interval and prunes old dumps based on `BACKUP_RETENTION_DAYS`.
+- The backup service runs `pg_dump | gzip` daily at `BACKUP_TIME` in `TZ` and prunes old dumps based on `BACKUP_RETENTION_DAYS`.
 - Required deployment folders are the PostgreSQL volume, backup folder, and optional mounted Excel folders.
 - Restore uses the generated `.sql.gz` files with `psql` into an empty database.
 - Reverse proxy/HTTPS is recommended for external access and for a smooth iPhone PWA experience.

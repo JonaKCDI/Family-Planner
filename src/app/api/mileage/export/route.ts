@@ -23,6 +23,7 @@ export async function GET(request: Request) {
       familyId: session.family.id,
       carId: car.id
     },
+    include: { expense: true },
     orderBy: [{ date: "asc" }, { odometerKm: "asc" }]
   });
 
@@ -32,6 +33,7 @@ export async function GET(request: Request) {
     odometerKm: entry.odometerKm,
     litersMilli: entry.litersMilli,
     costCents: entry.costCents,
+    expenseId: entry.expense?.id ?? "",
     note: entry.note
   }));
 

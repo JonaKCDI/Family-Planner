@@ -2,6 +2,8 @@ import {
   archiveExpenseLabel,
   createCategory,
   createExpenseLabel,
+  deleteCategory,
+  deleteExpenseLabel,
   exportExpensesToSynologyExcel,
   importExpensesFromSynologyExcel,
   importExpensesFromUploadedXlsx,
@@ -9,6 +11,7 @@ import {
   mergeExpenseLabels,
   unarchiveExpenseLabel,
   updateCategory,
+  updateExpenseLabel,
 } from "@/lib/actions";
 import { redirect } from "next/navigation";
 import { requireSession } from "@/lib/auth";
@@ -179,10 +182,25 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
                         {label.archivedAt ? "Archiviert" : "Aktiv"}{" · "}{label.lastUsedAt ? `Zuletzt genutzt: ${formatDate(label.lastUsedAt)}` : "Noch nicht genutzt"}
                       </span>
                     </div>
-                    <form action={label.archivedAt ? unarchiveExpenseLabel : archiveExpenseLabel}>
-                      <input type="hidden" name="id" value={label.id} />
-                      <button className="button secondary" type="submit">{label.archivedAt ? "Wieder aktivieren" : "Archivieren"}</button>
-                    </form>
+                    <div className="label-management-actions">
+                      <ActionModal title="Label bearbeiten" trigger="Bearbeiten">
+                        <form action={updateExpenseLabel} className="form compact">
+                          <input type="hidden" name="id" value={label.id} />
+                          <label>Name<input name="name" defaultValue={label.name} required /></label>
+                          <label>Budget in EUR<input name="budget" inputMode="decimal" defaultValue={formatEuroInput(label.budgetCents)} /></label>
+                          <label>Farbe<input name="color" type="color" defaultValue={label.color} /></label>
+                          <button className="button secondary" type="submit">Änderungen speichern</button>
+                        </form>
+                      </ActionModal>
+                      <form action={label.archivedAt ? unarchiveExpenseLabel : archiveExpenseLabel}>
+                        <input type="hidden" name="id" value={label.id} />
+                        <button className="button secondary" type="submit">{label.archivedAt ? "Wieder aktivieren" : "Archivieren"}</button>
+                      </form>
+                      <form action={deleteExpenseLabel}>
+                        <input type="hidden" name="id" value={label.id} />
+                        <button className="button secondary danger-subtle" type="submit">Löschen</button>
+                      </form>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -258,6 +276,12 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
                       <input type="hidden" name="scope" value="PRIVATE" />
                       <button className="button secondary" type="submit">Änderungen speichern</button>
                     </form>
+                    <div className="category-editor-actions">
+                      <form action={deleteCategory}>
+                        <input type="hidden" name="id" value={category.id} />
+                        <button className="button secondary danger-subtle" type="submit">Kategorie löschen</button>
+                      </form>
+                    </div>
                   </details>
                 ))}
               </div>
@@ -353,7 +377,7 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
                 {labelRows.length === 0 ? <EmptyState>Noch keine Label-Ausgaben.</EmptyState> : null}
                 {labelRows.map((row) => (
                   <div className="analysis-row" key={row.name}>
-                    <div><strong>{row.name}</strong><span className="muted">{row.budget > 0 ? `Budget ${formatMoney(row.budget)}` : "Ohne Budget"}</span></div>
+                    <div><strong>{row.name}</strong><span className="muted">{labelRowMeta(row)}</span></div>
                     <div className="bar-wrap"><span style={{ width: `${row.budgetUsage}%`, background: row.color }} /></div>
                     <div className="amount-column compact-amount">
                       <strong>{formatMoney(row.amount)}</strong>
@@ -424,6 +448,11 @@ function MiniTable({ rows, showBudget = false }: { rows: PeriodRow[]; showBudget
 function BudgetHint({ row }: { row: { budget: number; remaining: number } }) {
   if (row.budget <= 0) return <small className="muted">ohne Budget</small>;
   return <small className={row.remaining < 0 ? "negative" : "positive"}>{row.remaining < 0 ? "drüber " : "frei "}{formatMoney(Math.abs(row.remaining))}</small>;
+}
+
+function labelRowMeta(row: { budget: number; neverUsed?: boolean }) {
+  const budget = row.budget > 0 ? `Budget ${formatMoney(row.budget)}` : "Ohne Budget";
+  return row.neverUsed ? `Noch nicht genutzt · ${budget}` : budget;
 }
 
 function FilterHiddenFields({
@@ -557,20 +586,34 @@ function buildCategoryRows(entries: ExpenseLike[], categories: CategoryLike[], t
 }
 
 function buildLabelRows(entries: ExpenseLike[], labels: LabelLike[]) {
-  const rows = new Map<string, { amount: number; color: string; budget: number }>();
-  for (const label of labels) rows.set(label.name, { amount: 0, color: label.color, budget: label.budgetCents });
+  const rows = new Map<string, { amount: number; color: string; budget: number; neverUsed: boolean }>();
+  const labelsByName = new Map(labels.map((label) => [label.name, label]));
+  for (const label of labels) {
+    if (label.lastUsedAt !== null) continue;
+    rows.set(label.name, { amount: 0, color: label.color, budget: label.budgetCents, neverUsed: true });
+  }
   for (const entry of entries) {
     if (entry.kind !== "EXPENSE" || !entry.label) continue;
-    const current = rows.get(entry.label.name) ?? { amount: 0, color: entry.label.color, budget: entry.label.budgetCents };
+    const configuredLabel = labelsByName.get(entry.label.name);
+    const current = rows.get(entry.label.name) ?? {
+      amount: 0,
+      color: configuredLabel?.color ?? entry.label.color,
+      budget: configuredLabel?.budgetCents ?? entry.label.budgetCents,
+      neverUsed: false
+    };
     current.amount += entry.amountCents;
+    current.neverUsed = false;
     rows.set(entry.label.name, current);
   }
   return [...rows.entries()].map(([name, row]) => ({
     name,
-    ...row,
+    amount: row.amount,
+    color: row.color,
+    budget: row.budget,
+    neverUsed: row.neverUsed,
     remaining: row.budget - row.amount,
     budgetUsage: row.budget > 0 ? Math.min(100, (row.amount / row.budget) * 100) : row.amount > 0 ? 100 : 0
-  })).filter((row) => row.amount > 0 || row.budget > 0).sort((a, b) => b.amount - a.amount);
+  })).filter((row) => row.amount > 0 || row.neverUsed).sort((a, b) => b.amount - a.amount);
 }
 
 type PeriodRow = { label: string; income: number; spending: number; budget: number; saldo: number };

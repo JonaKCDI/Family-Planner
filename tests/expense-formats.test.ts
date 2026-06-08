@@ -34,6 +34,21 @@ describe("expense analytics", () => {
     expect(buildCategoryRows(entries, categories, 5580, true).map((row) => [row.name, row.amount])).toEqual([["Urlaub", 3209], ["Nahrung", 2371]]);
     expect(buildLabelRows(entries, labels)[0]).toMatchObject({ name: "Lappland", amount: 5580, remaining: 64420 });
   });
+
+  test("hides labels used outside the selected period", () => {
+    const labelUsedElsewhere = { name: "Sommerurlaub", color: "#aa5577", budgetCents: 120000, lastUsedAt: new Date(2025, 6, 1) };
+
+    expect(buildLabelRows(entries, [...labels, labelUsedElsewhere]).map((row) => row.name)).toEqual(["Lappland"]);
+  });
+
+  test("shows labels that have never been used", () => {
+    const neverUsedLabels = [
+      { name: "Sommerurlaub", color: "#aa5577", budgetCents: 120000, lastUsedAt: null },
+      { name: "Kinderzimmer", color: "#5577aa", budgetCents: 0, lastUsedAt: null }
+    ];
+
+    expect(buildLabelRows(entries, [...labels, ...neverUsedLabels]).map((row) => row.name)).toEqual(["Lappland", "Sommerurlaub", "Kinderzimmer"]);
+  });
 });
 
 describe("Excel workbook format", () => {

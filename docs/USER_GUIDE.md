@@ -90,7 +90,8 @@ MILEAGE_EXCEL_DIR="/data/mileage"
 
 BACKUP_DIR="/volume1/docker/family-app/backups"
 BACKUP_RETENTION_DAYS="30"
-BACKUP_INTERVAL_SECONDS="86400"
+BACKUP_TIME="01:00"
+TZ="Europe/Berlin"
 ```
 
 Ersetze `192.168.178.20` durch die IP deiner NAS.
@@ -102,7 +103,7 @@ Wichtig:
 - `EXPENSE_EXCEL_DIR` ist der Pfad im Container und bleibt normalerweise `/data/expenses`.
 - `MILEAGE_EXCEL_HOST_DIR` ist der Synology-Ordner für Verbrauchsdateien.
 - `MILEAGE_EXCEL_DIR` ist der Pfad im Container und bleibt normalerweise `/data/mileage`.
-- `BACKUP_INTERVAL_SECONDS="86400"` bedeutet ein Backup pro Tag.
+- `BACKUP_TIME="01:00"` bedeutet ein Backup täglich um 01:00 Uhr in der gesetzten Zeitzone.
 
 ## Start In Container Manager
 

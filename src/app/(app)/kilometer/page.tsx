@@ -7,6 +7,7 @@ import {
   importFuelFromUploadedXlsx,
   unarchiveCar,
   updateCar,
+  updateFuelExpenseSettings,
   updateFuelEntry
 } from "@/lib/actions";
 import { requireSession } from "@/lib/auth";
@@ -23,8 +24,9 @@ import {
 } from "@/lib/mileage";
 import { buildMonthSelectOptions, formatMonthKeyLabel, splitMonthKey } from "@/lib/month-options";
 import { isFamilyAdmin } from "@/lib/permissions";
-import { getFuelEntriesForCar, getVisibleCars } from "@/lib/queries";
+import { getExpenseLabels, getFuelEntriesForCar, getFuelExpenseSettings, getVisibleCars, getVisibleCategories } from "@/lib/queries";
 import { ActionModal } from "@/components/action-modal";
+import { SearchableSelect } from "@/components/searchable-select";
 import { EmptyState, PageHeader } from "@/components/ui";
 
 type MileagePageParams = {
@@ -44,9 +46,12 @@ export default async function MileagePage({ searchParams }: MileagePageProps) {
   const session = await requireSession();
   const params = cleanMileageParams(await searchParams);
   const isAdmin = isFamilyAdmin(session.role);
-  const [activeCars, allCars] = await Promise.all([
+  const [activeCars, allCars, categories, labels, fuelExpenseSettings] = await Promise.all([
     getVisibleCars(session.family.id),
-    getVisibleCars(session.family.id, { includeArchived: true })
+    getVisibleCars(session.family.id, { includeArchived: true }),
+    getVisibleCategories(session.family.id, session.user.id, "EXPENSE"),
+    getExpenseLabels(session.family.id, session.user.id),
+    getFuelExpenseSettings(session.family.id, session.user.id)
   ]);
   const selectedCar = activeCars.find((car) => car.id === params.car) ?? activeCars[0] ?? null;
   const entries = selectedCar ? await getFuelEntriesForCar(session.family.id, selectedCar.id) : [];
@@ -70,7 +75,17 @@ export default async function MileagePage({ searchParams }: MileagePageProps) {
 
   return (
     <>
-      <PageHeader title="Kilometer" description="Tankstopps, Verbrauch und Kilometerstände pro Auto." />
+      <PageHeader title="Auto" description="Tankstopps, Verbrauch und Kilometerstände pro Auto." />
+
+      <form className="search-bar">
+        <MileageHiddenFields params={params} includeCar includePeriod />
+        <label>
+          <span>Tankstopps durchsuchen</span>
+          <input name="q" type="search" defaultValue={params.q ?? ""} placeholder="Bemerkung oder Kilometerstand ..." />
+        </label>
+        <button className="button secondary" type="submit">Suchen</button>
+        {query ? <a className="button secondary" href={getMileageHref(params, { q: undefined })}>Zurücksetzen</a> : null}
+      </form>
 
       <section className="filter-system" aria-label="Kilometerfilter">
         <div className="period-tabs car-tabs" role="list" aria-label="Autos">
@@ -187,6 +202,27 @@ export default async function MileagePage({ searchParams }: MileagePageProps) {
               </section>
             ) : null}
 
+            <details className="setup-card" open>
+              <summary>
+                <span>
+                  <strong>Ausgabenbuchung</strong>
+                  <small>Vorgaben für Tankstopps aus dem Plus-Menü</small>
+                </span>
+              </summary>
+              <form action={updateFuelExpenseSettings} className="form form-grid modal-form">
+                <label className="checkbox-field full-span">
+                  <input name="autoCreateExpense" type="checkbox" defaultChecked={fuelExpenseSettings?.autoCreateExpense ?? false} />
+                  Tankstopps automatisch als Ausgabe vorbereiten
+                </label>
+                <SearchableSelect name="defaultCategoryId" label="Kategorie" options={categories} defaultValue={fuelExpenseSettings?.defaultCategoryId} emptyLabel="Keine Kategorie" placeholder="Kategorie suchen oder auswählen" />
+                <SearchableSelect name="defaultLabelId" label="Label / Projekt" options={labels} defaultValue={fuelExpenseSettings?.defaultLabelId} emptyLabel="Kein Label" placeholder="Label suchen oder auswählen" />
+                <label>Bezahlart<input name="defaultPaymentMethod" defaultValue={fuelExpenseSettings?.defaultPaymentMethod ?? ""} placeholder="Optional" /></label>
+                <label>Laden<input name="defaultStore" defaultValue={fuelExpenseSettings?.defaultStore ?? ""} placeholder="Optional" /></label>
+                <label className="full-span">Beschreibung<input name="defaultDescription" defaultValue={fuelExpenseSettings?.defaultDescription ?? ""} placeholder="Pflicht, wenn automatisch gebucht werden soll" /></label>
+                <button className="button secondary full-span" type="submit">Ausgabenbuchung speichern</button>
+              </form>
+            </details>
+
             {isAdmin ? (
               <details className="setup-card car-setup-card" open>
                 <summary>
@@ -246,9 +282,8 @@ export default async function MileagePage({ searchParams }: MileagePageProps) {
           <section className="stats">
             <div className="stat"><span>Tankkosten</span><strong>{formatMoney(stats.totalCostCents)}</strong></div>
             <div className="stat"><span>Liter</span><strong>{formatLiters(stats.totalLitersMilli)} l</strong></div>
-            <div className="stat"><span>Gefahrene km</span><strong>{formatKilometers(stats.drivenKm)} km</strong></div>
+            <div className="stat"><span>Gefahrene km</span><strong>{formatKilometers(stats.drivenKm)} km</strong><small>Letzter Stand {formatKilometers(allTimeStats.lastOdometerKm)} km</small></div>
             <div className="stat"><span>Ø l/100 km</span><strong>{formatDecimal(stats.averageLitersPer100Km)} l</strong><small>Ø {formatMoney(Math.round(stats.averagePricePerLiterCents ?? 0))}/l</small></div>
-            <div className="stat"><span>Letzter Stand</span><strong>{formatKilometers(allTimeStats.lastOdometerKm)} km</strong><small>{selectedCar.name}</small></div>
           </section>
 
           <details className="panel expense-section" open>
@@ -341,10 +376,24 @@ export default async function MileagePage({ searchParams }: MileagePageProps) {
   );
 }
 
-function MileageHiddenFields({ params, includeCar = false, includeSearch = false }: { params: MileagePageParams; includeCar?: boolean; includeSearch?: boolean }) {
+function MileageHiddenFields({
+  params,
+  includeCar = false,
+  includePeriod = false,
+  includeSearch = false
+}: {
+  params: MileagePageParams;
+  includeCar?: boolean;
+  includePeriod?: boolean;
+  includeSearch?: boolean;
+}) {
   return (
     <>
       {includeCar && params.car ? <input type="hidden" name="car" value={params.car} /> : null}
+      {includePeriod && params.year ? <input type="hidden" name="year" value={params.year} /> : null}
+      {includePeriod && params.month ? <input type="hidden" name="month" value={params.month} /> : null}
+      {includePeriod && params.from ? <input type="hidden" name="from" value={params.from} /> : null}
+      {includePeriod && params.to ? <input type="hidden" name="to" value={params.to} /> : null}
       {includeSearch && params.q ? <input type="hidden" name="q" value={params.q} /> : null}
     </>
   );

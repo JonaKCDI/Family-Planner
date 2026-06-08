@@ -6,6 +6,7 @@ export type FuelFormatRow = {
   odometerKm: number;
   litersMilli: number;
   costCents: number;
+  expenseId?: string;
   note: string;
 };
 
@@ -15,7 +16,7 @@ export type FuelExportRow = FuelFormatRow & {
 
 const dataSheetName = "Daten";
 const legacySheetName = "Tabelle1";
-const dataHeaders = ["id", "datum", "kilometerstand", "liter", "kostenEuro", "bemerkung"];
+const dataHeaders = ["id", "datum", "kilometerstand", "liter", "kostenEuro", "ausgabeId", "bemerkung"];
 const dataHeaderScanLimit = 20;
 
 export async function parseFuelWorkbook(buffer: ArrayBuffer, fileName = "Verbrauch.xlsx"): Promise<FuelFormatRow[]> {
@@ -39,6 +40,7 @@ export async function buildFuelWorkbook(entries: FuelExportRow[], carName: strin
     { key: "odometerKm", width: 16 },
     { key: "liters", width: 12 },
     { key: "costEuro", width: 12 },
+    { key: "expenseId", width: 28 },
     { key: "note", width: 32 }
   ];
   dataSheet.addRow(dataHeaders);
@@ -49,6 +51,7 @@ export async function buildFuelWorkbook(entries: FuelExportRow[], carName: strin
       entry.odometerKm,
       entry.litersMilli / 1000,
       entry.costCents / 100,
+      entry.expenseId ?? "",
       entry.note
     ]);
     const addedRow = dataSheet.lastRow;
@@ -144,6 +147,7 @@ function parseDataSheet(worksheet: ExcelJS.Worksheet) {
       odometerKm,
       litersMilli,
       costCents,
+      expenseId: header.indexes.expenseId >= 0 ? cellText(row.getCell(header.indexes.expenseId + 1)) || undefined : undefined,
       note: header.indexes.note >= 0 ? cellText(row.getCell(header.indexes.note + 1)) : ""
     });
   });
@@ -165,6 +169,7 @@ function parseLegacySheet(worksheet: ExcelJS.Worksheet | undefined, fileName: st
       odometerKm,
       litersMilli: Math.round(liters * 1000),
       costCents: Math.round(cost * 100),
+      expenseId: undefined,
       note: cellText(row.getCell(8))
     });
   });
@@ -206,6 +211,7 @@ function dataColumnIndexes(header: string[]) {
     litersMilli: findColumn(header, ["litermilli", "litersmilli", "liter_milli", "liters_milli"]),
     costEuro: findColumn(header, ["kosteneuro", "costeuro", "kosten", "cost", "euro", "eur", "€"]),
     costCents: findColumn(header, ["kostencents", "costcents", "kosten_cents", "cost_cents"]),
+    expenseId: findColumn(header, ["ausgabeid", "expenseid", "expense_id"]),
     note: findColumn(header, ["bemerkung", "bemerkungen", "notiz", "note", "notes"])
   };
 }

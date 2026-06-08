@@ -8,10 +8,15 @@ const { dbMock, sessionMock, redirectMock } = vi.hoisted(() => ({
       updateMany: vi.fn()
     },
     fuelEntry: {
+      create: vi.fn(),
       upsert: vi.fn(),
       findUnique: vi.fn(),
       updateMany: vi.fn(),
       deleteMany: vi.fn()
+    },
+    expense: {
+      create: vi.fn(),
+      updateMany: vi.fn()
     }
   },
   sessionMock: {
@@ -37,7 +42,11 @@ describe("mileage action access", () => {
     sessionMock.role = "MEMBER";
     dbMock.car.findFirst.mockResolvedValue({ id: "car_1", familyId: "family_1", name: "Seat Leon", archivedAt: null });
     dbMock.car.create.mockImplementation(async ({ data }) => ({ id: "car_new", ...data }));
+    dbMock.fuelEntry.create.mockResolvedValue({ id: "fuel_1" });
     dbMock.fuelEntry.upsert.mockResolvedValue({ id: "fuel_1" });
+    dbMock.fuelEntry.findUnique.mockResolvedValue(null);
+    dbMock.expense.create.mockResolvedValue({ id: "expense_1", scope: "PRIVATE" });
+    (dbMock as typeof dbMock & { $transaction?: unknown }).$transaction = vi.fn(async (callback: (tx: typeof dbMock) => unknown) => callback(dbMock));
     actions = await import("../src/lib/actions");
   });
 
@@ -56,8 +65,8 @@ describe("mileage action access", () => {
     expect(dbMock.car.findFirst).toHaveBeenCalledWith({
       where: { id: "car_1", familyId: "family_1", archivedAt: null }
     });
-    expect(dbMock.fuelEntry.upsert).toHaveBeenCalledWith(expect.objectContaining({
-      create: expect.objectContaining({
+    expect(dbMock.fuelEntry.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
         familyId: "family_1",
         carId: "car_1",
         createdByUserId: "user_1",
@@ -69,11 +78,43 @@ describe("mileage action access", () => {
     }));
   });
 
+  test("does not silently overwrite an existing manual fuel entry", async () => {
+    dbMock.fuelEntry.findUnique.mockResolvedValue({ id: "fuel_existing" });
+
+    await expect(actions.createFuelEntry(fuelEntryForm())).rejects.toThrow("bereits einen Tankstopp");
+    expect(dbMock.fuelEntry.create).not.toHaveBeenCalled();
+    expect(dbMock.fuelEntry.upsert).not.toHaveBeenCalled();
+  });
+
+  test("creates a linked personal expense when requested", async () => {
+    const form = fuelEntryForm();
+    form.set("createExpenseFromFuel", "on");
+    form.set("expenseDescription", "Tanken");
+    form.set("expensePaymentMethod", "Karte");
+    form.set("expenseStore", "Aral");
+
+    await expect(actions.createFuelEntry(form)).rejects.toThrow("REDIRECT /kilometer?car=car_1");
+    expect(dbMock.expense.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        familyId: "family_1",
+        ownerUserId: "user_1",
+        kind: "EXPENSE",
+        amountCents: 7101,
+        paymentMethod: "Karte",
+        store: "Aral",
+        description: "Tanken",
+        scope: "PRIVATE",
+        fuelEntryId: "fuel_1",
+        generatedByFuelEntry: true
+      })
+    }));
+  });
+
   test("rejects fuel entries for cars outside the current family", async () => {
     dbMock.car.findFirst.mockResolvedValue(null);
 
     await expect(actions.createFuelEntry(fuelEntryForm())).rejects.toThrow("Auto");
-    expect(dbMock.fuelEntry.upsert).not.toHaveBeenCalled();
+    expect(dbMock.fuelEntry.create).not.toHaveBeenCalled();
   });
 });
 

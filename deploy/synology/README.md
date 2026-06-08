@@ -48,7 +48,8 @@ MILEAGE_EXCEL_HOST_DIR="/volume1/docker/family-app/mileage"
 MILEAGE_EXCEL_DIR="/data/mileage"
 BACKUP_DIR="/volume1/docker/family-app/backups"
 BACKUP_RETENTION_DAYS="30"
-BACKUP_INTERVAL_SECONDS="86400"
+BACKUP_TIME="01:00"
+TZ="Europe/Berlin"
 ```
 
 Do not change `POSTGRES_PASSWORD` later unless you also intentionally migrate/reset the database credentials.

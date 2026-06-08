@@ -2210,6 +2210,15 @@ body {
   padding: 0.35rem;
 }
 
+.expense-filter-form .combobox-options {
+  position: static;
+  margin-top: 0.35rem;
+}
+
+.expense-filter-form .combobox-field {
+  align-content: start;
+}
+
 .combobox-option {
   display: grid;
   min-width: 0;
@@ -2280,6 +2289,24 @@ body {
 
 .label-management-row.archived strong {
   color: var(--muted);
+}
+
+.label-management-actions,
+.category-editor-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  justify-content: flex-end;
+}
+
+.label-management-actions form,
+.category-editor-actions form {
+  display: contents;
+}
+
+.category-editor-actions {
+  justify-content: flex-start;
+  padding: 0 0.75rem 0.75rem;
 }
 
 .compact-fieldset {
@@ -3276,6 +3303,31 @@ details > summary {
 .label-overview-tag {
   border-color: transparent;
   color: #fff;
+}
+
+.fuel-entry-tag {
+  gap: 0.3rem;
+  border-color: #b8d8d3;
+  background: #f1fbf8;
+  color: #145c55;
+}
+
+.fuel-entry-tag svg {
+  flex: 0 0 auto;
+}
+
+.fuel-entry-tag span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fuel-entry-tag small {
+  flex: 0 0 auto;
+  color: inherit;
+  font-size: 0.72rem;
+  font-weight: 800;
+  opacity: 0.78;
 }
 
 @media (min-width: 820px) {
