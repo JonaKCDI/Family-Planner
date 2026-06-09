@@ -14,6 +14,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
   if (session) redirect("/dashboard");
 
   const params = await searchParams;
+  const recoveryEnabled = await db.adminRecoveryKey.count() > 0;
 
   return (
     <main className="auth-wrap">
@@ -33,7 +34,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
           </label>
           <button className="button" type="submit">Einloggen</button>
         </form>
-        <p className="muted">Noch keine Familie? <Link href="/setup">Setup prüfen</Link></p>
+        {recoveryEnabled ? <p className="muted"><Link href="/admin-recovery">Admin-Passwort vergessen?</Link></p> : null}
       </section>
     </main>
   );

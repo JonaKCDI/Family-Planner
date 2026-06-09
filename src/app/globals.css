@@ -389,6 +389,10 @@ textarea {
   margin-top: 1rem;
 }
 
+.spacing-bottom {
+  margin-bottom: 1rem;
+}
+
 .stats {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -927,6 +931,36 @@ textarea {
 
 .setup-steps li {
   line-height: 1.35;
+}
+
+.settings-member-list {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.settings-member-card {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.settings-reset {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.settings-reset summary {
+  cursor: pointer;
+  color: var(--accent-dark);
+  font-weight: 800;
+  list-style: none;
+}
+
+.settings-reset summary::-webkit-details-marker {
+  display: none;
+}
+
+.settings-note {
+  margin: 0;
 }
 
 .setup-steps code {
@@ -3306,29 +3340,49 @@ details > summary {
 }
 
 .fuel-entry-tag {
-  gap: 0.3rem;
+  display: inline-grid;
+  grid-template-columns: 17px minmax(0, auto);
+  column-gap: 0.3rem;
+  align-items: center;
   border-color: #b8d8d3;
   background: #f1fbf8;
   color: #145c55;
+  min-height: 24px;
+  padding: 0.12rem 0.46rem;
+  white-space: nowrap;
 }
 
 .fuel-entry-tag svg {
-  flex: 0 0 auto;
+  display: block;
+  place-self: center;
 }
 
-.fuel-entry-tag span {
+.fuel-entry-copy {
+  display: grid;
+  gap: 0;
+  min-width: 0;
+  line-height: 0.92;
+  white-space: nowrap;
+}
+
+.fuel-entry-name {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #0f4f49;
+  font-size: 0.68rem;
+  font-weight: 900;
 }
 
-.fuel-entry-tag small {
-  flex: 0 0 auto;
-  color: inherit;
-  font-size: 0.72rem;
+.fuel-entry-distance {
+  color: #496a66;
+  font-size: 0.65rem;
   font-weight: 800;
-  opacity: 0.78;
+  line-height: 0.95;
+  white-space: nowrap;
 }
+
 
 @media (min-width: 820px) {
   .nav a {

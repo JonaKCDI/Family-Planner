@@ -54,6 +54,8 @@ TZ="Europe/Berlin"
 
 Do not change `POSTGRES_PASSWORD` later unless you also intentionally migrate/reset the database credentials.
 
+After the first admin is created, open **Einstellungen > Notfall-Wiederherstellung** and store a long recovery key offline. If all admins lose access later, open `/admin-recovery`, enter the admin name, recovery key, and a new password. After recovery, replace the key in settings.
+
 ## 3. Start In Container Manager
 
 1. Open **Container Manager**.

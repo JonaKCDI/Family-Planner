@@ -93,7 +93,7 @@ export async function enqueueOfflineExpenseCreate(formData: FormData) {
       categoryId: optionalText(formData.get("categoryId")),
       labelId: optionalText(formData.get("labelId")),
       contractId: optionalText(formData.get("contractId")),
-      description: optionalText(formData.get("description")) || "Offline-Ausgabe"
+      description: optionalText(formData.get("description")) || ""
     },
     status: "pending"
   });

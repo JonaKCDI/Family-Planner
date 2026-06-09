@@ -21,6 +21,7 @@
 - [ ] Confirm `db`, `app`, and `backup` are running.
 - [ ] Open `http://NAS-IP:3000`.
 - [ ] Create the first admin in setup.
+- [ ] In **Einstellungen > Notfall-Wiederherstellung**, save a long recovery key and store it offline.
 
 ## Functional Check
 
@@ -52,3 +53,10 @@
 - [ ] Rebuild/restart the Container Manager project.
 - [ ] Confirm migrations complete in app logs.
 - [ ] Recheck login, Excel export, and backup.
+
+## Admin Recovery Drill
+
+- [ ] Confirm the offline recovery key is available.
+- [ ] Open `/admin-recovery`.
+- [ ] Enter the admin name, recovery key, and a new password.
+- [ ] After login, replace the recovery key in **Einstellungen > Notfall-Wiederherstellung**.

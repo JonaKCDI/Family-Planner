@@ -28,6 +28,7 @@ export function SearchableSelect({
   required = false
 }: SearchableSelectProps) {
   const fieldId = useId();
+  const listboxId = `${fieldId}-listbox`;
   const initialOption = options.find((option) => option.id === defaultValue);
   const [selectedId, setSelectedId] = useState(initialOption?.id ?? "");
   const [inputValue, setInputValue] = useState(initialOption?.name ?? "");
@@ -63,6 +64,7 @@ export function SearchableSelect({
           id={fieldId}
           ref={inputRef}
           aria-autocomplete="list"
+          aria-controls={listboxId}
           aria-expanded={open}
           autoComplete="off"
           className="combobox-input"
@@ -79,7 +81,7 @@ export function SearchableSelect({
           </button>
         ) : null}
         {open ? (
-          <div className="combobox-options" role="listbox">
+          <div className="combobox-options" role="listbox" id={listboxId}>
             {!required ? (
               <button
                 className={!selectedId ? "combobox-option active" : "combobox-option"}

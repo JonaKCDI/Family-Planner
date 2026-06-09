@@ -20,7 +20,7 @@ const expenseDataSchema = z.object({
   categoryId: z.string().nullable().optional(),
   labelId: z.string().nullable().optional(),
   contractId: z.string().nullable().optional(),
-  description: z.string().min(1)
+  description: z.string().default("")
 });
 
 const taskDataSchema = z.object({

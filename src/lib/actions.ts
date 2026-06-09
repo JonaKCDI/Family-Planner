@@ -16,7 +16,8 @@ import { isFamilyAdmin, ownedExpenseWhere } from "@/lib/permissions";
 import { resolveDocumentLinkedEntityId, resolveExpenseCategoryId, resolveExpenseLabelId, resolveTaskAssigneeId, resolveVisibleContractId } from "@/lib/relations";
 import { parseDecimalInputToMilli, parseEuroInputToCents, parseOptionalDateInput, parseOptionalEuroInputToCents, parseOptionalIntegerInput, parseRequiredDateInput, parseRequiredIntegerInput } from "@/lib/validation";
 
-const passwordSchema = z.string().min(10, "Das Passwort braucht mindestens 10 Zeichen.");
+const passwordSchema = z.string().min(8, "Das Passwort braucht mindestens 8 Zeichen.");
+const recoveryKeySchema = z.string().min(20, "Der Notfallschlüssel braucht mindestens 20 Zeichen.");
 const MAX_LOGIN_FAILURES = 5;
 const LOGIN_LOCK_MINUTES = 15;
 
@@ -98,7 +99,7 @@ export async function createExpense(formData: FormData) {
       categoryId: categoryId || null,
       labelId: labelId || null,
       contractId,
-      description: requiredText(formData, "description"),
+      description: optionalText(formData, "description") ?? "",
       scope: "PRIVATE"
     }
   });
@@ -378,7 +379,7 @@ export async function updateExpense(formData: FormData) {
       categoryId: categoryId || null,
       labelId: labelId || null,
       contractId,
-      description: requiredText(formData, "description"),
+      description: optionalText(formData, "description") ?? "",
       scope: "PRIVATE"
     }
   });
@@ -548,7 +549,7 @@ export async function createFuelEntry(formData: FormData) {
   if (formData.get("createExpenseFromFuel") === "on") {
     const categoryId = await resolveExpenseCategoryId(session.family.id, session.user.id, optionalText(formData, "expenseCategoryId"));
     const labelId = await resolveExpenseLabelId(session.family.id, session.user.id, optionalText(formData, "expenseLabelId"));
-    const expenseDescription = requiredText(formData, "expenseDescription");
+    const expenseDescription = optionalText(formData, "expenseDescription") ?? "";
     const expense = await db.$transaction(async (tx) => {
       const fuelEntry = await tx.fuelEntry.create({ data: fuelData });
       return tx.expense.create({
@@ -1151,6 +1152,139 @@ export async function createUser(formData: FormData) {
   revalidatePath("/einstellungen");
 }
 
+export async function changeOwnPassword(formData: FormData) {
+  const session = await requireSession();
+  const currentPassword = String(formData.get("currentPassword") ?? "");
+  const newPassword = passwordSchema.parse(String(formData.get("newPassword") ?? ""));
+  requireMatchingPasswordConfirmation(formData, newPassword);
+
+  const user = await db.user.findUnique({
+    where: { id: session.user.id },
+    select: { id: true, passwordHash: true, name: true }
+  });
+  if (!user || !(await verifyPassword(currentPassword, user.passwordHash))) {
+    throw new Error("Das aktuelle Passwort stimmt nicht.");
+  }
+
+  await db.$transaction([
+    db.user.update({
+      where: { id: user.id },
+      data: { passwordHash: await hashPassword(newPassword) }
+    }),
+    db.session.deleteMany({ where: { userId: user.id } }),
+    db.loginAttempt.deleteMany({ where: { normalizedName: normalizeLoginName(user.name) } })
+  ]);
+
+  await createSession(user.id);
+  revalidatePath("/einstellungen");
+  redirect("/einstellungen?password=changed");
+}
+
+export async function resetMemberPassword(formData: FormData) {
+  const session = await requireSession();
+  if (session.role !== "ADMIN") throw new Error("Nur Admins können Passwörter zurücksetzen.");
+
+  const userId = requiredText(formData, "userId");
+  if (userId === session.user.id) {
+    throw new Error("Ändere dein eigenes Passwort bitte mit deinem aktuellen Passwort.");
+  }
+  const newPassword = passwordSchema.parse(String(formData.get("newPassword") ?? ""));
+  requireMatchingPasswordConfirmation(formData, newPassword);
+
+  const membership = await db.familyMember.findFirst({
+    where: {
+      familyId: session.family.id,
+      userId,
+      status: "ACTIVE"
+    },
+    include: { user: true }
+  });
+  if (!membership) throw new Error("Dieses Familienmitglied ist nicht verfügbar.");
+
+  await db.$transaction([
+    db.user.update({
+      where: { id: membership.userId },
+      data: { passwordHash: await hashPassword(newPassword) }
+    }),
+    db.session.deleteMany({ where: { userId: membership.userId } }),
+    db.loginAttempt.deleteMany({ where: { normalizedName: normalizeLoginName(membership.user.name) } })
+  ]);
+
+  revalidatePath("/einstellungen");
+}
+
+export async function setAdminRecoveryKey(formData: FormData) {
+  const session = await requireSession();
+  if (session.role !== "ADMIN") throw new Error("Nur Admins können den Notfallschlüssel verwalten.");
+
+  const recoveryKey = recoveryKeySchema.parse(String(formData.get("recoveryKey") ?? ""));
+  const confirmation = String(formData.get("confirmRecoveryKey") ?? "");
+  if (recoveryKey !== confirmation) throw new Error("Die Wiederholung des Notfallschlüssels stimmt nicht.");
+
+  await db.adminRecoveryKey.upsert({
+    where: { familyId: session.family.id },
+    create: {
+      familyId: session.family.id,
+      keyHash: await hashPassword(recoveryKey),
+      createdByUserId: session.user.id
+    },
+    update: {
+      keyHash: await hashPassword(recoveryKey),
+      createdByUserId: session.user.id,
+      lastUsedAt: null
+    }
+  });
+
+  revalidatePath("/einstellungen");
+  redirect("/einstellungen?recovery=changed");
+}
+
+export async function recoverAdminPassword(formData: FormData) {
+  const name = requiredText(formData, "name");
+  const recoveryKey = String(formData.get("recoveryKey") ?? "");
+
+  const newPassword = passwordSchema.parse(String(formData.get("newPassword") ?? ""));
+  requireMatchingPasswordConfirmation(formData, newPassword);
+
+  const membership = await db.familyMember.findFirst({
+    where: {
+      user: {
+        name,
+        status: "ACTIVE"
+      },
+      role: "ADMIN",
+      status: "ACTIVE"
+    },
+    include: { user: true, family: { include: { adminRecoveryKey: true } } }
+  });
+  if (!membership?.family.adminRecoveryKey) {
+    await slowRecoveryFailure();
+    throw new Error("Name oder Notfallschlüssel stimmt nicht.");
+  }
+
+  const keyIsValid = await verifyPassword(recoveryKey, membership.family.adminRecoveryKey.keyHash);
+  if (!keyIsValid) {
+    await slowRecoveryFailure();
+    throw new Error("Name oder Notfallschlüssel stimmt nicht.");
+  }
+
+  await db.$transaction([
+    db.user.update({
+      where: { id: membership.userId },
+      data: { passwordHash: await hashPassword(newPassword) }
+    }),
+    db.session.deleteMany({ where: { userId: membership.userId } }),
+    db.loginAttempt.deleteMany({ where: { normalizedName: normalizeLoginName(membership.user.name) } }),
+    db.adminRecoveryKey.update({
+      where: { familyId: membership.familyId },
+      data: { lastUsedAt: new Date() }
+    })
+  ]);
+
+  await createSession(membership.userId);
+  redirect("/dashboard");
+}
+
 async function createDefaultCategories(userId: string) {
   const membership = await db.familyMember.findFirstOrThrow({ where: { userId } });
   await db.category.createMany({
@@ -1261,6 +1395,11 @@ function requiredText(formData: FormData, key: string) {
   const value = String(formData.get(key) ?? "").trim();
   if (!value) throw new Error(`${key} ist erforderlich.`);
   return value;
+}
+
+function requireMatchingPasswordConfirmation(formData: FormData, password: string) {
+  const confirmation = String(formData.get("confirmPassword") ?? "");
+  if (password !== confirmation) throw new Error("Die Passwort-Wiederholung stimmt nicht.");
 }
 
 function optionalText(formData: FormData, key: string) {
@@ -1458,6 +1597,10 @@ function enumValue<T extends string>(formData: FormData, key: string, allowed: r
 
 function normalizeLoginName(name: string) {
   return name.trim().toLocaleLowerCase("de-DE");
+}
+
+async function slowRecoveryFailure() {
+  await new Promise((resolve) => setTimeout(resolve, 500));
 }
 
 async function recordLoginFailure(normalizedName: string) {

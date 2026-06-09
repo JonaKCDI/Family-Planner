@@ -83,6 +83,12 @@ Empfohlen:
 - PostgreSQL-Volume und Backup-Ordner regelmäßig sichern.
 - Restore mindestens einmal testen.
 
+### Admin-Notfallzugang ohne `.env`
+
+Admins können in **Einstellungen > Notfall-Wiederherstellung** einen langen Notfallschlüssel speichern. Die App speichert nur einen Hash dieses Schlüssels. Wenn später kein Admin mehr in die App kommt, kann `/admin-recovery` mit Admin-Name, Notfallschlüssel und neuem Passwort genutzt werden.
+
+Nach erfolgreicher Wiederherstellung sollte der Notfallschlüssel in den Einstellungen ersetzt werden.
+
 ### Datenbank-Backup und Restore
 
 Der `backup`-Service schreibt standardmäßig täglich eine komprimierte Datei wie `family-app-20260514-020000.sql.gz` in `BACKUP_DIR`. Ältere Dumps werden nach `BACKUP_RETENTION_DAYS` automatisch gelöscht, damit der Backup-Ordner nicht unbegrenzt wächst.

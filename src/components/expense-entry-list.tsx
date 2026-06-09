@@ -1,7 +1,7 @@
 "use client";
 
 import { Car } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { deleteExpense, updateExpense } from "@/lib/actions";
 import type { ExpenseDocumentItem, ExpenseListItem } from "@/lib/expense-list";
 import { formatDate, formatMoney, toDateInputValue } from "@/lib/format";
@@ -43,20 +43,31 @@ export function ExpenseEntryList({
   returnTo,
   pageSize = 100
 }: ExpenseEntryListProps) {
-  const [entries, setEntries] = useState(initialEntries);
-  const [documentsByExpense, setDocumentsByExpense] = useState(initialDocumentsByExpense);
-  const [loading, setLoading] = useState(false);
+  const [state, setState] = useState({
+    initialEntries,
+    initialDocumentsByExpense,
+    entries: initialEntries,
+    documentsByExpense: initialDocumentsByExpense,
+    loading: false
+  });
+  const currentState = state.initialEntries === initialEntries && state.initialDocumentsByExpense === initialDocumentsByExpense
+    ? state
+    : {
+      initialEntries,
+      initialDocumentsByExpense,
+      entries: initialEntries,
+      documentsByExpense: initialDocumentsByExpense,
+      loading: false
+    };
+  if (currentState !== state) {
+    setState(currentState);
+  }
+  const { entries, documentsByExpense, loading } = currentState;
   const hasMore = entries.length < totalCount;
-
-  useEffect(() => {
-    setEntries(initialEntries);
-    setDocumentsByExpense(initialDocumentsByExpense);
-    setLoading(false);
-  }, [initialEntries, initialDocumentsByExpense]);
 
   async function loadMore() {
     if (loading || !hasMore) return;
-    setLoading(true);
+    setState((current) => ({ ...current, loading: true }));
     try {
       const url = new URL(loadUrl, window.location.origin);
       url.searchParams.set("offset", String(entries.length));
@@ -64,10 +75,13 @@ export function ExpenseEntryList({
       const response = await fetch(url, { cache: "no-store" });
       if (!response.ok) throw new Error("Nachladen fehlgeschlagen.");
       const payload = await response.json() as { entries: ExpenseListItem[]; documentsByExpense: Record<string, ExpenseDocumentItem[]> };
-      setEntries((current) => [...current, ...payload.entries]);
-      setDocumentsByExpense((current) => ({ ...current, ...payload.documentsByExpense }));
+      setState((current) => ({
+        ...current,
+        entries: [...current.entries, ...payload.entries],
+        documentsByExpense: { ...current.documentsByExpense, ...payload.documentsByExpense }
+      }));
     } finally {
-      setLoading(false);
+      setState((current) => ({ ...current, loading: false }));
     }
   }
 
@@ -169,7 +183,7 @@ function ExpenseEntryRow({
                 </label>
                 <label>Betrag in EUR<input name="amount" inputMode="decimal" defaultValue={formatEuroInput(expense.amountCents)} required /></label>
                 <label>Datum<input name="date" type="date" defaultValue={toDateInputValue(expense.date)} required /></label>
-                <label>Beschreibung<input name="description" defaultValue={expense.description} required /></label>
+                <label>Beschreibung<input name="description" defaultValue={expense.description} /></label>
                 <label>Bezahlart<input name="paymentMethod" list="payment-methods" defaultValue={expense.paymentMethod} /></label>
                 <label>Laden<input name="store" defaultValue={expense.store} placeholder="Rewe, Lidl, Amazon ..." /></label>
                 <SearchableSelect name="categoryId" label="Kategorie" options={categoryOptions} defaultValue={expense.categoryId} emptyLabel="Keine Kategorie" placeholder="Kategorie suchen oder auswählen" />
@@ -205,9 +219,11 @@ function FuelEntryTag({ expense, variant }: { expense: ExpenseListItem; variant:
 
   return (
     <span className={className} title={title} aria-label={title}>
-      <Car aria-hidden="true" size={14} strokeWidth={2.4} />
-      <span>{expense.fuelEntry.car.name}</span>
-      <small>{expense.fuelEntry.odometerKm.toLocaleString("de-DE")} km</small>
+      <Car aria-hidden="true" size={17} strokeWidth={2.4} />
+      <span className="fuel-entry-copy">
+        <span className="fuel-entry-name">{expense.fuelEntry.car.name}</span>
+        <span className="fuel-entry-distance">{expense.fuelEntry.odometerKm.toLocaleString("de-DE")} km</span>
+      </span>
     </span>
   );
 }
