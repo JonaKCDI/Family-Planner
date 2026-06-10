@@ -2,28 +2,35 @@ import {
   archiveExpenseLabel,
   createCategory,
   createExpenseLabel,
+  createRecurringTransaction,
   deleteCategory,
   deleteExpenseLabel,
   exportExpensesToSynologyExcel,
   importExpensesFromSynologyExcel,
   importExpensesFromUploadedXlsx,
+  mergeDuplicateExpenses,
   mergeExpenseCategories,
   mergeExpenseLabels,
+  pauseRecurringTransaction,
+  softDeleteRecurringTransaction,
   unarchiveExpenseLabel,
   updateCategory,
   updateExpenseLabel,
+  updateRecurringTransaction,
 } from "@/lib/actions";
 import { redirect } from "next/navigation";
 import { requireSession } from "@/lib/auth";
 import { ensureDueContractExpenses } from "@/lib/contract-auto-expenses";
 import { toExpenseDocumentItem, toExpenseListItem } from "@/lib/expense-list";
-import { formatDate, formatMoney } from "@/lib/format";
-import { buildExpensesHref, buildPeriodHref, getCanonicalExpensesHref, getMonthKey, getRawExpensesHref, type ExpenseFilterParams } from "@/lib/expense-filter-url";
+import { formatDate, formatMoney, toDateInputValue } from "@/lib/format";
+import { buildExpensesHref, buildMonthNavigationHref, buildPeriodHref, buildYearNavigationHref, getCanonicalExpensesHref, getMonthKey, getRawExpensesHref, type ExpenseFilterParams } from "@/lib/expense-filter-url";
 import { formatMonthKeyLabel } from "@/lib/month-options";
-import { getDocumentsForLinkedEntities, getExpenseLabels, getVisibleCategories, getVisibleContracts, getVisibleExpenses } from "@/lib/queries";
+import { getDocumentsForLinkedEntities, getExpenseLabels, getRecurringTransactions, getVisibleCategories, getVisibleContracts, getVisibleExpenses } from "@/lib/queries";
 import { ActionModal } from "@/components/action-modal";
+import { ExcelProgressPanel } from "@/components/excel-progress-panel";
 import { ExpenseEntryList } from "@/components/expense-entry-list";
 import { ExpenseFilterForm } from "@/components/expense-filter-form";
+import { SearchableSelect } from "@/components/searchable-select";
 import { EmptyState, PageHeader } from "@/components/ui";
 
 type ExpensesPageProps = {
@@ -36,12 +43,13 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
   const canonicalHref = getCanonicalExpensesHref(params);
   if (canonicalHref !== getRawExpensesHref(params)) redirect(canonicalHref);
   await ensureDueContractExpenses(session.family.id, session.user.id);
-  const [expenses, categories, labels, allLabels, contracts] = await Promise.all([
+  const [expenses, categories, labels, allLabels, contracts, recurringTransactions] = await Promise.all([
     getVisibleExpenses(session.family.id, session.user.id),
     getVisibleCategories(session.family.id, session.user.id, "EXPENSE"),
     getExpenseLabels(session.family.id, session.user.id),
     getExpenseLabels(session.family.id, session.user.id, { includeArchived: true }),
-    getVisibleContracts(session.family.id, session.user.id)
+    getVisibleContracts(session.family.id, session.user.id),
+    getRecurringTransactions(session.family.id, session.user.id)
   ]);
   const query = normalizeSearch(params.q);
   const currentMonthKey = getMonthKey();
@@ -54,6 +62,8 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
     .filter((entry) => !params.label || entry.labelId === params.label)
     .filter((entry) => !params.category || entry.categoryId === params.category)
     .filter((entry) => !query || matchesExpense(entry, query));
+  const duplicateGroups = buildDuplicateGroups(selectedEntries);
+  const duplicateCounts = buildDuplicateCounts(duplicateGroups);
   const income = sumByKind(selectedEntries, "INCOME");
   const spending = sumByKind(selectedEntries, "EXPENSE");
   const saldo = income - spending;
@@ -89,26 +99,18 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
       </form>
 
       <section className="filter-system" aria-label="Ausgabenfilter">
-        <div className="period-tabs" role="list" aria-label="Zeitraum">
-          <a role="listitem" className={range.mode === "month" && range.key === currentMonthKey ? "active" : ""} href={buildPeriodHref(params, { month: currentMonthKey })}>Aktueller Monat</a>
-          {years.map((year) => <a role="listitem" className={range.mode === "year" && params.year === String(year) ? "active" : ""} href={buildPeriodHref(params, { year: String(year) })} key={year}>{year}</a>)}
-        </div>
-        {activeFilterChips.length > 0 ? (
-          <div className="active-filter-row" aria-label="Aktive Filter">
-            {activeFilterChips.map((chip) => (
-              <a className="filter-chip" href={buildExpensesHref(params, chip.clear)} key={chip.label}>
-                <span>{chip.label}</span>
-                <strong aria-hidden="true">×</strong>
-              </a>
-            ))}
-            <a className="filter-chip clear-all" href="/ausgaben">Alle löschen</a>
+        <div className="period-navigator">
+          <PeriodNavigator params={params} range={range} currentMonthKey={currentMonthKey} />
+          <div className="period-tools">
+            <a className="button period-primary-action" href={buildPeriodHref(params, { month: currentMonthKey })}>Aktuell</a>
+            <ActionModal title="Ausgaben filtern" trigger="Filter" triggerClassName="button period-primary-action">
+              <ExpenseFilterForm params={params} categories={categories} labels={labels} years={years} currentMonthKey={currentMonthKey} />
+            </ActionModal>
           </div>
-        ) : null}
-      </section>
-
-      <section className="overview-actions">
-        <ActionModal title="Ausgaben filtern" trigger="Filter">
-          <ExpenseFilterForm params={params} categories={categories} labels={labels} years={years} currentMonthKey={currentMonthKey} />
+        </div>
+        <div className="overview-actions secondary-filter-actions">
+        <ActionModal title="Serien verwalten" trigger="Serien" wide>
+          <RecurringTransactionsPanel recurringTransactions={recurringTransactions} categories={categories} labels={labels} />
         </ActionModal>
 
         <ActionModal title="Ausgaben-Setup" trigger="Setup" wide>
@@ -120,23 +122,25 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
                   <p className="muted">Export und Import für das aktuell ausgewählte Jahr {exportYear}.</p>
                 </div>
               </div>
-              <div className="excel-actions">
-                <a className="button secondary" href={`/api/expenses/export?year=${exportYear}`}>Excel {exportYear} herunterladen</a>
-                <form action={importExpensesFromUploadedXlsx} className="upload-form">
-                  <input name="xlsxFile" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required />
-                  <button className="button secondary" type="submit">Excel hochladen</button>
-                </form>
-                <div className="setup-action-row">
-                  <form action={importExpensesFromSynologyExcel}>
-                    <input type="hidden" name="year" value={exportYear} />
-                    <button className="button secondary" type="submit">Synology importieren</button>
+              <ExcelProgressPanel>
+                <div className="excel-actions">
+                  <a className="button secondary" href={`/api/expenses/export?year=${exportYear}`} data-excel-progress={`Excel ${exportYear} wird vorbereitet ...`}>Excel {exportYear} herunterladen</a>
+                  <form action={importExpensesFromUploadedXlsx} className="upload-form">
+                    <input name="xlsxFile" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required />
+                    <button className="button secondary" type="submit" data-excel-progress="Excel-Datei wird importiert ...">Excel hochladen</button>
                   </form>
-                  <form action={exportExpensesToSynologyExcel}>
-                    <input type="hidden" name="year" value={exportYear} />
-                    <button className="button secondary" type="submit">Synology exportieren</button>
-                  </form>
+                  <div className="setup-action-row">
+                    <form action={importExpensesFromSynologyExcel}>
+                      <input type="hidden" name="year" value={exportYear} />
+                      <button className="button secondary" type="submit" data-excel-progress="Synology-Import läuft ...">Synology importieren</button>
+                    </form>
+                    <form action={exportExpensesToSynologyExcel}>
+                      <input type="hidden" name="year" value={exportYear} />
+                      <button className="button secondary" type="submit" data-excel-progress="Synology-Export läuft ...">Synology exportieren</button>
+                    </form>
+                  </div>
                 </div>
-              </div>
+              </ExcelProgressPanel>
             </section>
 
             <details className="setup-card" open>
@@ -288,6 +292,18 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
             </details>
           </div>
         </ActionModal>
+        </div>
+        {activeFilterChips.length > 0 ? (
+          <div className="active-filter-row" aria-label="Aktive Filter">
+            {activeFilterChips.map((chip) => (
+              <a className="filter-chip" href={buildExpensesHref(params, chip.clear)} key={chip.label}>
+                <span>{chip.label}</span>
+                <strong aria-hidden="true">×</strong>
+              </a>
+            ))}
+            <a className="filter-chip clear-all" href="/ausgaben">Alle löschen</a>
+          </div>
+        ) : null}
       </section>
 
       <section className="stats">
@@ -320,17 +336,21 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
         {selectedEntries.length === 0 ? (
           <EmptyState>Noch keine Einträge im gewählten Zeitraum.</EmptyState>
         ) : (
-          <ExpenseEntryList
-            initialEntries={expenseListEntries}
-            totalCount={selectedEntries.length}
-            categories={categories.map((category) => ({ id: category.id, name: category.name, color: category.color }))}
-            labels={labels.map((label) => ({ id: label.id, name: label.name, color: label.color }))}
-            contracts={contracts.map((contract) => ({ id: contract.id, provider: contract.provider, contractType: contract.contractType }))}
-            initialDocumentsByExpense={documentsByExpense}
-            loadUrl={expenseListLoadUrl}
-            returnTo={returnTo}
-            pageSize={100}
-          />
+          <>
+            <DuplicateReviewPanel groups={duplicateGroups} returnTo={returnTo} />
+            <ExpenseEntryList
+              initialEntries={expenseListEntries}
+              totalCount={selectedEntries.length}
+              duplicateCounts={duplicateCounts}
+              categories={categories.map((category) => ({ id: category.id, name: category.name, color: category.color }))}
+              labels={labels.map((label) => ({ id: label.id, name: label.name, color: label.color }))}
+              contracts={contracts.map((contract) => ({ id: contract.id, provider: contract.provider, contractType: contract.contractType }))}
+              initialDocumentsByExpense={documentsByExpense}
+              loadUrl={expenseListLoadUrl}
+              returnTo={returnTo}
+              pageSize={100}
+            />
+          </>
         )}
       </details>
 
@@ -425,6 +445,193 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
   );
 }
 
+type DuplicateGroup = {
+  key: string;
+  entries: ExpenseLike[];
+};
+
+function DuplicateReviewPanel({ groups, returnTo }: { groups: DuplicateGroup[]; returnTo: string }) {
+  if (groups.length === 0) return null;
+  const duplicateEntryCount = groups.reduce((sum, group) => sum + group.entries.length, 0);
+  return (
+    <div className="duplicate-action-row">
+      <div>
+        <strong>Duplikatprüfung</strong>
+        <span>{groups.length} Gruppen mit {duplicateEntryCount} ähnlichen Einträgen</span>
+      </div>
+      <ActionModal title="Duplikate prüfen" trigger="Duplikate" triggerClassName="button duplicate-action-button" wide>
+        <div className="duplicate-review">
+          <div className="duplicate-review-head">
+            <div>
+              <h3>Mögliche Duplikate</h3>
+              <p className="muted">Prüfe die Gruppen und wähle jeweils den Eintrag, der erhalten bleiben soll. Die übrigen Einträge der Gruppe werden gelöscht.</p>
+            </div>
+          </div>
+          <div className="duplicate-group-list">
+            {groups.map((group) => (
+              <div className="duplicate-group" key={group.key}>
+                <div className="duplicate-group-title">
+                  <strong>{formatDate(group.entries[0].date)} · {formatMoney(group.entries[0].amountCents, group.entries[0].currency)}</strong>
+                  <span>{group.entries.length} ähnliche Einträge</span>
+                </div>
+                <div className="duplicate-choice-list">
+                  {group.entries.map((entry) => (
+                    <form action={mergeDuplicateExpenses} className="duplicate-choice" key={entry.id}>
+                      <input type="hidden" name="keepExpenseId" value={entry.id} />
+                      <input type="hidden" name="returnTo" value={returnTo} />
+                      {group.entries.map((duplicate) => <input type="hidden" name="expenseId" value={duplicate.id} key={duplicate.id} />)}
+                      <div>
+                        <strong>{entry.description || "Ohne Beschreibung"}</strong>
+                        <span>{[entry.store, entry.paymentMethod, entry.category?.name, entry.label?.name].filter(Boolean).join(" · ") || "Keine Details"}</span>
+                        <small>Erfasst am {formatDate(entry.createdAt)}</small>
+                      </div>
+                      <button className="button secondary" type="submit">Diesen behalten</button>
+                    </form>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </ActionModal>
+    </div>
+  );
+}
+function PeriodNavigator({
+  params,
+  range,
+  currentMonthKey
+}: {
+  params: Awaited<ExpensesPageProps["searchParams"]>;
+  range: ReturnType<typeof getRange>;
+  currentMonthKey: string;
+}) {
+  const currentYear = range.mode === "year" ? range.from.getFullYear() : Number((range.mode === "month" ? range.key : currentMonthKey).slice(0, 4));
+  const monthKey = range.mode === "month" ? range.key : `${currentYear}-${currentMonthKey.slice(5)}`;
+  const isYear = range.mode === "year";
+  const previousHref = isYear ? buildYearNavigationHref(params, currentYear, -1) : buildMonthNavigationHref(params, monthKey, -1);
+  const nextHref = isYear ? buildYearNavigationHref(params, currentYear, 1) : buildMonthNavigationHref(params, monthKey, 1);
+  const title = isYear ? String(currentYear) : range.mode === "custom" ? "Freier Zeitraum" : formatMonthKeyLabel(monthKey);
+  const detail = isYear ? "Jahresansicht" : range.mode === "custom" ? `${formatDate(range.from)} bis ${formatDate(range.to)}` : "Monatsansicht";
+
+  return (
+    <div className="period-nav-main">
+      <a className="period-nav-button" href={previousHref} aria-label={isYear ? "Vorheriges Jahr" : "Vorheriger Monat"} title={isYear ? "Vorheriges Jahr" : "Vorheriger Monat"}>
+        <span aria-hidden="true">&lsaquo;</span>
+      </a>
+      <div className="period-nav-current" aria-live="polite">
+        <span>{detail}</span>
+        <strong>{title}</strong>
+      </div>
+      <a className="period-nav-button" href={nextHref} aria-label={isYear ? "Nächstes Jahr" : "Nächster Monat"} title={isYear ? "Nächstes Jahr" : "Nächster Monat"}>
+        <span aria-hidden="true">&rsaquo;</span>
+      </a>
+      <div className="period-mode-toggle" role="list" aria-label="Zeitraum-Modus">
+        <a role="listitem" className={!isYear && range.mode !== "custom" ? "active" : ""} href={buildPeriodHref(params, { month: monthKey })}>Monat</a>
+        <a role="listitem" className={isYear ? "active" : ""} href={buildPeriodHref(params, { year: String(currentYear) })}>Jahr</a>
+      </div>
+    </div>
+  );
+}
+
+function RecurringTransactionsPanel({
+  recurringTransactions,
+  categories,
+  labels
+}: {
+  recurringTransactions: Awaited<ReturnType<typeof getRecurringTransactions>>;
+  categories: CategoryLike[];
+  labels: LabelLike[];
+}) {
+  const today = new Date().toISOString().slice(0, 10);
+  const categoryOptions = categories.map((category) => ({ id: category.id, name: category.name, color: category.color }));
+  const labelOptions = labels.map((label) => ({ id: label.id, name: label.name, color: label.color }));
+  return (
+    <div className="recurring-layout">
+      <section className="setup-card setup-card-primary">
+        <div className="setup-card-head">
+          <div>
+            <h2 className="section-title">Neue Serie</h2>
+            <p className="muted">Regelmäßige private Einnahmen oder Ausgaben automatisch buchen.</p>
+          </div>
+        </div>
+        <form action={createRecurringTransaction} className="form form-grid compact">
+          <label>Titel<input name="title" placeholder="Gehalt, Miete, Sparrate ..." required /></label>
+          <label>Art<select name="kind" defaultValue="EXPENSE"><option value="EXPENSE">Ausgabe</option><option value="INCOME">Einnahme</option></select></label>
+          <label>Betrag in EUR<input name="amount" inputMode="decimal" placeholder="42,50" required /></label>
+          <label>Intervall<select name="billingInterval" defaultValue="MONTHLY"><option value="MONTHLY">Monatlich</option><option value="QUARTERLY">Quartalsweise</option><option value="YEARLY">Jährlich</option></select></label>
+          <label>Startdatum<input name="startDate" type="date" defaultValue={today} required /></label>
+          <label>Enddatum optional<input name="endDate" type="date" /></label>
+          <PaymentMethodSelect />
+          <label>Laden / Quelle<input name="store" placeholder="Arbeitgeber, Vermieter, Bank ..." /></label>
+          <SearchableSelect name="categoryId" label="Kategorie" options={categoryOptions} emptyLabel="Keine Kategorie" placeholder="Kategorie suchen oder auswählen" />
+          <SearchableSelect name="labelId" label="Label / Projekt" options={labelOptions} emptyLabel="Kein Label" placeholder="Label suchen oder auswählen" />
+          <input type="hidden" name="status" value="ACTIVE" />
+          <label className="full-span">Beschreibung<input name="description" placeholder="Optionaler Hinweis für erzeugte Buchungen" /></label>
+          <button className="button secondary full-span" type="submit">Serie speichern</button>
+        </form>
+      </section>
+
+      <section className="setup-card">
+        <h2 className="section-title">Bestehende Serien</h2>
+        <div className="category-editor-list">
+          {recurringTransactions.length === 0 ? <EmptyState>Noch keine Serien vorhanden.</EmptyState> : null}
+          {recurringTransactions.map((series) => {
+            const currentPhase = series.pricePhases.at(-1);
+            return (
+              <details className="category-editor" key={series.id}>
+                <summary>
+                  <span className="color-dot" style={{ background: series.category?.color ?? "#6b6f76" }} />
+                  <span>{series.title}<small>{series.status === "ACTIVE" ? "Aktiv" : "Pausiert"} · {series.kind === "INCOME" ? "Einnahme" : "Ausgabe"}</small></span>
+                  <strong>{currentPhase ? formatMoney(currentPhase.amountCents, currentPhase.currency) : "-"}</strong>
+                </summary>
+                <form action={updateRecurringTransaction} className="form form-grid compact">
+                  <input type="hidden" name="id" value={series.id} />
+                  <label>Titel<input name="title" defaultValue={series.title} required /></label>
+                  <label>Art<select name="kind" defaultValue={series.kind}><option value="EXPENSE">Ausgabe</option><option value="INCOME">Einnahme</option></select></label>
+                  <label>Betrag in EUR<input name="amount" inputMode="decimal" defaultValue={formatEuroInput(currentPhase?.amountCents ?? 0)} required /></label>
+                  <label>Gültig ab<input name="priceValidFrom" type="date" defaultValue={toDateInputValue(currentPhase?.validFrom ?? series.startDate)} required /></label>
+                  <label>Preisänderung<select name="priceChangeMode" defaultValue="NEW_PHASE"><option value="NEW_PHASE">Neue Preisphase ab Gültig-ab</option><option value="CORRECT_CURRENT">Aktuelle Phase korrigieren</option></select></label>
+                  <p className="muted full-span">Die Preisphase ändert die Vorlage für zukünftige automatische Buchungen. Die Checkbox unten ändert zusätzlich bereits erzeugte Auto-Buchungen im betroffenen Zeitraum.</p>
+                  <label>Intervall<select name="billingInterval" defaultValue={currentPhase?.billingInterval ?? "MONTHLY"}><option value="MONTHLY">Monatlich</option><option value="QUARTERLY">Quartalsweise</option><option value="YEARLY">Jährlich</option></select></label>
+                  <label>Startdatum<input name="startDate" type="date" defaultValue={toDateInputValue(series.startDate)} required /></label>
+                  <label>Enddatum optional<input name="endDate" type="date" defaultValue={toDateInputValue(series.endDate)} /></label>
+                  <label>Status<select name="status" defaultValue={series.status}><option value="ACTIVE">Aktiv</option><option value="PAUSED">Pausiert</option></select></label>
+                  <PaymentMethodSelect defaultValue={series.paymentMethod} />
+                  <label>Laden / Quelle<input name="store" defaultValue={series.store} /></label>
+                  <SearchableSelect name="categoryId" label="Kategorie" options={categoryOptions} defaultValue={series.categoryId} emptyLabel="Keine Kategorie" placeholder="Kategorie suchen oder auswählen" />
+                  <SearchableSelect name="labelId" label="Label / Projekt" options={labelOptions} defaultValue={series.labelId} emptyLabel="Kein Label" placeholder="Label suchen oder auswählen" />
+                  <label className="checkbox-field full-span"><input name="updateGeneratedExpenses" type="checkbox" /> Bereits erzeugte Auto-Buchungen ab Gültig-ab aktualisieren</label>
+                  <label className="full-span">Beschreibung<input name="description" defaultValue={series.description} /></label>
+                  <div className="full-span price-history">
+                    <strong>Preisentwicklung</strong>
+                    {series.pricePhases.map((phase) => (
+                      <span className="badge" key={phase.id}>
+                        {formatMoney(phase.amountCents, phase.currency)} · {recurringIntervalLabels[phase.billingInterval]} · ab {formatDate(phase.validFrom)}{phase.validTo ? ` bis ${formatDate(phase.validTo)}` : ""}
+                      </span>
+                    ))}
+                  </div>
+                  <button className="button secondary full-span" type="submit">Änderungen speichern</button>
+                </form>
+                <div className="category-editor-actions">
+                  <form action={pauseRecurringTransaction}>
+                    <input type="hidden" name="id" value={series.id} />
+                    <button className="button secondary" type="submit">Pausieren</button>
+                  </form>
+                  <form action={softDeleteRecurringTransaction}>
+                    <input type="hidden" name="id" value={series.id} />
+                    <button className="button secondary danger-subtle" type="submit">Entfernen</button>
+                  </form>
+                </div>
+              </details>
+            );
+          })}
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function MiniTable({ rows, showBudget = false }: { rows: PeriodRow[]; showBudget?: boolean }) {
   if (rows.length === 0) return <EmptyState>Noch keine Daten vorhanden.</EmptyState>;
   return (
@@ -453,6 +660,20 @@ function BudgetHint({ row }: { row: { budget: number; remaining: number } }) {
 function labelRowMeta(row: { budget: number; neverUsed?: boolean }) {
   const budget = row.budget > 0 ? `Budget ${formatMoney(row.budget)}` : "Ohne Budget";
   return row.neverUsed ? `Noch nicht genutzt · ${budget}` : budget;
+}
+
+function PaymentMethodSelect({ defaultValue = "Nicht angegeben" }: { defaultValue?: string }) {
+  const value = defaultValue || "Nicht angegeben";
+  const options = ["Nicht angegeben", "Karte", "Bar", "Überweisung", "Lastschrift", "PayPal", "Apple Pay"];
+  const visibleOptions = options.includes(value) ? options : [value, ...options];
+  return (
+    <label>
+      Bezahlart
+      <select name="paymentMethod" defaultValue={value}>
+        {visibleOptions.map((option) => <option value={option} key={option}>{option}</option>)}
+      </select>
+    </label>
+  );
 }
 
 function FilterHiddenFields({
@@ -699,6 +920,52 @@ function normalizeSearch(value: unknown) {
   return String(value ?? "").trim().toLowerCase();
 }
 
+function buildDuplicateGroups(entries: ExpenseLike[]): DuplicateGroup[] {
+  const groups = new Map<string, ExpenseLike[]>();
+  for (const entry of entries) {
+    const key = duplicateKey(entry);
+    groups.set(key, [...(groups.get(key) ?? []), entry]);
+  }
+  return [...groups.entries()]
+    .map(([key, groupEntries]) => ({ key, entries: groupEntries.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()) }))
+    .filter((group) => group.entries.length > 1)
+    .sort((a, b) => b.entries.length - a.entries.length || new Date(b.entries[0].date).getTime() - new Date(a.entries[0].date).getTime());
+}
+
+function buildDuplicateCounts(groups: DuplicateGroup[]) {
+  const counts: Record<string, number> = {};
+  for (const group of groups) {
+    for (const entry of group.entries) {
+      counts[entry.id] = group.entries.length;
+    }
+  }
+  return counts;
+}
+
+function duplicateKey(entry: ExpenseLike) {
+  return [
+    entry.kind,
+    entry.amountCents,
+    dateKey(entry.date),
+    normalizeDuplicateText(entry.description),
+    normalizeDuplicateText(entry.store),
+    normalizeDuplicateText(entry.paymentMethod),
+    entry.categoryId ?? "",
+    entry.labelId ?? "",
+    entry.contractId ?? "",
+    entry.recurringTransactionId ?? "",
+    entry.fuelEntryId ?? ""
+  ].join("|");
+}
+
+function normalizeDuplicateText(value: unknown) {
+  return String(value ?? "").trim().replace(/\s+/g, " ").toLocaleLowerCase("de-DE");
+}
+
+function dateKey(date: Date | string) {
+  return new Date(date).toISOString().slice(0, 10);
+}
+
 function buildActiveFilterChips(
   params: Awaited<ExpensesPageProps["searchParams"]>,
   categories: CategoryLike[],
@@ -706,12 +973,6 @@ function buildActiveFilterChips(
   range: ReturnType<typeof getRange>
 ) {
   const chips: { label: string; clear: Partial<Awaited<ExpensesPageProps["searchParams"]>> }[] = [];
-  if (range.mode === "year" && params.year) {
-    chips.push({ label: params.year, clear: { year: undefined } });
-  }
-  if (range.mode === "month" && params.month) {
-    chips.push({ label: `Monat: ${formatMonthKeyLabel(params.month)}`, clear: { month: undefined } });
-  }
   if (params.q) chips.push({ label: `Suche: ${params.q}`, clear: { q: undefined } });
   if (params.category) {
     chips.push({
@@ -730,6 +991,14 @@ function buildActiveFilterChips(
   }
   return chips;
 }
+
+const recurringIntervalLabels = {
+  MONTHLY: "Monatlich",
+  YEARLY: "Jährlich",
+  QUARTERLY: "Quartalsweise",
+  ONCE: "Einmalig",
+  OTHER: "Sonstiges"
+};
 
 type ExpenseLike = Awaited<ReturnType<typeof getVisibleExpenses>>[number];
 type CategoryLike = Awaited<ReturnType<typeof getVisibleCategories>>[number];

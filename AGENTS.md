@@ -27,3 +27,18 @@
 - Keep layouts dense but calm: compact cards, clear tables/lists, and controls hidden behind intentional actions where appropriate.
 - Avoid decorative clutter. Prioritize readable overviews, especially for many expenses, categories, and tasks.
 - The floating plus button is the only entry point for creating new expenses, tasks, contracts, and document references.
+
+## Agent Coordination
+
+- 2026-06-09 Codex: Working on the expenses overview controls requested by the user:
+  - Restore quick month/year jump inside the expense filter modal.
+  - Arrange `Aktuell`/`Filter` above `Serien`/`Setup` as a compact mobile 2x2 action block.
+  - Visually distinguish frequent actions (`Aktuell`, `Filter`) from secondary actions (`Serien`, `Setup`).
+  - Regenerate the iOS/apple touch icon from the same visual as `public/icon.svg`.
+- Expected files for this work: `src/app/(app)/ausgaben/page.tsx`, `src/components/expense-filter-form.tsx`, `src/components/action-modal.tsx`, `src/app/globals.css`, and `public/apple-touch-icon.png` (possibly `public/icon-192.png`/`public/icon-512.png` if regenerated together).
+- If another agent needs to touch the same files, please add a note here first with the intended scope so we can avoid overlapping edits.
+- 2026-06-09 Codex: Completed the cockpit finance widget pass.
+  - Replace the budget-dependent finance widget with history-based "actual vs normal" signals.
+  - Keep the diagram, but make it compare current spending to prior months and a month-end projection.
+  - Avoid `src/app/globals.css` because another agent is editing it.
+- Expected file for this work: `src/app/(app)/dashboard/page.tsx`.

@@ -26,7 +26,7 @@ export async function getVisibleExpenses(familyId: string, userId: string) {
       familyId,
       ownerUserId: userId
     },
-    include: { category: true, label: true, contract: true, fuelEntry: { include: { car: true } } },
+    include: { category: true, label: true, contract: true, recurringTransaction: true, fuelEntry: { include: { car: true } } },
     orderBy: { date: "desc" }
   });
 }
@@ -143,6 +143,22 @@ export async function getVisibleContracts(familyId: string, userId: string) {
   });
 }
 
+export async function getVisibleContractsWithExpenseDetails(familyId: string, userId: string) {
+  return db.contract.findMany({
+    where: {
+      familyId,
+      ...visibleScopeWhere(userId)
+    },
+    include: {
+      owner: true,
+      expenseCategory: true,
+      expenseLabel: true,
+      pricePhases: { orderBy: { validFrom: "asc" } }
+    },
+    orderBy: [{ status: "asc" }, { nextCancellationDate: "asc" }]
+  });
+}
+
 export async function getVisibleContractPayments(familyId: string, userId: string, contractIds: string[]) {
   if (contractIds.length === 0) return [];
   return db.expense.findMany({
@@ -152,8 +168,24 @@ export async function getVisibleContractPayments(familyId: string, userId: strin
       kind: "EXPENSE",
       contractId: { in: contractIds }
     },
-    include: { category: true, label: true, contract: true, fuelEntry: { include: { car: true } } },
+    include: { category: true, label: true, contract: true, recurringTransaction: true, fuelEntry: { include: { car: true } } },
     orderBy: { date: "desc" }
+  });
+}
+
+export async function getRecurringTransactions(familyId: string, userId: string) {
+  return db.recurringTransaction.findMany({
+    where: {
+      familyId,
+      ownerUserId: userId,
+      deletedAt: null
+    },
+    include: {
+      category: true,
+      label: true,
+      pricePhases: { orderBy: { validFrom: "asc" } }
+    },
+    orderBy: [{ status: "asc" }, { title: "asc" }]
   });
 }
 

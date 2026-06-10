@@ -16,6 +16,16 @@ export function getMonthKey(date = new Date()) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
 }
 
+export function addMonthsToMonthKey(monthKey: string, amount: number) {
+  const match = /^(\d{4})-(\d{2})$/.exec(monthKey);
+  if (!match) return monthKey;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  if (!Number.isInteger(year) || month < 1 || month > 12) return monthKey;
+  const date = new Date(year, month - 1 + amount, 1);
+  return getMonthKey(date);
+}
+
 export function buildExpensesHref(params: ExpenseFilterParams, overrides: ExpenseFilterParams = {}) {
   const next = normalizeExpenseParams({ ...params, ...overrides });
   return toExpensesHref(next);
@@ -42,6 +52,14 @@ export function buildPeriodHref(params: ExpenseFilterParams, period: Pick<Expens
     year: period.year,
     month: period.month
   });
+}
+
+export function buildMonthNavigationHref(params: ExpenseFilterParams, monthKey: string, amount: number) {
+  return buildPeriodHref(params, { month: addMonthsToMonthKey(monthKey, amount) });
+}
+
+export function buildYearNavigationHref(params: ExpenseFilterParams, year: number, amount: number) {
+  return buildPeriodHref(params, { year: String(year + amount) });
 }
 
 export function buildFilterHref(params: ExpenseFilterParams, values: Pick<ExpenseFilterParams, "from" | "to" | "category" | "label" | "q">) {

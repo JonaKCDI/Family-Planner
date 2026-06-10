@@ -120,7 +120,7 @@ export function CreateModal({ categories, labels, contracts, members, cars, fuel
                 />
               ) : null}
               {selectedType === "task" ? <TaskForm members={members} onSubmit={() => setOpen(false)} /> : null}
-              {selectedType === "contract" ? <ContractForm today={today} onSubmit={() => setOpen(false)} /> : null}
+              {selectedType === "contract" ? <ContractForm categories={categories} labels={labels} today={today} onSubmit={() => setOpen(false)} /> : null}
               {selectedType === "document" ? <DocumentForm onSubmit={() => setOpen(false)} /> : null}
             </section>
           </div>
@@ -265,16 +265,33 @@ function TaskForm({ members, onSubmit }: { members: CreateModalProps["members"];
   );
 }
 
-function ContractForm({ today, onSubmit }: { today: string; onSubmit: () => void }) {
+function ContractForm({
+  categories,
+  labels,
+  today,
+  onSubmit
+}: {
+  categories: CreateModalProps["categories"];
+  labels: CreateModalProps["labels"];
+  today: string;
+  onSubmit: () => void;
+}) {
   return (
     <form action={createContract} className="form form-grid modal-form" onSubmit={onSubmit}>
       <label>Anbieter<input name="provider" required /></label>
       <label>Vertragsart<input name="contractType" placeholder="Mobilfunk, Versicherung, Abo ..." required /></label>
       <label>Kosten in EUR<input name="cost" inputMode="decimal" placeholder="29,99" required /></label>
+      <input type="hidden" name="priceValidFrom" value={today} />
+      <input type="hidden" name="priceChangeMode" value="NEW_PHASE" />
       <label>Intervall<select name="billingInterval" defaultValue="MONTHLY"><option value="MONTHLY">Monatlich</option><option value="YEARLY">Jährlich</option><option value="QUARTERLY">Quartalsweise</option><option value="ONCE">Einmalig</option><option value="OTHER">Sonstiges</option></select></label>
       <label>Startdatum<input name="startDate" type="date" defaultValue={today} required /></label>
-      <label>Einzugstag<input name="expensePaymentDay" type="number" min="1" max="31" defaultValue={new Date(`${today}T00:00:00`).getDate()} /></label>
-      <label className="checkbox-field"><input name="autoCreateExpenses" type="checkbox" /> Automatisch als Ausgabe eintragen</label>
+      <fieldset className="fieldset full-span">
+        <legend>Automatische Ausgabe</legend>
+        <label className="checkbox-field"><input name="autoCreateExpenses" type="checkbox" /> Automatisch als Ausgabe eintragen</label>
+        <label>Einzugstag<input name="expensePaymentDay" type="number" min="1" max="31" defaultValue={new Date(`${today}T00:00:00`).getDate()} /></label>
+        <SearchableSelect name="expenseCategoryId" label="Ausgaben-Kategorie" options={categories} emptyLabel="Keine Kategorie" placeholder="Kategorie suchen oder auswählen" />
+        <SearchableSelect name="expenseLabelId" label="Label / Projekt" options={labels} emptyLabel="Kein Label" placeholder="Label suchen oder auswählen" />
+      </fieldset>
       <label>Ende/Laufzeit bis<input name="endDate" type="date" /></label>
       <label>Kündigung spätestens am<input name="cancellationDeadline" type="date" /></label>
       <label>Kündigungsfrist in Tagen<input name="cancellationNoticeDays" type="number" min="0" /></label>

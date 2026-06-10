@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { getDueContractExpenseDates, paymentDayForContract } from "../src/lib/contract-auto-expenses";
+import { getDueContractExpenseDates, getDueRecurringTransactionDates, getPricePhaseForDate, paymentDayForContract } from "../src/lib/contract-auto-expenses";
 import { getContractNextCancellationDate, getNextAnnualCancellationDate, parseAnnualCancellationDeadline, resolveContractCancellationSchedule, toAnnualCancellationInputValue } from "../src/lib/contracts";
 
 describe("annual cancellation deadlines", () => {
@@ -137,6 +137,41 @@ describe("automatic contract expenses", () => {
       startDate: new Date(Date.UTC(2026, 4, 20)),
       expensePaymentDay: null
     })).toBe(20);
+  });
+
+  test("selects the price phase that is valid for the due date", () => {
+    const phases = [
+      { amountCents: 2000, currency: "EUR", billingInterval: "MONTHLY" as const, validFrom: new Date(Date.UTC(2026, 0, 1)), validTo: new Date(Date.UTC(2026, 5, 30)) },
+      { amountCents: 2500, currency: "EUR", billingInterval: "MONTHLY" as const, validFrom: new Date(Date.UTC(2026, 6, 1)), validTo: null }
+    ];
+
+    expect(getPricePhaseForDate(phases, new Date(Date.UTC(2026, 5, 1)))?.amountCents).toBe(2000);
+    expect(getPricePhaseForDate(phases, new Date(Date.UTC(2026, 6, 1)))?.amountCents).toBe(2500);
+    expect(getPricePhaseForDate(phases, new Date(Date.UTC(2025, 11, 31)))).toBeNull();
+  });
+
+  test("generates recurring transaction dates and respects pause and soft delete", () => {
+    const base = {
+      id: "series-1",
+      familyId: "family-1",
+      ownerUserId: "user-1",
+      kind: "EXPENSE" as const,
+      title: "Miete",
+      description: "",
+      paymentMethod: "Lastschrift",
+      store: "Vermieter",
+      categoryId: null,
+      labelId: null,
+      startDate: new Date(Date.UTC(2026, 0, 31)),
+      endDate: null,
+      status: "ACTIVE" as const,
+      deletedAt: null,
+      pricePhases: [{ amountCents: 80000, currency: "EUR", billingInterval: "MONTHLY" as const, validFrom: new Date(Date.UTC(2026, 0, 31)), validTo: null }]
+    };
+
+    expect(getDueRecurringTransactionDates(base, new Date(Date.UTC(2026, 2, 31))).map(toLocalDateKey)).toEqual(["2026-01-31", "2026-02-28", "2026-03-31"]);
+    expect(getDueRecurringTransactionDates({ ...base, status: "PAUSED" }, new Date(Date.UTC(2026, 2, 31)))).toEqual([]);
+    expect(getDueRecurringTransactionDates({ ...base, deletedAt: new Date(Date.UTC(2026, 1, 1)) }, new Date(Date.UTC(2026, 2, 31)))).toEqual([]);
   });
 });
 

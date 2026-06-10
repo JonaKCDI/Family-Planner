@@ -20,8 +20,8 @@ services:
       - ${EXPENSE_EXCEL_HOST_DIR:-/volume1/docker/family-app/expenses}:/data/expenses
       - ${MILEAGE_EXCEL_HOST_DIR:-/volume1/docker/family-app/mileage}:/data/mileage
     healthcheck:
-      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:3000/login').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))\""]
-      interval: 30s
+      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:3000/api/health').then(r=>r.text()).then(t=>process.exit(t.trim()==='ok'?0:1)).catch(()=>process.exit(1))\""]
+      interval: 5m
       timeout: 5s
       retries: 5
       start_period: 40s
@@ -37,7 +37,7 @@ services:
       - family_app_postgres:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U family_app -d family_app"]
-      interval: 10s
+      interval: 60s
       timeout: 5s
       retries: 10
     restart: unless-stopped

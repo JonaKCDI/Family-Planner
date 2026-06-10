@@ -27,9 +27,8 @@ export default async function DashboardPage() {
   const monthEntries = expenses.filter((entry) => isSameMonth(entry.date, today));
   const income = sumByKind(monthEntries, "INCOME");
   const spending = sumByKind(monthEntries, "EXPENSE");
-  const budget = categories.reduce((sum, category) => sum + category.monthlyBudgetCents, 0);
-  const budgetLeft = budget - spending;
   const saldo = income - spending;
+  const finance = buildFinanceInsight(expenses, categories, today);
   const openTasks = tasks
     .filter((task) => task.status === "OPEN" || task.status === "IN_PROGRESS")
     .sort((a, b) => taskRank(b) - taskRank(a));
@@ -54,8 +53,8 @@ export default async function DashboardPage() {
       <section className="dashboard-stats" aria-label="Haushaltsübersicht">
         <DashboardStat label="Einnahmen" value={formatMoney(income)} detail="Dieser Monat" tone="green" />
         <DashboardStat label="Ausgaben" value={formatMoney(spending)} detail={`${monthEntries.length} Einträge`} tone="red" />
-        <DashboardStat label="Saldo" value={formatMoney(saldo)} detail={saldo < 0 ? "Unter Plan prüfen" : "Aktueller Stand"} tone={saldo < 0 ? "red" : "green"} />
-        <DashboardStat label="Budget" value={formatMoney(budgetLeft)} detail={`${formatMoney(budget)} geplant`} tone={budgetLeft < 0 ? "red" : "blue"} />
+        <DashboardStat label="Saldo" value={formatMoney(saldo)} detail={saldo < 0 ? "Monat prüfen" : "Aktueller Stand"} tone={saldo < 0 ? "red" : "green"} />
+        <DashboardStat label="Prognose" value={formatMoney(finance.projectedMonth)} detail={finance.hasHistory ? "Bei aktuellem Tempo" : "Verlauf baut sich auf"} tone={finance.projectionTone} />
         <DashboardStat label="Aufgaben" value={`${openTasks.length} offen`} detail={`${importantTasks.length} wichtig`} tone={importantTasks.length > 0 ? "amber" : "blue"} />
       </section>
 
@@ -64,20 +63,52 @@ export default async function DashboardPage() {
           <div className="card-head">
             <div>
               <span className="eyebrow">Finanzen</span>
-              <h2>Monatsüberblick</h2>
+              <h2>Dein Monat</h2>
             </div>
-            <Link className="text-link" href="/ausgaben">Details</Link>
-          </div>
-          <div className="finance-bars" aria-hidden="true">
-            {buildFinanceBars(monthEntries).map((bar) => (
-              <span className={`finance-bar ${bar.kind === "INCOME" ? "income-bar" : "expense-bar"}`} style={{ height: `${bar.height}%` }} key={bar.key} />
-            ))}
+            <Link className="text-link" href={finance.monthHref}>Details</Link>
           </div>
           <div className="dashboard-mini-grid">
-            <MiniMetric label="Einnahmen" value={formatMoney(income)} tone="green" />
-            <MiniMetric label="Ausgaben" value={formatMoney(spending)} tone="red" />
-            <MiniMetric label="Saldo" value={formatMoney(saldo)} tone={saldo < 0 ? "red" : "green"} />
-            <MiniMetric label="Budget frei" value={formatMoney(budgetLeft)} tone={budgetLeft < 0 ? "red" : "green"} />
+            <MiniMetric label="Bisher" value={formatMoney(finance.spendingToDate)} tone="red" />
+            <MiniMetric label="Normal bis heute" value={finance.hasHistory ? formatMoney(finance.usualByToday) : "-"} tone="green" />
+            <MiniMetric label="Abweichung" value={finance.hasHistory ? formatSignedMoney(finance.deltaToNormal) : "Noch kein Vergleich"} tone={finance.deltaToNormal > 0 ? "red" : "green"} />
+            <MiniMetric label="Prognose" value={formatMoney(finance.projectedMonth)} tone={finance.projectionTone === "red" ? "red" : "green"} />
+          </div>
+          <div className="dashboard-list" aria-label="Ausgaben im Vergleich">
+            {finance.comparisonRows.map((row) => (
+              <div className="analysis-row" key={row.label}>
+                <div>
+                  <strong>{row.label}</strong>
+                  <span className="muted">{row.detail}</span>
+                </div>
+                <div className="bar-wrap" aria-hidden="true">
+                  <span style={{ width: `${row.width}%`, background: row.color }} />
+                </div>
+                <div className="amount-column compact-amount">
+                  <strong>{formatMoney(row.amount)}</strong>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div>
+            <h3 className="section-title">Auffällig</h3>
+            <div className="dashboard-list">
+              {finance.categorySignals.length === 0 ? <p className="empty-inline">Noch kein auffälliger Verlauf.</p> : null}
+              {finance.categorySignals.map((signal) => (
+                <div className="analysis-row" key={signal.name}>
+                  <div>
+                    {signal.href ? <Link className="text-link" href={signal.href}>{signal.name}</Link> : <strong>{signal.name}</strong>}
+                    <span className="muted">{signal.detail}</span>
+                  </div>
+                  <div className="bar-wrap" aria-hidden="true">
+                    <span style={{ width: `${signal.width}%`, background: signal.color }} />
+                  </div>
+                  <div className="amount-column compact-amount">
+                    <strong className={signal.delta > 0 ? "negative" : "positive"}>{formatSignedMoney(signal.delta)}</strong>
+                    <small>{formatMoney(signal.amount)}</small>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         </section>
 
@@ -191,19 +222,6 @@ function sumByKind(entries: Awaited<ReturnType<typeof getVisibleExpenses>>, kind
   return entries.filter((entry) => entry.kind === kind).reduce((sum, entry) => sum + entry.amountCents, 0);
 }
 
-function buildFinanceBars(entries: Awaited<ReturnType<typeof getVisibleExpenses>>) {
-  const recent = entries.slice(0, 12);
-  if (recent.length === 0) {
-    return Array.from({ length: 12 }, (_, index) => ({ key: `empty-${index}`, height: 18 + (index % 4) * 10, kind: "EXPENSE" as const }));
-  }
-  const max = Math.max(...recent.map((entry) => entry.amountCents), 1);
-  return recent.reverse().map((entry) => ({
-    key: entry.id,
-    kind: entry.kind,
-    height: Math.max(18, Math.round((entry.amountCents / max) * 100))
-  }));
-}
-
 const priorityLabels = {
   LOW: "Niedrig",
   MEDIUM: "Mittel",
@@ -212,3 +230,179 @@ const priorityLabels = {
 };
 
 const longDateFormatter = new Intl.DateTimeFormat("de-DE", { weekday: "long", day: "2-digit", month: "long" });
+
+type ExpenseEntry = Awaited<ReturnType<typeof getVisibleExpenses>>[number];
+type CategoryEntry = Awaited<ReturnType<typeof getVisibleCategories>>[number];
+
+function buildFinanceInsight(expenses: ExpenseEntry[], categories: CategoryEntry[], today: Date) {
+  const currentMonthKey = getMonthKey(today);
+  const monthHref = `/ausgaben?month=${currentMonthKey}`;
+  const currentEntries = expenses.filter((entry) => isSameMonth(entry.date, today) && new Date(entry.date) <= endOfDay(today));
+  const spendingToDate = sumByKind(currentEntries, "EXPENSE");
+  const comparableMonths = buildComparableMonths(expenses, today, 6);
+  const hasHistory = comparableMonths.length > 0;
+  const usualByToday = hasHistory ? average(comparableMonths.map((month) => month.spendingToDate)) : 0;
+  const usualFullMonth = hasHistory ? average(comparableMonths.map((month) => month.fullMonthSpending)) : 0;
+  const projectedMonth = projectMonth(spendingToDate, today);
+  const deltaToNormal = spendingToDate - usualByToday;
+  const maxComparison = Math.max(spendingToDate, usualByToday, projectedMonth, usualFullMonth, 1);
+  const projectionTone: "red" | "amber" | "blue" = hasHistory && projectedMonth > usualFullMonth * 1.15
+    ? "red"
+    : hasHistory && projectedMonth > usualFullMonth * 1.05
+      ? "amber"
+      : "blue";
+
+  return {
+    hasHistory,
+    spendingToDate,
+    usualByToday,
+    usualFullMonth,
+    projectedMonth,
+    deltaToNormal,
+    projectionTone,
+    monthHref,
+    comparisonRows: [
+      {
+        label: "Bisher ausgegeben",
+        detail: `${today.getDate()}. Tag im Monat`,
+        amount: spendingToDate,
+        color: "var(--accent)",
+        width: percentOf(spendingToDate, maxComparison)
+      },
+      {
+        label: "Normal bis heute",
+        detail: hasHistory ? `Durchschnitt aus ${comparableMonths.length} Monaten` : "Noch kein Vergleichsverlauf",
+        amount: usualByToday,
+        color: "var(--blue)",
+        width: percentOf(usualByToday, maxComparison)
+      },
+      {
+        label: "Hochrechnung",
+        detail: hasHistory ? `Normaler Monat: ${formatMoney(usualFullMonth)}` : "Wird mit mehr Daten genauer",
+        amount: projectedMonth,
+        color: projectionTone === "red" ? "var(--red)" : projectionTone === "amber" ? "var(--amber)" : "var(--green)",
+        width: percentOf(projectedMonth, maxComparison)
+      }
+    ],
+    categorySignals: buildCategorySignals(expenses, categories, today, comparableMonths, monthHref)
+  };
+}
+
+function buildComparableMonths(expenses: ExpenseEntry[], today: Date, count: number) {
+  return Array.from({ length: count }, (_, index) => shiftMonth(today, -(index + 1)))
+    .map((monthDate) => {
+      const monthEntries = expenses.filter((entry) => isSameMonth(entry.date, monthDate));
+      if (monthEntries.length === 0) return null;
+      const cutoffDay = Math.min(today.getDate(), daysInMonth(monthDate));
+      return {
+        key: getMonthKey(monthDate),
+        spendingToDate: sumByKind(monthEntries.filter((entry) => new Date(entry.date).getDate() <= cutoffDay), "EXPENSE"),
+        fullMonthSpending: sumByKind(monthEntries, "EXPENSE")
+      };
+    })
+    .filter((month): month is { key: string; spendingToDate: number; fullMonthSpending: number } => Boolean(month));
+}
+
+function buildCategorySignals(
+  expenses: ExpenseEntry[],
+  categories: CategoryEntry[],
+  today: Date,
+  comparableMonths: { key: string; spendingToDate: number; fullMonthSpending: number }[],
+  monthHref: string
+) {
+  if (comparableMonths.length === 0) return [];
+  const categoryMeta = new Map(categories.map((category) => [category.id, category]));
+  const currentEntries = expenses.filter((entry) => entry.kind === "EXPENSE" && isSameMonth(entry.date, today) && new Date(entry.date) <= endOfDay(today));
+  const currentByCategory = groupExpenseAmounts(currentEntries);
+  const historicalByCategory = new Map<string, number[]>();
+  for (const month of comparableMonths) {
+    const monthDate = monthKeyToDate(month.key);
+    const cutoffDay = Math.min(today.getDate(), daysInMonth(monthDate));
+    const monthEntries = expenses.filter((entry) => (
+      entry.kind === "EXPENSE" &&
+      isSameMonth(entry.date, monthDate) &&
+      new Date(entry.date).getDate() <= cutoffDay
+    ));
+    const grouped = groupExpenseAmounts(monthEntries);
+    for (const key of new Set([...currentByCategory.keys(), ...grouped.keys()])) {
+      const values = historicalByCategory.get(key) ?? [];
+      values.push(grouped.get(key) ?? 0);
+      historicalByCategory.set(key, values);
+    }
+  }
+
+  const rows = [...new Set([...currentByCategory.keys(), ...historicalByCategory.keys()])]
+    .map((key) => {
+      const amount = currentByCategory.get(key) ?? 0;
+      const usual = average(historicalByCategory.get(key) ?? []);
+      const delta = amount - usual;
+      const category = key === uncategorizedKey ? null : categoryMeta.get(key);
+      return {
+        name: category?.name ?? "Ohne Kategorie",
+        color: category?.color ?? "#6b6f76",
+        amount,
+        usual,
+        delta,
+        href: category ? `${monthHref}&category=${category.id}` : monthHref,
+        detail: usual > 0 ? `normal bis heute ${formatMoney(usual)}` : "sonst selten genutzt"
+      };
+    })
+    .filter((row) => row.amount > 0 || row.usual > 0)
+    .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))
+    .slice(0, 3);
+  const maxAmount = Math.max(...rows.map((row) => Math.max(row.amount, row.usual)), 1);
+  return rows.map((row) => ({ ...row, width: percentOf(row.amount, maxAmount) }));
+}
+
+function groupExpenseAmounts(entries: ExpenseEntry[]) {
+  const rows = new Map<string, number>();
+  for (const entry of entries) {
+    const key = entry.categoryId ?? uncategorizedKey;
+    rows.set(key, (rows.get(key) ?? 0) + entry.amountCents);
+  }
+  return rows;
+}
+
+function projectMonth(spendingToDate: number, today: Date) {
+  const elapsedDays = Math.max(1, today.getDate());
+  return Math.round((spendingToDate / elapsedDays) * daysInMonth(today));
+}
+
+function shiftMonth(date: Date, offset: number) {
+  return new Date(date.getFullYear(), date.getMonth() + offset, 1);
+}
+
+function daysInMonth(date: Date) {
+  return new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+}
+
+function getMonthKey(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function monthKeyToDate(monthKey: string) {
+  const [year, month] = monthKey.split("-").map(Number);
+  return new Date(year, month - 1, 1);
+}
+
+function endOfDay(date: Date) {
+  const value = new Date(date);
+  value.setHours(23, 59, 59, 999);
+  return value;
+}
+
+function average(values: number[]) {
+  if (values.length === 0) return 0;
+  return Math.round(values.reduce((sum, value) => sum + value, 0) / values.length);
+}
+
+function percentOf(value: number, max: number) {
+  return Math.max(value > 0 ? 4 : 0, Math.min(100, Math.round((value / max) * 100)));
+}
+
+function formatSignedMoney(amountCents: number) {
+  if (amountCents === 0) return formatMoney(0);
+  return `${amountCents > 0 ? "+" : "-"}${formatMoney(Math.abs(amountCents))}`;
+}
+
+const uncategorizedKey = "__uncategorized__";

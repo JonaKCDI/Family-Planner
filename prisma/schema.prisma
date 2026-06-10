@@ -68,6 +68,11 @@ enum ContractStatus {
   DRAFT
 }
 
+enum RecurringTransactionStatus {
+  ACTIVE
+  PAUSED
+}
+
 enum DocumentReferenceType {
   SYNOLOGY_HTTPS
   WEBDAV_HTTPS
@@ -99,6 +104,7 @@ model User {
   tasks         Task[]         @relation("TaskOwner")
   assignedTasks Task[]         @relation("TaskAssignee")
   contracts     Contract[]
+  recurringTransactions RecurringTransaction[]
   documents     DocumentReference[]
   createdRecoveryKeys AdminRecoveryKey[] @relation("AdminRecoveryKeyCreator")
 }
@@ -136,6 +142,7 @@ model Family {
   fuelEntries FuelEntry[]
   tasks      Task[]
   contracts  Contract[]
+  recurringTransactions RecurringTransaction[]
   documents  DocumentReference[]
   adminRecoveryKey AdminRecoveryKey?
 }
@@ -181,6 +188,8 @@ model Category {
   family      Family       @relation(fields: [familyId], references: [id], onDelete: Cascade)
   owner       User?        @relation(fields: [ownerUserId], references: [id], onDelete: SetNull)
   expenses    Expense[]
+  contractExpenseDefaults Contract[] @relation("ContractExpenseCategory")
+  recurringTransactions RecurringTransaction[]
   fuelExpenseSettings FuelExpenseSettings[]
 
   @@index([familyId, type])
@@ -199,6 +208,8 @@ model ExpenseLabel {
   family      Family   @relation(fields: [familyId], references: [id], onDelete: Cascade)
   owner       User     @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
   expenses    Expense[]
+  contractExpenseDefaults Contract[] @relation("ContractExpenseLabel")
+  recurringTransactions RecurringTransaction[]
   fuelExpenseSettings FuelExpenseSettings[]
 
   @@unique([ownerUserId, name])
@@ -219,8 +230,10 @@ model Expense {
   labelId     String?
   contractId  String?
   fuelEntryId String?  @unique
+  recurringTransactionId String?
   generatedByContract Boolean @default(false)
   generatedByFuelEntry Boolean @default(false)
+  generatedByRecurringTransaction Boolean @default(false)
   description String
   scope       Scope    @default(FAMILY)
   createdAt   DateTime @default(now())
@@ -231,6 +244,7 @@ model Expense {
   label       ExpenseLabel? @relation(fields: [labelId], references: [id], onDelete: SetNull)
   contract    Contract? @relation(fields: [contractId], references: [id], onDelete: SetNull)
   fuelEntry   FuelEntry? @relation(fields: [fuelEntryId], references: [id], onDelete: SetNull)
+  recurringTransaction RecurringTransaction? @relation(fields: [recurringTransactionId], references: [id], onDelete: SetNull)
 
   @@index([familyId, date])
   @@index([familyId, kind])
@@ -238,6 +252,7 @@ model Expense {
   @@index([labelId])
   @@index([contractId])
   @@index([fuelEntryId])
+  @@index([recurringTransactionId])
 }
 
 model FuelExpenseSettings {
@@ -345,6 +360,8 @@ model Contract {
   renewalAnchorDay      Int?
   autoCreateExpenses    Boolean         @default(false)
   expensePaymentDay     Int?
+  expenseCategoryId     String?
+  expenseLabelId        String?
   nextCancellationDate   DateTime?
   status                 ContractStatus  @default(ACTIVE)
   scope                  Scope           @default(FAMILY)
@@ -352,10 +369,75 @@ model Contract {
   updatedAt              DateTime        @updatedAt
   family                 Family          @relation(fields: [familyId], references: [id], onDelete: Cascade)
   owner                  User            @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
+  expenseCategory        Category?       @relation("ContractExpenseCategory", fields: [expenseCategoryId], references: [id], onDelete: SetNull)
+  expenseLabel           ExpenseLabel?   @relation("ContractExpenseLabel", fields: [expenseLabelId], references: [id], onDelete: SetNull)
   expenses               Expense[]
+  pricePhases            ContractPricePhase[]
 
   @@index([familyId, status])
   @@index([nextCancellationDate])
+  @@index([expenseCategoryId])
+  @@index([expenseLabelId])
+}
+
+model ContractPricePhase {
+  id              String          @id @default(cuid())
+  contractId      String
+  amountCents     Int
+  currency        String          @default("EUR")
+  billingInterval BillingInterval @default(MONTHLY)
+  validFrom       DateTime
+  validTo         DateTime?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  contract        Contract        @relation(fields: [contractId], references: [id], onDelete: Cascade)
+
+  @@index([contractId, validFrom])
+}
+
+model RecurringTransaction {
+  id              String                     @id @default(cuid())
+  familyId        String
+  ownerUserId     String
+  kind            TransactionKind            @default(EXPENSE)
+  title           String
+  description     String                     @default("")
+  paymentMethod   String                     @default("Nicht angegeben")
+  store           String                     @default("")
+  categoryId      String?
+  labelId         String?
+  startDate       DateTime
+  endDate         DateTime?
+  nextDueDate     DateTime?
+  status          RecurringTransactionStatus @default(ACTIVE)
+  deletedAt       DateTime?
+  createdAt       DateTime                   @default(now())
+  updatedAt       DateTime                   @updatedAt
+  family          Family                     @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  owner           User                       @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
+  category        Category?                  @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  label           ExpenseLabel?              @relation(fields: [labelId], references: [id], onDelete: SetNull)
+  pricePhases     RecurringTransactionPricePhase[]
+  expenses        Expense[]
+
+  @@index([familyId, ownerUserId, status])
+  @@index([categoryId])
+  @@index([labelId])
+}
+
+model RecurringTransactionPricePhase {
+  id                     String               @id @default(cuid())
+  recurringTransactionId String
+  amountCents            Int
+  currency               String               @default("EUR")
+  billingInterval        BillingInterval      @default(MONTHLY)
+  validFrom              DateTime
+  validTo                DateTime?
+  createdAt              DateTime             @default(now())
+  updatedAt              DateTime             @updatedAt
+  recurringTransaction   RecurringTransaction @relation(fields: [recurringTransactionId], references: [id], onDelete: Cascade)
+
+  @@index([recurringTransactionId, validFrom])
 }
 
 model DocumentReference {

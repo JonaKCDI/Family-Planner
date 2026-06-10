@@ -119,3 +119,18 @@ sh scripts/restore-postgres.sh /volume1/docker/family-app/backups/family-app-YYY
 ```
 
 Take a fresh copy of the backup file before restoring.
+
+## 7. If The NAS Gets Loud While Idle
+
+The app is designed to stay available, so three containers remain running: the Next.js app, PostgreSQL, and the daily backup helper. Health checks are intentionally lightweight: the app check calls `/api/health` without login or database work, and PostgreSQL is checked once per minute. The backup container sleeps until `BACKUP_TIME`, then creates one compressed database backup and removes old backups.
+
+To diagnose noise before changing safety behavior:
+
+```sh
+cd /volume1/docker/family-app/deploy/synology
+docker compose ps
+docker stats
+docker compose logs --tail=80 app db backup
+```
+
+In DSM Container Manager, also check CPU, memory, and disk activity per container. If `backup` is active around `BACKUP_TIME`, that is expected. If `db` stays busy all day, check whether another device still has the PWA open or is repeatedly loading the app through the reverse proxy. Avoid disabling health checks or backups until the noisy container is identified.

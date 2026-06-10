@@ -26,6 +26,7 @@ import { buildMonthSelectOptions, formatMonthKeyLabel, splitMonthKey } from "@/l
 import { isFamilyAdmin } from "@/lib/permissions";
 import { getExpenseLabels, getFuelEntriesForCar, getFuelExpenseSettings, getVisibleCars, getVisibleCategories } from "@/lib/queries";
 import { ActionModal } from "@/components/action-modal";
+import { ExcelProgressPanel } from "@/components/excel-progress-panel";
 import { SearchableSelect } from "@/components/searchable-select";
 import { EmptyState, PageHeader } from "@/components/ui";
 
@@ -165,40 +166,42 @@ export default async function MileagePage({ searchParams }: MileagePageProps) {
                     <p className="muted">Export und Import über die komplette Historie.</p>
                   </div>
                 </div>
-                <form action={importFuelFromUploadedXlsx} className="excel-actions">
-                  <label className="excel-car-picker">
-                    <span>Auto</span>
-                    <select name="carId" defaultValue={selectedCar.id}>
-                      {activeCars.map((car) => <option value={car.id} key={car.id}>{car.name}</option>)}
-                      {isAdmin ? <option value="">Neues Auto aus Dateiname</option> : null}
-                    </select>
-                  </label>
-                  <div className="setup-action-row">
-                    <div className="mileage-excel-form">
-                      <strong>Excel herunterladen</strong>
-                      <button className="button secondary" formAction="/api/mileage/export" formMethod="get" formNoValidate type="submit">
-                        Excel herunterladen
-                      </button>
+                <ExcelProgressPanel>
+                  <form action={importFuelFromUploadedXlsx} className="excel-actions">
+                    <label className="excel-car-picker">
+                      <span>Auto</span>
+                      <select name="carId" defaultValue={selectedCar.id}>
+                        {activeCars.map((car) => <option value={car.id} key={car.id}>{car.name}</option>)}
+                        {isAdmin ? <option value="">Neues Auto aus Dateiname</option> : null}
+                      </select>
+                    </label>
+                    <div className="setup-action-row">
+                      <div className="mileage-excel-form">
+                        <strong>Excel herunterladen</strong>
+                        <button className="button secondary" formAction="/api/mileage/export" formMethod="get" formNoValidate type="submit" data-excel-progress="Verbrauchsdatei wird vorbereitet ...">
+                          Excel herunterladen
+                        </button>
+                      </div>
+                      <div className="upload-form">
+                        <strong>Excel hochladen</strong>
+                        <input name="xlsxFile" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required />
+                        <button className="button secondary" type="submit" data-excel-progress="Verbrauchsdatei wird importiert ...">Excel hochladen</button>
+                      </div>
+                      <div className="mileage-excel-form">
+                        <strong>Synology importieren</strong>
+                        <button className="button secondary" formAction={importFuelFromSynologyExcel} formNoValidate type="submit" data-excel-progress="Synology-Import läuft ...">
+                          Synology importieren
+                        </button>
+                      </div>
+                      <div className="mileage-excel-form">
+                        <strong>Synology exportieren</strong>
+                        <button className="button secondary" formAction={exportFuelToSynologyExcel} formNoValidate type="submit" data-excel-progress="Synology-Export läuft ...">
+                          Synology exportieren
+                        </button>
+                      </div>
                     </div>
-                    <div className="upload-form">
-                      <strong>Excel hochladen</strong>
-                      <input name="xlsxFile" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required />
-                      <button className="button secondary" type="submit">Excel hochladen</button>
-                    </div>
-                    <div className="mileage-excel-form">
-                      <strong>Synology importieren</strong>
-                      <button className="button secondary" formAction={importFuelFromSynologyExcel} formNoValidate type="submit">
-                        Synology importieren
-                      </button>
-                    </div>
-                    <div className="mileage-excel-form">
-                      <strong>Synology exportieren</strong>
-                      <button className="button secondary" formAction={exportFuelToSynologyExcel} formNoValidate type="submit">
-                        Synology exportieren
-                      </button>
-                    </div>
-                  </div>
-                </form>
+                  </form>
+                </ExcelProgressPanel>
               </section>
             ) : null}
 
