@@ -88,7 +88,7 @@ export async function buildSyncPull(session: SyncSession, since: string | null) 
         ownerUserId: session.user.id,
         updatedAt: { gt: sinceDate }
       },
-      include: { category: true, label: true, contract: true, fuelEntry: { include: { car: true } }, owner: true },
+      include: { category: true, label: true, contract: true, recurringTransaction: true, fuelEntry: { include: { car: true } }, owner: true },
       orderBy: { updatedAt: "asc" }
     }),
     db.task.findMany({
@@ -291,12 +291,16 @@ function serializeExpense(expense: Awaited<ReturnType<typeof getVisibleExpenses>
     labelId: expense.labelId,
     contractId: expense.contractId,
     fuelEntryId: expense.fuelEntryId,
+    recurringTransactionId: expense.recurringTransactionId,
+    generatedByContract: expense.generatedByContract,
     generatedByFuelEntry: expense.generatedByFuelEntry,
+    generatedByRecurringTransaction: expense.generatedByRecurringTransaction,
     description: expense.description,
     updatedAt: expense.updatedAt.toISOString(),
     category: expense.category,
     label: expense.label,
     contract: expense.contract ? { id: expense.contract.id, provider: expense.contract.provider, contractType: expense.contract.contractType } : null,
+    recurringTransaction: expense.recurringTransaction ? { id: expense.recurringTransaction.id, title: expense.recurringTransaction.title } : null,
     fuelEntry: expense.fuelEntry ? {
       id: expense.fuelEntry.id,
       odometerKm: expense.fuelEntry.odometerKm,

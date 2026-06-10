@@ -23,6 +23,7 @@ export type ExpenseEntryContractOption = {
 type ExpenseEntryListProps = {
   initialEntries: ExpenseListItem[];
   totalCount: number;
+  duplicateCounts?: Record<string, number>;
   categories: ExpenseEntryOption[];
   labels: ExpenseEntryOption[];
   contracts: ExpenseEntryContractOption[];
@@ -35,6 +36,7 @@ type ExpenseEntryListProps = {
 export function ExpenseEntryList({
   initialEntries,
   totalCount,
+  duplicateCounts = {},
   categories,
   labels,
   contracts,
@@ -91,6 +93,7 @@ export function ExpenseEntryList({
         <ExpenseEntryRow
           expense={expense}
           linkedDocuments={documentsByExpense[expense.id] ?? []}
+          duplicateCount={duplicateCounts[expense.id] ?? 0}
           categories={categories}
           labels={labels}
           contracts={contracts}
@@ -110,6 +113,7 @@ export function ExpenseEntryList({
 function ExpenseEntryRow({
   expense,
   linkedDocuments,
+  duplicateCount,
   categories,
   labels,
   contracts,
@@ -117,6 +121,7 @@ function ExpenseEntryRow({
 }: {
   expense: ExpenseListItem;
   linkedDocuments: ExpenseDocumentItem[];
+  duplicateCount: number;
   categories: ExpenseEntryOption[];
   labels: ExpenseEntryOption[];
   contracts: ExpenseEntryContractOption[];
@@ -141,7 +146,10 @@ function ExpenseEntryRow({
           </span>
           {expense.label ? <span className="overview-tag label-overview-tag" style={{ background: expense.label.color }}>{expense.label.name}</span> : null}
           {expense.contract ? <span className="overview-tag">{expense.contract.provider}</span> : null}
+          {expense.generatedByContract ? <span className="overview-tag source-tag">Auto-Vertrag</span> : null}
+          {expense.recurringTransaction ? <span className="overview-tag source-tag">Serie: {expense.recurringTransaction.title}</span> : null}
           {expense.fuelEntry ? <FuelEntryTag expense={expense} variant="overview" /> : null}
+          {duplicateCount > 1 ? <span className="overview-tag duplicate-tag">Mögliches Duplikat</span> : null}
         </span>
         <strong className={expense.kind === "INCOME" ? "positive" : "negative"}>
           {expense.kind === "INCOME" ? "+" : "-"}{formatMoney(expense.amountCents, expense.currency)}
@@ -156,7 +164,10 @@ function ExpenseEntryRow({
             {expense.category ? <span className="badge" style={{ borderColor: expense.category.color }}>{expense.category.name}</span> : null}
             {expense.label ? <span className="badge label-badge" style={{ background: expense.label.color }}>{expense.label.name}</span> : null}
             {expense.contract ? <span className="badge">Vertrag: {expense.contract.provider} · {expense.contract.contractType}</span> : null}
+            {expense.generatedByContract ? <span className="badge">Automatisch aus Vertrag erstellt</span> : null}
+            {expense.recurringTransaction ? <span className="badge">Serie: {expense.recurringTransaction.title}</span> : null}
             {expense.fuelEntry ? <FuelEntryTag expense={expense} variant="detail" /> : null}
+            {duplicateCount > 1 ? <span className="badge duplicate-badge">{duplicateCount} ähnliche Einträge im Zeitraum</span> : null}
             {linkedDocuments.length === 0 ? <span className="badge">Kein Dokument</span> : null}
             {linkedDocuments.map((document) => (
               <a className="badge link-badge" href={document.url} key={document.id} target="_blank" rel="noreferrer">

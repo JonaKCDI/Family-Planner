@@ -10,11 +10,15 @@ export type ExpenseListItem = {
   labelId: string | null;
   contractId: string | null;
   fuelEntryId: string | null;
+  recurringTransactionId: string | null;
+  generatedByContract: boolean;
   generatedByFuelEntry: boolean;
+  generatedByRecurringTransaction: boolean;
   description: string;
   category: { id: string; name: string; color: string } | null;
   label: { id: string; name: string; color: string } | null;
   contract: { id: string; provider: string; contractType: string } | null;
+  recurringTransaction: { id: string; title: string } | null;
   fuelEntry: { id: string; odometerKm: number; car: { id: string; name: string } } | null;
 };
 
@@ -37,11 +41,15 @@ export function toExpenseListItem(expense: {
   labelId: string | null;
   contractId: string | null;
   fuelEntryId: string | null;
+  recurringTransactionId: string | null;
+  generatedByContract: boolean;
   generatedByFuelEntry: boolean;
+  generatedByRecurringTransaction: boolean;
   description: string;
   category: { id: string; name: string; color: string } | null;
   label: { id: string; name: string; color: string } | null;
   contract: { id: string; provider: string; contractType: string } | null;
+  recurringTransaction: { id: string; title: string } | null;
   fuelEntry: { id: string; odometerKm: number; car: { id: string; name: string } } | null;
 }): ExpenseListItem {
   return {
@@ -56,11 +64,15 @@ export function toExpenseListItem(expense: {
     labelId: expense.labelId,
     contractId: expense.contractId,
     fuelEntryId: expense.fuelEntryId,
+    recurringTransactionId: expense.recurringTransactionId,
+    generatedByContract: expense.generatedByContract,
     generatedByFuelEntry: expense.generatedByFuelEntry,
+    generatedByRecurringTransaction: expense.generatedByRecurringTransaction,
     description: expense.description,
     category: expense.category ? { id: expense.category.id, name: expense.category.name, color: expense.category.color } : null,
     label: expense.label ? { id: expense.label.id, name: expense.label.name, color: expense.label.color } : null,
     contract: expense.contract ? { id: expense.contract.id, provider: expense.contract.provider, contractType: expense.contract.contractType } : null,
+    recurringTransaction: expense.recurringTransaction ? { id: expense.recurringTransaction.id, title: expense.recurringTransaction.title } : null,
     fuelEntry: expense.fuelEntry ? {
       id: expense.fuelEntry.id,
       odometerKm: expense.fuelEntry.odometerKm,

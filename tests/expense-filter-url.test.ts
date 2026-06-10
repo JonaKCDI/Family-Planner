@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { buildExpensesHref, buildFilterHref, buildPeriodHref, getCanonicalExpensesHref, getMonthKey, getRawExpensesHref } from "@/lib/expense-filter-url";
+import { addMonthsToMonthKey, buildExpensesHref, buildFilterHref, buildMonthNavigationHref, buildPeriodHref, buildYearNavigationHref, getCanonicalExpensesHref, getMonthKey, getRawExpensesHref } from "@/lib/expense-filter-url";
 
 describe("expense filter URLs", () => {
   test("year clears month and custom dates while preserving active facets", () => {
@@ -110,5 +110,25 @@ describe("expense filter URLs", () => {
       month: "01",
       q: "auto"
     })).toBe("/ausgaben?month=2026-01&q=auto");
+  });
+
+  test("month navigation crosses year boundaries and keeps active facets", () => {
+    expect(addMonthsToMonthKey("2026-01", -1)).toBe("2025-12");
+    expect(addMonthsToMonthKey("2026-12", 1)).toBe("2027-01");
+    expect(buildMonthNavigationHref({
+      month: "2026-12",
+      q: "strom",
+      category: "cat_1",
+      label: "label_1"
+    }, "2026-12", 1)).toBe("/ausgaben?month=2027-01&label=label_1&category=cat_1&q=strom");
+  });
+
+  test("year navigation keeps active detail filters", () => {
+    expect(buildYearNavigationHref({
+      year: "2026",
+      q: "versicherung",
+      category: "cat_1",
+      label: "label_1"
+    }, 2026, -1)).toBe("/ausgaben?year=2025&label=label_1&category=cat_1&q=versicherung");
   });
 });

@@ -825,6 +825,55 @@ export async function deleteExpense(formData: FormData) {
   redirect(actionReturnTo(formData, "/ausgaben"));
 }
 
+export async function mergeDuplicateExpenses(formData: FormData) {
+  const session = await requireSession();
+  const keepId = requiredText(formData, "keepExpenseId");
+  const ids = [...new Set(formData.getAll("expenseId").map((value) => String(value).trim()).filter(Boolean))];
+  if (ids.length < 2 || !ids.includes(keepId)) {
+    throw new Error("Bitte eine vollständige Duplikatgruppe auswählen.");
+  }
+
+  const expenses = await db.expense.findMany({
+    where: {
+      familyId: session.family.id,
+      ownerUserId: session.user.id,
+      id: { in: ids }
+    }
+  });
+  if (expenses.length !== ids.length) {
+    throw new Error("Mindestens eine ausgewählte Ausgabe ist nicht verfügbar.");
+  }
+
+  const keys = new Set(expenses.map(duplicateExpenseKey));
+  if (keys.size !== 1) {
+    throw new Error("Diese Einträge sind nicht mehr identisch genug zum Zusammenführen.");
+  }
+
+  const deleteIds = ids.filter((id) => id !== keepId);
+  await db.$transaction([
+    db.documentReference.updateMany({
+      where: {
+        familyId: session.family.id,
+        ownerUserId: session.user.id,
+        linkedEntityType: "EXPENSE",
+        linkedEntityId: { in: deleteIds }
+      },
+      data: { linkedEntityId: keepId }
+    }),
+    db.expense.deleteMany({
+      where: {
+        familyId: session.family.id,
+        ownerUserId: session.user.id,
+        id: { in: deleteIds }
+      }
+    })
+  ]);
+
+  revalidatePath("/ausgaben");
+  revalidatePath("/dashboard");
+  redirect(actionReturnTo(formData, "/ausgaben"));
+}
+
 export async function mergeExpenseCategories(formData: FormData) {
   const session = await requireSession();
   const sourceCategoryId = requiredText(formData, "sourceCategoryId");
@@ -939,6 +988,128 @@ export async function updateTask(formData: FormData) {
   revalidatePath("/dashboard");
 }
 
+export async function createRecurringTransaction(formData: FormData) {
+  const session = await requireSession();
+  const categoryId = await resolveExpenseCategoryId(session.family.id, session.user.id, optionalText(formData, "categoryId"));
+  const labelId = await resolveExpenseLabelId(session.family.id, session.user.id, optionalText(formData, "labelId"));
+  const startDate = parseRequiredDateInput(formData.get("startDate"));
+  const recurringTransaction = await db.recurringTransaction.create({
+    data: {
+      familyId: session.family.id,
+      ownerUserId: session.user.id,
+      kind: enumValue(formData, "kind", ["EXPENSE", "INCOME"] as const, "EXPENSE"),
+      title: requiredText(formData, "title"),
+      description: optionalText(formData, "description") ?? "",
+      paymentMethod: paymentMethodValue(formData),
+      store: optionalText(formData, "store") ?? "",
+      categoryId,
+      labelId,
+      startDate,
+      endDate: parseOptionalDateInput(optionalText(formData, "endDate")),
+      nextDueDate: startDate,
+      status: enumValue(formData, "status", ["ACTIVE", "PAUSED"] as const, "ACTIVE"),
+      pricePhases: {
+        create: {
+          amountCents: parseEuroInputToCents(formData.get("amount")),
+          currency: "EUR",
+          billingInterval: recurringBillingIntervalValue(formData),
+          validFrom: startDate
+        }
+      }
+    }
+  });
+
+  if (recurringTransaction.status === "ACTIVE") {
+    await ensureDueContractExpenses(session.family.id, session.user.id, new Date(), { force: true });
+  }
+  revalidatePath("/ausgaben");
+  revalidatePath("/dashboard");
+}
+
+export async function updateRecurringTransaction(formData: FormData) {
+  const session = await requireSession();
+  const id = requiredText(formData, "id");
+  const existing = await db.recurringTransaction.findFirst({
+    where: { id, familyId: session.family.id, ownerUserId: session.user.id, deletedAt: null },
+    include: { pricePhases: { orderBy: { validFrom: "asc" } } }
+  });
+  if (!existing) throw new Error("Die Serie ist nicht verfügbar.");
+
+  const categoryId = await resolveExpenseCategoryId(session.family.id, session.user.id, optionalText(formData, "categoryId"));
+  const labelId = await resolveExpenseLabelId(session.family.id, session.user.id, optionalText(formData, "labelId"));
+  const startDate = parseRequiredDateInput(formData.get("startDate"));
+  const priceValidFrom = parseRequiredDateInput(formData.get("priceValidFrom") || formData.get("startDate"));
+  const amountCents = parseEuroInputToCents(formData.get("amount"));
+  const billingInterval = recurringBillingIntervalValue(formData);
+  const priceWindow = await upsertRecurringPricePhase(existing.id, amountCents, billingInterval, priceValidFrom, priceChangeModeValue(formData));
+
+  await db.recurringTransaction.update({
+    where: { id: existing.id },
+    data: {
+      kind: enumValue(formData, "kind", ["EXPENSE", "INCOME"] as const, existing.kind),
+      title: requiredText(formData, "title"),
+      description: optionalText(formData, "description") ?? "",
+      paymentMethod: paymentMethodValue(formData),
+      store: optionalText(formData, "store") ?? "",
+      categoryId,
+      labelId,
+      startDate,
+      endDate: parseOptionalDateInput(optionalText(formData, "endDate")),
+      nextDueDate: startDate,
+      status: enumValue(formData, "status", ["ACTIVE", "PAUSED"] as const, existing.status)
+    }
+  });
+
+  if (formData.get("updateGeneratedExpenses") === "on") {
+    await db.expense.updateMany({
+      where: {
+        familyId: session.family.id,
+        ownerUserId: session.user.id,
+        recurringTransactionId: existing.id,
+        generatedByRecurringTransaction: true,
+        date: {
+          gte: priceWindow.from,
+          ...(priceWindow.to ? { lte: priceWindow.to } : {})
+        }
+      },
+      data: {
+        kind: enumValue(formData, "kind", ["EXPENSE", "INCOME"] as const, existing.kind),
+        amountCents,
+        currency: "EUR",
+        paymentMethod: paymentMethodValue(formData),
+        store: optionalText(formData, "store") ?? "",
+        categoryId,
+        labelId,
+        description: optionalText(formData, "description") || requiredText(formData, "title")
+      }
+    });
+  }
+
+  await ensureDueContractExpenses(session.family.id, session.user.id, new Date(), { force: true });
+  revalidatePath("/ausgaben");
+  revalidatePath("/dashboard");
+}
+
+export async function pauseRecurringTransaction(formData: FormData) {
+  const session = await requireSession();
+  await db.recurringTransaction.updateMany({
+    where: { id: requiredText(formData, "id"), familyId: session.family.id, ownerUserId: session.user.id, deletedAt: null },
+    data: { status: "PAUSED" }
+  });
+  revalidatePath("/ausgaben");
+  revalidatePath("/dashboard");
+}
+
+export async function softDeleteRecurringTransaction(formData: FormData) {
+  const session = await requireSession();
+  await db.recurringTransaction.updateMany({
+    where: { id: requiredText(formData, "id"), familyId: session.family.id, ownerUserId: session.user.id, deletedAt: null },
+    data: { deletedAt: new Date(), status: "PAUSED" }
+  });
+  revalidatePath("/ausgaben");
+  revalidatePath("/dashboard");
+}
+
 export async function createContract(formData: FormData) {
   const session = await requireSession();
   const endDate = optionalText(formData, "endDate");
@@ -946,6 +1117,11 @@ export async function createContract(formData: FormData) {
   const autoRenewal = formData.get("autoRenewal") === "on";
   const autoCreateExpenses = formData.get("autoCreateExpenses") === "on";
   const expensePaymentDay = parseOptionalIntegerInput(formData.get("expensePaymentDay"), { min: 1, max: 31 });
+  const expenseCategoryId = await resolveExpenseCategoryId(session.family.id, session.user.id, optionalText(formData, "expenseCategoryId"));
+  const expenseLabelId = await resolveExpenseLabelId(session.family.id, session.user.id, optionalText(formData, "expenseLabelId"));
+  const costCents = parseEuroInputToCents(formData.get("cost"));
+  const billingInterval = billingIntervalValue(formData);
+  const startDate = parseRequiredDateInput(formData.get("startDate"));
   const cancellation = resolveContractCancellationSchedule({
     annualDeadline: optionalText(formData, "cancellationDeadline"),
     endDate,
@@ -961,10 +1137,10 @@ export async function createContract(formData: FormData) {
       provider: requiredText(formData, "provider"),
       contractType: requiredText(formData, "contractType"),
       description: optionalText(formData, "description"),
-      costCents: parseEuroInputToCents(formData.get("cost")),
+      costCents,
       currency: "EUR",
-      billingInterval: enumValue(formData, "billingInterval", ["MONTHLY", "YEARLY", "QUARTERLY", "ONCE", "OTHER"] as const, "MONTHLY"),
-      startDate: parseRequiredDateInput(formData.get("startDate")),
+      billingInterval,
+      startDate,
       endDate: parseOptionalDateInput(endDate),
       cancellationNoticeDays: noticeDays,
       cancellationDeadlineMonth: cancellation.deadlineMonth,
@@ -974,9 +1150,19 @@ export async function createContract(formData: FormData) {
       renewalAnchorDay: cancellation.renewalAnchorDay,
       autoCreateExpenses,
       expensePaymentDay,
+      expenseCategoryId,
+      expenseLabelId,
       nextCancellationDate: cancellation.nextDate,
       status: enumValue(formData, "status", ["ACTIVE", "CANCELLED", "EXPIRED", "DRAFT"] as const, "ACTIVE"),
-      scope: scopeValue(formData)
+      scope: scopeValue(formData),
+      pricePhases: {
+        create: {
+          amountCents: costCents,
+          currency: "EUR",
+          billingInterval,
+          validFrom: startDate
+        }
+      }
     }
   });
 
@@ -988,7 +1174,7 @@ export async function createContract(formData: FormData) {
     scope: contract.scope
   });
 
-  await ensureDueContractExpenses(session.family.id, session.user.id);
+  await ensureDueContractExpenses(session.family.id, session.user.id, new Date(), { force: true });
   revalidatePath("/vertraege");
   revalidatePath("/ausgaben");
   revalidatePath("/dashboard");
@@ -996,11 +1182,18 @@ export async function createContract(formData: FormData) {
 
 export async function updateContract(formData: FormData) {
   const session = await requireSession();
+  const id = requiredText(formData, "id");
   const endDate = optionalText(formData, "endDate");
   const noticeDays = parseOptionalIntegerInput(formData.get("cancellationNoticeDays"), { min: 0, max: 3650 });
   const autoRenewal = formData.get("autoRenewal") === "on";
   const autoCreateExpenses = formData.get("autoCreateExpenses") === "on";
   const expensePaymentDay = parseOptionalIntegerInput(formData.get("expensePaymentDay"), { min: 1, max: 31 });
+  const expenseCategoryId = await resolveExpenseCategoryId(session.family.id, session.user.id, optionalText(formData, "expenseCategoryId"));
+  const expenseLabelId = await resolveExpenseLabelId(session.family.id, session.user.id, optionalText(formData, "expenseLabelId"));
+  const costCents = parseEuroInputToCents(formData.get("cost"));
+  const billingInterval = billingIntervalValue(formData);
+  const startDate = parseRequiredDateInput(formData.get("startDate"));
+  const priceValidFrom = parseRequiredDateInput(formData.get("priceValidFrom") || formData.get("startDate"));
   const cancellation = resolveContractCancellationSchedule({
     annualDeadline: optionalText(formData, "cancellationDeadline"),
     endDate,
@@ -1010,9 +1203,20 @@ export async function updateContract(formData: FormData) {
     renewalAnchorDay: parseOptionalIntegerInput(formData.get("renewalAnchorDay"), { min: 1, max: 31 })
   });
 
+  const existing = await db.contract.findFirst({
+    where: {
+      id,
+      familyId: session.family.id,
+      ...(session.role === "ADMIN" ? {} : { ownerUserId: session.user.id })
+    },
+    include: { pricePhases: { orderBy: { validFrom: "asc" } } }
+  });
+  if (!existing) throw new Error("Der Vertrag ist nicht verfügbar.");
+
+  const priceWindow = await upsertContractPricePhase(existing.id, costCents, billingInterval, priceValidFrom, priceChangeModeValue(formData));
   const updated = await db.contract.updateMany({
     where: {
-      id: requiredText(formData, "id"),
+      id: existing.id,
       familyId: session.family.id,
       ...(session.role === "ADMIN" ? {} : { ownerUserId: session.user.id })
     },
@@ -1020,10 +1224,10 @@ export async function updateContract(formData: FormData) {
       provider: requiredText(formData, "provider"),
       contractType: requiredText(formData, "contractType"),
       description: optionalText(formData, "description"),
-      costCents: parseEuroInputToCents(formData.get("cost")),
+      costCents,
       currency: "EUR",
-      billingInterval: enumValue(formData, "billingInterval", ["MONTHLY", "YEARLY", "QUARTERLY", "ONCE", "OTHER"] as const, "MONTHLY"),
-      startDate: parseRequiredDateInput(formData.get("startDate")),
+      billingInterval,
+      startDate,
       endDate: parseOptionalDateInput(endDate),
       cancellationNoticeDays: noticeDays,
       cancellationDeadlineMonth: cancellation.deadlineMonth,
@@ -1033,6 +1237,8 @@ export async function updateContract(formData: FormData) {
       renewalAnchorDay: cancellation.renewalAnchorDay,
       autoCreateExpenses,
       expensePaymentDay,
+      expenseCategoryId,
+      expenseLabelId,
       nextCancellationDate: cancellation.nextDate,
       status: enumValue(formData, "status", ["ACTIVE", "CANCELLED", "EXPIRED", "DRAFT"] as const, "ACTIVE"),
       scope: scopeValue(formData)
@@ -1044,12 +1250,33 @@ export async function updateContract(formData: FormData) {
       familyId: session.family.id,
       ownerUserId: session.user.id,
       linkedEntityType: "CONTRACT",
-      linkedEntityId: requiredText(formData, "id"),
+      linkedEntityId: existing.id,
       scope: scopeValue(formData)
     });
   }
 
-  await ensureDueContractExpenses(session.family.id, session.user.id);
+  if (formData.get("updateGeneratedExpenses") === "on") {
+    await db.expense.updateMany({
+      where: {
+        familyId: session.family.id,
+        ownerUserId: existing.ownerUserId,
+        contractId: existing.id,
+        generatedByContract: true,
+        date: {
+          gte: priceWindow.from,
+          ...(priceWindow.to ? { lte: priceWindow.to } : {})
+        }
+      },
+      data: {
+        amountCents: costCents,
+        currency: "EUR",
+        categoryId: expenseCategoryId,
+        labelId: expenseLabelId
+      }
+    });
+  }
+
+  await ensureDueContractExpenses(session.family.id, session.user.id, new Date(), { force: true });
   revalidatePath("/vertraege");
   revalidatePath("/ausgaben");
   revalidatePath("/dashboard");
@@ -1418,8 +1645,147 @@ function actionReturnTo(formData: FormData, fallback: string) {
   return value;
 }
 
+function duplicateExpenseKey(expense: {
+  kind: string;
+  amountCents: number;
+  date: Date;
+  description: string;
+  store: string;
+  paymentMethod: string;
+  categoryId: string | null;
+  labelId: string | null;
+  contractId: string | null;
+  recurringTransactionId: string | null;
+  fuelEntryId: string | null;
+}) {
+  return [
+    expense.kind,
+    expense.amountCents,
+    expense.date.toISOString().slice(0, 10),
+    normalizeDuplicateText(expense.description),
+    normalizeDuplicateText(expense.store),
+    normalizeDuplicateText(expense.paymentMethod),
+    expense.categoryId ?? "",
+    expense.labelId ?? "",
+    expense.contractId ?? "",
+    expense.recurringTransactionId ?? "",
+    expense.fuelEntryId ?? ""
+  ].join("|");
+}
+
+function normalizeDuplicateText(value: unknown) {
+  return String(value ?? "").trim().replace(/\s+/g, " ").toLocaleLowerCase("de-DE");
+}
+
 function renewalIntervalValue(formData: FormData) {
   return enumValue(formData, "renewalInterval", ["MONTHLY", "QUARTERLY", "YEARLY"] as const, "MONTHLY");
+}
+
+function billingIntervalValue(formData: FormData) {
+  return enumValue(formData, "billingInterval", ["MONTHLY", "YEARLY", "QUARTERLY", "ONCE", "OTHER"] as const, "MONTHLY");
+}
+
+function recurringBillingIntervalValue(formData: FormData) {
+  return enumValue(formData, "billingInterval", ["MONTHLY", "YEARLY", "QUARTERLY"] as const, "MONTHLY");
+}
+
+function priceChangeModeValue(formData: FormData) {
+  return enumValue(formData, "priceChangeMode", ["NEW_PHASE", "CORRECT_CURRENT"] as const, "NEW_PHASE");
+}
+
+async function upsertContractPricePhase(
+  contractId: string,
+  amountCents: number,
+  billingInterval: "MONTHLY" | "YEARLY" | "QUARTERLY" | "ONCE" | "OTHER",
+  validFrom: Date,
+  mode: "NEW_PHASE" | "CORRECT_CURRENT"
+) {
+  const current = await db.contractPricePhase.findFirst({
+    where: { contractId, validFrom: { lte: validFrom } },
+    orderBy: { validFrom: "desc" }
+  });
+  if (mode === "CORRECT_CURRENT" && current) {
+    await db.contractPricePhase.update({
+      where: { id: current.id },
+      data: { amountCents, billingInterval, currency: "EUR" }
+    });
+    return { from: current.validFrom, to: current.validTo };
+  }
+
+  const next = await db.contractPricePhase.findFirst({
+    where: { contractId, validFrom: { gt: validFrom } },
+    orderBy: { validFrom: "asc" }
+  });
+  const validTo = next ? dayBefore(next.validFrom) : null;
+  if (current && current.validFrom.getTime() !== validFrom.getTime()) {
+    await db.contractPricePhase.update({
+      where: { id: current.id },
+      data: { validTo: dayBefore(validFrom) }
+    });
+  }
+  const sameDay = await db.contractPricePhase.findFirst({ where: { contractId, validFrom } });
+  if (sameDay) {
+    await db.contractPricePhase.update({
+      where: { id: sameDay.id },
+      data: { amountCents, billingInterval, currency: "EUR", validTo }
+    });
+  } else {
+    await db.contractPricePhase.create({
+      data: { contractId, amountCents, billingInterval, currency: "EUR", validFrom, validTo }
+    });
+  }
+  return { from: validFrom, to: validTo };
+}
+
+async function upsertRecurringPricePhase(
+  recurringTransactionId: string,
+  amountCents: number,
+  billingInterval: "MONTHLY" | "YEARLY" | "QUARTERLY",
+  validFrom: Date,
+  mode: "NEW_PHASE" | "CORRECT_CURRENT"
+) {
+  const current = await db.recurringTransactionPricePhase.findFirst({
+    where: { recurringTransactionId, validFrom: { lte: validFrom } },
+    orderBy: { validFrom: "desc" }
+  });
+  if (mode === "CORRECT_CURRENT" && current) {
+    await db.recurringTransactionPricePhase.update({
+      where: { id: current.id },
+      data: { amountCents, billingInterval, currency: "EUR" }
+    });
+    return { from: current.validFrom, to: current.validTo };
+  }
+
+  const next = await db.recurringTransactionPricePhase.findFirst({
+    where: { recurringTransactionId, validFrom: { gt: validFrom } },
+    orderBy: { validFrom: "asc" }
+  });
+  const validTo = next ? dayBefore(next.validFrom) : null;
+  if (current && current.validFrom.getTime() !== validFrom.getTime()) {
+    await db.recurringTransactionPricePhase.update({
+      where: { id: current.id },
+      data: { validTo: dayBefore(validFrom) }
+    });
+  }
+  const sameDay = await db.recurringTransactionPricePhase.findFirst({ where: { recurringTransactionId, validFrom } });
+  if (sameDay) {
+    await db.recurringTransactionPricePhase.update({
+      where: { id: sameDay.id },
+      data: { amountCents, billingInterval, currency: "EUR", validTo }
+    });
+  } else {
+    await db.recurringTransactionPricePhase.create({
+      data: { recurringTransactionId, amountCents, billingInterval, currency: "EUR", validFrom, validTo }
+    });
+  }
+  return { from: validFrom, to: validTo };
+}
+
+function dayBefore(date: Date) {
+  const value = new Date(date);
+  value.setDate(value.getDate() - 1);
+  value.setHours(23, 59, 59, 999);
+  return value;
 }
 
 function chooseCategoryColor(name: string, existingCount: number, submittedColor: string | null) {

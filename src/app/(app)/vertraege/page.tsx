@@ -3,9 +3,10 @@ import { requireSession } from "@/lib/auth";
 import { ensureDueContractExpenses } from "@/lib/contract-auto-expenses";
 import { getContractNextCancellationDate, toAnnualCancellationInputValue } from "@/lib/contracts";
 import { formatDate, formatMoney, toDateInputValue } from "@/lib/format";
-import { getDocumentsForLinkedEntities, getVisibleContractPayments, getVisibleContracts } from "@/lib/queries";
+import { getDocumentsForLinkedEntities, getExpenseLabels, getVisibleCategories, getVisibleContractPayments, getVisibleContractsWithExpenseDetails } from "@/lib/queries";
 import { ActionModal } from "@/components/action-modal";
 import { ContractPayments } from "@/components/contract-payments";
+import { SearchableSelect } from "@/components/searchable-select";
 import { EmptyState, PageHeader, ScopeSelect } from "@/components/ui";
 
 type ContractsPageProps = {
@@ -17,7 +18,11 @@ export default async function ContractsPage({ searchParams }: ContractsPageProps
   const params = await searchParams;
   await ensureDueContractExpenses(session.family.id, session.user.id);
   const query = normalizeSearch(params.q);
-  const contracts = await getVisibleContracts(session.family.id, session.user.id);
+  const [contracts, categories, labels] = await Promise.all([
+    getVisibleContractsWithExpenseDetails(session.family.id, session.user.id),
+    getVisibleCategories(session.family.id, session.user.id, "EXPENSE"),
+    getExpenseLabels(session.family.id, session.user.id)
+  ]);
   const visibleContracts = query ? contracts.filter((contract) => matchesContract(contract, query)) : contracts;
   const documents = await getDocumentsForLinkedEntities(
     session.family.id,
@@ -78,6 +83,7 @@ export default async function ContractsPage({ searchParams }: ContractsPageProps
             const contractPayments = paymentsByContract[contract.id] ?? [];
             const paymentTotal = contractPayments.reduce((sum, payment) => sum + payment.amountCents, 0);
             const nextCancellation = nextCancellationByContract[contract.id];
+            const currentPricePhase = contract.pricePhases.at(-1);
             return (
               <details className="card contract-card" key={contract.id} open>
                 <summary className="contract-summary">
@@ -108,6 +114,15 @@ export default async function ContractsPage({ searchParams }: ContractsPageProps
                       <label>Anbieter<input name="provider" defaultValue={contract.provider} required /></label>
                       <label>Vertragsart<input name="contractType" defaultValue={contract.contractType} required /></label>
                       <label>Kosten in EUR<input name="cost" inputMode="decimal" defaultValue={formatEuroInput(contract.costCents)} required /></label>
+                      <label>Gültig ab<input name="priceValidFrom" type="date" defaultValue={toDateInputValue(currentPricePhase?.validFrom ?? contract.startDate)} required /></label>
+                      <label>
+                        Preisänderung
+                        <select name="priceChangeMode" defaultValue="NEW_PHASE">
+                          <option value="NEW_PHASE">Neue Preisphase ab Gültig-ab</option>
+                          <option value="CORRECT_CURRENT">Aktuelle Phase korrigieren</option>
+                        </select>
+                      </label>
+                      <p className="muted full-span">Die Preisphase ändert den Vertrag für zukünftige automatische Ausgaben. Die Checkbox im Bereich „Automatische Ausgabe“ ändert zusätzlich bereits erzeugte Auto-Ausgaben im betroffenen Zeitraum.</p>
                       <label>
                         Intervall
                         <select name="billingInterval" defaultValue={contract.billingInterval}>
@@ -119,8 +134,14 @@ export default async function ContractsPage({ searchParams }: ContractsPageProps
                         </select>
                       </label>
                       <label>Startdatum<input name="startDate" type="date" defaultValue={toDateInputValue(contract.startDate)} required /></label>
-                      <label>Einzugstag<input name="expensePaymentDay" type="number" min="1" max="31" defaultValue={contract.expensePaymentDay ?? new Date(contract.startDate).getDate()} /></label>
-                      <label className="checkbox-field"><input name="autoCreateExpenses" type="checkbox" defaultChecked={contract.autoCreateExpenses} /> Automatisch als Ausgabe eintragen</label>
+                      <fieldset className="fieldset full-span">
+                        <legend>Automatische Ausgabe</legend>
+                        <label className="checkbox-field"><input name="autoCreateExpenses" type="checkbox" defaultChecked={contract.autoCreateExpenses} /> Automatisch als Ausgabe eintragen</label>
+                        <label>Einzugstag<input name="expensePaymentDay" type="number" min="1" max="31" defaultValue={contract.expensePaymentDay ?? new Date(contract.startDate).getDate()} /></label>
+                        <SearchableSelect name="expenseCategoryId" label="Ausgaben-Kategorie" options={categories} defaultValue={contract.expenseCategoryId} emptyLabel="Keine Kategorie" placeholder="Kategorie suchen oder auswählen" />
+                        <SearchableSelect name="expenseLabelId" label="Label / Projekt" options={labels} defaultValue={contract.expenseLabelId} emptyLabel="Kein Label" placeholder="Label suchen oder auswählen" />
+                        <label className="checkbox-field"><input name="updateGeneratedExpenses" type="checkbox" /> Bereits erzeugte Auto-Ausgaben ab Gültig-ab aktualisieren</label>
+                      </fieldset>
                       <label>Ende/Laufzeit bis<input name="endDate" type="date" defaultValue={toDateInputValue(contract.endDate)} /></label>
                       <label>Kündigung spätestens am<input name="cancellationDeadline" type="date" defaultValue={toAnnualCancellationInputValue(contract.cancellationDeadlineMonth, contract.cancellationDeadlineDay)} /></label>
                       <label>Kündigungsfrist in Tagen<input name="cancellationNoticeDays" type="number" min="0" defaultValue={contract.cancellationNoticeDays ?? ""} /></label>
@@ -146,6 +167,14 @@ export default async function ContractsPage({ searchParams }: ContractsPageProps
                       </label>
                       <ScopeSelect defaultValue={contract.scope} />
                       <label className="full-span">Notizen<textarea name="description" defaultValue={contract.description ?? ""} /></label>
+                      <div className="full-span price-history">
+                        <strong>Preisentwicklung</strong>
+                        {contract.pricePhases.map((phase) => (
+                          <span className="badge" key={phase.id}>
+                            {formatMoney(phase.amountCents, phase.currency)} · {billingLabels[phase.billingInterval]} · ab {formatDate(phase.validFrom)}{phase.validTo ? ` bis ${formatDate(phase.validTo)}` : ""}
+                          </span>
+                        ))}
+                      </div>
                       <fieldset className="fieldset full-span">
                         <legend>Drive-Link optional verknüpfen</legend>
                         <input type="hidden" name="documentId" value={primaryDocument?.id ?? ""} />
@@ -219,4 +248,4 @@ const statusLabels = {
   DRAFT: "Entwurf"
 };
 
-type ContractLike = Awaited<ReturnType<typeof getVisibleContracts>>[number];
+type ContractLike = Awaited<ReturnType<typeof getVisibleContractsWithExpenseDetails>>[number];

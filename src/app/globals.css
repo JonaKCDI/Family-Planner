@@ -312,6 +312,12 @@ textarea {
   color: #24282c;
 }
 
+.button.period-primary-action {
+  border-color: #256f68;
+  background: #fff;
+  color: #145c55;
+}
+
 .button.danger {
   border-color: var(--danger);
   background: var(--danger);
@@ -1706,6 +1712,214 @@ body {
   margin: -0.25rem 0 1rem;
 }
 
+.secondary-filter-actions {
+  margin: 0;
+}
+
+.secondary-filter-actions .button {
+  min-height: 40px;
+  border-color: #d7d1c6;
+  background: #fff;
+  color: #34383d;
+}
+
+.month-switcher {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) 44px;
+  gap: 0.5rem;
+  align-items: stretch;
+  margin: -0.25rem 0 1rem;
+}
+
+.month-switcher-button,
+.month-switcher-current {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.month-switcher-button {
+  display: inline-flex;
+  min-width: 0;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent-dark);
+  font-size: 1.55rem;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.month-switcher-current {
+  display: grid;
+  min-width: 0;
+  place-items: center;
+  padding: 0.5rem 0.75rem;
+  text-align: center;
+}
+
+.month-switcher-current span {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.month-switcher-current strong {
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--accent-dark);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recurring-layout {
+  display: grid;
+  gap: 1rem;
+}
+
+.price-history {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.price-history strong {
+  flex-basis: 100%;
+}
+
+.source-tag {
+  background: #f1fbf8;
+  border-color: #b8d8d3;
+  color: #145c55;
+}
+
+.duplicate-action-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  border: 1px solid #f0cf8b;
+  border-radius: 8px;
+  background: #fffaf0;
+  margin-bottom: 0.55rem;
+  padding: 0.7rem;
+}
+
+.duplicate-action-row > div {
+  display: grid;
+  gap: 0.12rem;
+  min-width: 0;
+}
+
+.duplicate-action-row span {
+  color: #68430d;
+  font-size: 0.82rem;
+  overflow-wrap: anywhere;
+}
+
+.duplicate-action-button {
+  flex: 0 0 auto;
+  border-color: #f0cf8b;
+  background: var(--amber-soft);
+  color: #68430d;
+}
+
+.duplicate-review {
+  display: grid;
+  gap: 0.7rem;
+  color: #30343a;
+}
+
+.duplicate-review-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.duplicate-review h3 {
+  margin: 0 0 0.2rem;
+  font-size: 1rem;
+}
+
+.duplicate-review .muted {
+  color: #68430d;
+}
+
+.duplicate-group-list {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.duplicate-group {
+  display: grid;
+  gap: 0.55rem;
+  border: 1px solid #f3d49a;
+  border-radius: 8px;
+  background: #fff;
+  padding: 0.6rem;
+}
+
+.duplicate-group-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.45rem;
+}
+
+.duplicate-group-title span {
+  color: #68430d;
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
+.duplicate-choice-list {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.duplicate-choice {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.55rem;
+  align-items: center;
+  border-top: 1px solid var(--line);
+  padding-top: 0.55rem;
+}
+
+.duplicate-choice > div {
+  display: grid;
+  min-width: 0;
+  gap: 0.12rem;
+}
+
+.duplicate-choice span,
+.duplicate-choice small {
+  color: var(--muted);
+  font-size: 0.8rem;
+  overflow-wrap: anywhere;
+}
+
+.duplicate-group span,
+.duplicate-group small {
+  overflow-wrap: anywhere;
+}
+
+.duplicate-group small {
+  color: #7c5413;
+  font-size: 0.8rem;
+}
+
+.duplicate-tag,
+.duplicate-badge {
+  border-color: #f0cf8b;
+  background: var(--amber-soft);
+  color: #68430d;
+}
+
 .sync-status {
   display: flex;
   flex-wrap: wrap;
@@ -1939,6 +2153,52 @@ body {
   gap: 0.55rem;
 }
 
+.excel-progress-panel {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.excel-progress-status {
+  display: grid;
+  gap: 0.45rem;
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, white);
+  border-radius: 8px;
+  background: color-mix(in srgb, #fff 90%, var(--accent-soft));
+  color: #1f3b38;
+  padding: 0.65rem 0.75rem;
+  font-size: 0.86rem;
+  font-weight: 850;
+}
+
+.excel-progress-bar {
+  position: relative;
+  display: block;
+  height: 7px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 12%, white);
+}
+
+.excel-progress-bar span {
+  position: absolute;
+  inset-block: 0;
+  left: -38%;
+  width: 38%;
+  border-radius: inherit;
+  background: var(--accent);
+  animation: excel-progress-slide 1.1s ease-in-out infinite;
+}
+
+@keyframes excel-progress-slide {
+  0% {
+    transform: translateX(0);
+  }
+
+  100% {
+    transform: translateX(365%);
+  }
+}
+
 .excel-car-picker {
   display: inline-grid;
   grid-template-columns: auto minmax(0, 1fr);
@@ -2057,6 +2317,99 @@ body {
   margin: 0 0 1rem;
 }
 
+.period-navigator {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.65rem;
+  align-items: stretch;
+}
+
+.period-nav-main {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) 44px auto;
+  gap: 0.45rem;
+  align-items: stretch;
+  min-width: 0;
+}
+
+.period-nav-button,
+.period-nav-current,
+.period-mode-toggle,
+.period-mode-toggle a {
+  border: 1px solid var(--line);
+  background: #fff;
+}
+
+.period-nav-button {
+  display: inline-flex;
+  min-width: 0;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  color: var(--accent-dark);
+  font-size: 1.5rem;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.period-nav-current {
+  display: grid;
+  min-width: 0;
+  place-items: center;
+  border-radius: 8px;
+  padding: 0.48rem 0.75rem;
+  text-align: center;
+}
+
+.period-nav-current span {
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.period-nav-current strong {
+  max-width: 100%;
+  overflow: hidden;
+  color: var(--accent-dark);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.period-mode-toggle {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(4.2rem, 1fr));
+  overflow: hidden;
+  border-radius: 8px;
+}
+
+.period-mode-toggle a {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  border-width: 0 0 0 1px;
+  color: var(--muted);
+  padding: 0.45rem 0.7rem;
+  font-size: 0.86rem;
+  font-weight: 900;
+}
+
+.period-mode-toggle a:first-child {
+  border-left: 0;
+}
+
+.period-mode-toggle a.active {
+  background: var(--accent-soft);
+  color: var(--accent-dark);
+}
+
+.period-tools {
+  display: flex;
+  gap: 0.45rem;
+  align-items: stretch;
+}
+
 .period-tabs {
   display: flex;
   gap: 0.4rem;
@@ -2122,6 +2475,11 @@ body {
 
 .period-picker-fieldset {
   background: #fbfaf6;
+}
+
+.period-picker-fieldset .muted {
+  margin: 0.35rem 0 0;
+  font-size: 0.8rem;
 }
 
 .period-select-row {
@@ -3863,6 +4221,12 @@ body,
   .stat,
   .stats,
   .filter-system,
+  .period-navigator,
+  .period-nav-main,
+  .period-nav-current,
+  .period-tools,
+  .month-switcher,
+  .month-switcher-current,
   .expense-section,
   .analysis-tabs,
   .analysis-overview,
@@ -3885,7 +4249,7 @@ body,
   .overview-actions {
     position: static;
     display: grid;
-    grid-template-columns: minmax(0, 1fr);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     margin-right: 0;
     margin-left: 0;
     overflow: visible;
@@ -3902,6 +4266,9 @@ body,
   }
 
   .filter-system,
+  .period-navigator,
+  .period-nav-main,
+  .period-tools,
   .period-tabs,
   .year-strip,
   .active-filter-row {
@@ -3921,6 +4288,28 @@ body,
   .period-tabs::-webkit-scrollbar,
   .year-strip::-webkit-scrollbar {
     display: none;
+  }
+
+  .period-navigator {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .period-nav-main {
+    grid-template-columns: 44px minmax(0, 1fr) 44px;
+  }
+
+  .period-mode-toggle {
+    grid-column: 1 / -1;
+  }
+
+  .period-tools {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .period-tools > *,
+  .period-tools .button {
+    width: 100%;
   }
 
   .modal-backdrop,
@@ -4183,6 +4572,20 @@ body,
     width: 100%;
   }
 
+  .duplicate-action-row,
+  .duplicate-choice {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .duplicate-action-row {
+    display: grid;
+  }
+
+  .duplicate-action-row .button,
+  .duplicate-choice .button {
+    width: 100%;
+  }
+
   .label-management-row {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -4256,5 +4659,75 @@ body,
     grid-row: 1;
     justify-self: end;
     text-align: right;
+  }
+}
+
+/* Final mobile mileage layout: avoid cramped mixed columns on iPhone-sized screens. */
+@media (max-width: 700px) {
+  .mileage-row summary {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "date cost"
+      "main main"
+      "values values";
+    align-items: start;
+    gap: 0.45rem 0.75rem;
+    padding: 0.75rem 2rem 0.8rem 0.75rem;
+  }
+
+  .mileage-row .mileage-date {
+    grid-area: date;
+    font-size: 0.95rem;
+    line-height: 1.2;
+  }
+
+  .mileage-row .mileage-main {
+    grid-area: main;
+    gap: 0.04rem;
+  }
+
+  .mileage-row .mileage-odometer {
+    font-size: 1rem;
+    line-height: 1.1;
+  }
+
+  .mileage-row summary .mileage-main small {
+    font-size: 0.78rem;
+    line-height: 1.15;
+  }
+
+  .mileage-row summary > .mileage-cost {
+    grid-area: cost;
+    justify-self: end;
+    font-size: 1rem;
+    line-height: 1.2;
+    text-align: right;
+    white-space: nowrap;
+  }
+
+  .mileage-row .mileage-values {
+    grid-area: values;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.42rem 0.65rem;
+    border-top: 1px solid var(--line);
+    padding-top: 0.55rem;
+  }
+
+  .mileage-row .mileage-value {
+    grid-template-columns: minmax(4.6rem, 0.85fr) minmax(0, 1fr);
+    align-items: baseline;
+    gap: 0.32rem;
+  }
+
+  .mileage-row .mileage-value small {
+    font-size: 0.7rem;
+    line-height: 1.1;
+  }
+
+  .mileage-row .mileage-value b {
+    overflow-wrap: normal;
+    font-size: 0.82rem;
+    line-height: 1.12;
+    white-space: nowrap;
   }
 }

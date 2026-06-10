@@ -8,16 +8,17 @@ import { ModalPortal } from "@/components/modal-portal";
 type ActionModalProps = {
   title: string;
   trigger: string;
+  triggerClassName?: string;
   wide?: boolean;
   children: React.ReactNode;
 };
 
-export function ActionModal({ title, trigger, wide = false, children }: ActionModalProps) {
+export function ActionModal({ title, trigger, triggerClassName = "button secondary", wide = false, children }: ActionModalProps) {
   const [open, setOpen] = useState(false);
 
   return (
     <>
-      <button className="button secondary" type="button" onClick={() => setOpen(true)}>
+      <button className={triggerClassName} type="button" onClick={() => setOpen(true)}>
         {trigger}
       </button>
       {open ? (
