@@ -30,6 +30,17 @@
 
 ## Agent Coordination
 
+- 2026-06-10 Codex: Working on dashboard/cockpit rework requested by the user.
+  - Scope: time-based greeting, robust finance comparison/signals, direct task completion from cockpit, and dashboard revalidation for task status updates.
+  - Expected files: `src/app/(app)/dashboard/page.tsx`, `src/lib/actions.ts`, `src/lib/queries.ts`, and narrowly scoped dashboard styles in `src/app/globals.css`.
+  - This overlaps the recurring-tasks work in `actions.ts`, `queries.ts`, and `dashboard/page.tsx`; I will keep edits narrowly scoped and avoid task recurrence code/schema changes.
+- 2026-06-10 Codex: Working on recurring tasks and planned tasks requested by the user:
+  - Add Prisma models/migration for recurring task plans and generated task links.
+  - Add recurrence helpers, due-task generation, server actions, and queries.
+  - Extend the global task creation flow and the Aufgaben overview with planned recurring tasks.
+  - Add recurrence tests and run test/build verification.
+- Expected files for this work: `prisma/schema.prisma`, a new `prisma/migrations/*_recurring_tasks/migration.sql`, `src/lib/tasks.ts`, possibly `src/lib/recurring-tasks.ts`, `src/lib/actions.ts`, `src/lib/queries.ts`, `src/components/create-modal.tsx`, `src/app/(app)/aufgaben/page.tsx`, `src/app/(app)/dashboard/page.tsx`, and `tests/tasks.test.ts`.
+- If another agent needs to touch these files, please add a note here first with the intended scope so we can avoid overlapping edits.
 - 2026-06-09 Codex: Working on the expenses overview controls requested by the user:
   - Restore quick month/year jump inside the expense filter modal.
   - Arrange `Aktuell`/`Filter` above `Serien`/`Setup` as a compact mobile 2x2 action block.

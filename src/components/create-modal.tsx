@@ -9,6 +9,7 @@ import {
   createDocumentReference,
   createExpense,
   createFuelEntry,
+  createRecurringTask,
   createTask
 } from "@/lib/actions";
 import { enqueueOfflineExpenseCreate, enqueueOfflineTaskCreate } from "@/lib/offline-sync";
@@ -119,7 +120,7 @@ export function CreateModal({ categories, labels, contracts, members, cars, fuel
                   onSubmit={() => setOpen(false)}
                 />
               ) : null}
-              {selectedType === "task" ? <TaskForm members={members} onSubmit={() => setOpen(false)} /> : null}
+              {selectedType === "task" ? <TaskForm members={members} today={today} onSubmit={() => setOpen(false)} /> : null}
               {selectedType === "contract" ? <ContractForm categories={categories} labels={labels} today={today} onSubmit={() => setOpen(false)} /> : null}
               {selectedType === "document" ? <DocumentForm onSubmit={() => setOpen(false)} /> : null}
             </section>
@@ -240,8 +241,18 @@ function FuelForm({
   );
 }
 
-function TaskForm({ members, onSubmit }: { members: CreateModalProps["members"]; onSubmit: () => void }) {
+function TaskForm({ members, today, onSubmit }: { members: CreateModalProps["members"]; today: string; onSubmit: () => void }) {
+  const [recurrencePreset, setRecurrencePreset] = useState("NONE");
+  const [customIntervalUnit, setCustomIntervalUnit] = useState("DAY");
+  const isRecurring = recurrencePreset !== "NONE";
+  const customIntervalMax = customIntervalUnit === "WEEK" ? 52 : 365;
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    if (isRecurring && !navigator.onLine) {
+      event.preventDefault();
+      window.alert("Wiederholte Aufgaben können nur online erstellt werden.");
+      return;
+    }
     if (navigator.onLine) {
       onSubmit();
       return;
@@ -253,12 +264,45 @@ function TaskForm({ members, onSubmit }: { members: CreateModalProps["members"];
   }
 
   return (
-    <form action={createTask} className="form form-grid modal-form" onSubmit={handleSubmit}>
+    <form action={isRecurring ? createRecurringTask : createTask} className="form form-grid modal-form" onSubmit={handleSubmit}>
       <label>Titel<input name="title" required /></label>
       <label>Zuweisen an<select name="assignedToUserId" defaultValue=""><option value="">Nicht zugewiesen</option>{members.map((member) => <option value={member.userId} key={member.id}>{member.user.name}</option>)}</select></label>
-      <label>Deadline<input name="dueDate" type="date" /></label>
+      <label>{isRecurring ? "Startdatum" : "Deadline"}<input key={isRecurring ? "recurring-date" : "single-date"} name="dueDate" type="date" defaultValue={isRecurring ? today : ""} required={isRecurring} /></label>
       <label>Priorität<select name="priority" defaultValue="MEDIUM"><option value="LOW">Niedrig</option><option value="MEDIUM">Mittel</option><option value="HIGH">Hoch</option><option value="URGENT">Dringend</option></select></label>
       <label>Sichtbarkeit<select name="scope" defaultValue="FAMILY"><option value="FAMILY">Familie</option><option value="PRIVATE">Privat</option></select></label>
+      <fieldset className="fieldset full-span">
+        <legend>Wiederholen</legend>
+        <label>
+          Rhythmus
+          <select name="recurrencePreset" value={recurrencePreset} onChange={(event) => setRecurrencePreset(event.currentTarget.value)}>
+            <option value="NONE">Einmalig</option>
+            <option value="DAILY">Täglich</option>
+            <option value="EVERY_2_DAYS">Alle 2 Tage</option>
+            <option value="WEEKLY">Wöchentlich</option>
+            <option value="EVERY_2_WEEKS">Alle 2 Wochen</option>
+            <option value="MONTHLY">Monatlich</option>
+            <option value="QUARTERLY">Vierteljährlich</option>
+            <option value="SEMIANNUAL">Halbjährlich</option>
+            <option value="YEARLY">Jährlich</option>
+            <option value="CUSTOM">Individuell</option>
+          </select>
+        </label>
+        {recurrencePreset === "CUSTOM" ? (
+          <>
+            <label>Alle<input name="intervalCount" type="number" min="1" max={customIntervalMax} defaultValue="1" required /></label>
+            <label>
+              Einheit
+              <select name="intervalUnit" value={customIntervalUnit} onChange={(event) => setCustomIntervalUnit(event.currentTarget.value)}>
+                <option value="DAY">Tage</option>
+                <option value="WEEK">Wochen</option>
+                <option value="MONTH">Monate</option>
+                <option value="YEAR">Jahre</option>
+              </select>
+            </label>
+          </>
+        ) : null}
+        {isRecurring ? <label>Enddatum optional<input name="endDate" type="date" /></label> : null}
+      </fieldset>
       <label className="full-span">Beschreibung<textarea name="description" /></label>
       <button className="button full-span" type="submit">Speichern</button>
     </form>

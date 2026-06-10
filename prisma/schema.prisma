@@ -73,6 +73,18 @@ enum RecurringTransactionStatus {
   PAUSED
 }
 
+enum RecurringTaskStatus {
+  ACTIVE
+  PAUSED
+  ARCHIVED
+}
+
+enum RecurringTaskIntervalUnit {
+  DAY
+  MONTH
+  YEAR
+}
+
 enum DocumentReferenceType {
   SYNOLOGY_HTTPS
   WEBDAV_HTTPS
@@ -105,6 +117,8 @@ model User {
   assignedTasks Task[]         @relation("TaskAssignee")
   contracts     Contract[]
   recurringTransactions RecurringTransaction[]
+  recurringTasks RecurringTask[] @relation("RecurringTaskOwner")
+  assignedRecurringTasks RecurringTask[] @relation("RecurringTaskAssignee")
   documents     DocumentReference[]
   createdRecoveryKeys AdminRecoveryKey[] @relation("AdminRecoveryKeyCreator")
 }
@@ -143,6 +157,7 @@ model Family {
   tasks      Task[]
   contracts  Contract[]
   recurringTransactions RecurringTransaction[]
+  recurringTasks RecurringTask[]
   documents  DocumentReference[]
   adminRecoveryKey AdminRecoveryKey?
 }
@@ -329,14 +344,47 @@ model Task {
   status           TaskStatus   @default(OPEN)
   priority         TaskPriority @default(MEDIUM)
   dueDate          DateTime?
+  recurringTaskId  String?
+  recurringTaskDueDate DateTime?
   scope            Scope        @default(FAMILY)
   createdAt        DateTime     @default(now())
   updatedAt        DateTime     @updatedAt
   family           Family       @relation(fields: [familyId], references: [id], onDelete: Cascade)
   owner            User         @relation("TaskOwner", fields: [ownerUserId], references: [id], onDelete: Cascade)
   assignee         User?        @relation("TaskAssignee", fields: [assignedToUserId], references: [id], onDelete: SetNull)
+  recurringTask    RecurringTask? @relation(fields: [recurringTaskId], references: [id], onDelete: SetNull)
 
   @@index([familyId, status])
+  @@index([assignedToUserId])
+  @@index([recurringTaskId])
+  @@unique([recurringTaskId, recurringTaskDueDate])
+}
+
+model RecurringTask {
+  id               String                    @id @default(cuid())
+  familyId         String
+  ownerUserId      String
+  assignedToUserId String?
+  title            String
+  description      String?
+  priority         TaskPriority              @default(MEDIUM)
+  scope            Scope                     @default(FAMILY)
+  startDate        DateTime
+  endDate          DateTime?
+  intervalCount    Int                       @default(1)
+  intervalUnit     RecurringTaskIntervalUnit @default(MONTH)
+  leadTimeDays     Int
+  nextDueDate      DateTime?
+  status           RecurringTaskStatus       @default(ACTIVE)
+  createdAt        DateTime                  @default(now())
+  updatedAt        DateTime                  @updatedAt
+  family           Family                    @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  owner            User                      @relation("RecurringTaskOwner", fields: [ownerUserId], references: [id], onDelete: Cascade)
+  assignee         User?                     @relation("RecurringTaskAssignee", fields: [assignedToUserId], references: [id], onDelete: SetNull)
+  tasks            Task[]
+
+  @@index([familyId, status, nextDueDate])
+  @@index([ownerUserId])
   @@index([assignedToUserId])
 }
 

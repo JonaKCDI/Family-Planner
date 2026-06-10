@@ -9,11 +9,13 @@ import { cleanupExpiredSessions, createSession, destroySession, hashPassword, re
 import { resolveContractCancellationSchedule } from "@/lib/contracts";
 import { db } from "@/lib/db";
 import { ensureDueContractExpenses } from "@/lib/contract-auto-expenses";
+import { ensureDueRecurringTasks } from "@/lib/recurring-tasks";
 import { buildExpenseWorkbook, parseExpenseWorkbook, type ExpenseFormatRow } from "@/lib/expense-formats";
 import { buildFuelWorkbook, inferCarNameFromFuelFileName, parseFuelWorkbook, type FuelFormatRow } from "@/lib/mileage-formats";
 import { safeFilePart } from "@/lib/file-names";
 import { isFamilyAdmin, ownedExpenseWhere } from "@/lib/permissions";
 import { resolveDocumentLinkedEntityId, resolveExpenseCategoryId, resolveExpenseLabelId, resolveTaskAssigneeId, resolveVisibleContractId } from "@/lib/relations";
+import { defaultRecurringTaskLeadTimeDays } from "@/lib/tasks";
 import { parseDecimalInputToMilli, parseEuroInputToCents, parseOptionalDateInput, parseOptionalEuroInputToCents, parseOptionalIntegerInput, parseRequiredDateInput, parseRequiredIntegerInput } from "@/lib/validation";
 
 const passwordSchema = z.string().min(8, "Das Passwort braucht mindestens 8 Zeichen.");
@@ -957,6 +959,7 @@ export async function updateTaskStatus(formData: FormData) {
     }
   });
   revalidatePath("/aufgaben");
+  revalidatePath("/dashboard");
 }
 
 export async function updateTask(formData: FormData) {
@@ -986,6 +989,113 @@ export async function updateTask(formData: FormData) {
 
   revalidatePath("/aufgaben");
   revalidatePath("/dashboard");
+}
+
+export async function createRecurringTask(formData: FormData) {
+  const session = await requireSession();
+  const assignedToUserId = await resolveTaskAssigneeId(session.family.id, optionalText(formData, "assignedToUserId"));
+  const startDate = parseRequiredDateInput(formData.get("startDate") ?? formData.get("dueDate"));
+  const endDate = parseOptionalDateInput(formData.get("endDate"));
+  const interval = recurringTaskIntervalValue(formData);
+
+  await db.recurringTask.create({
+    data: {
+      familyId: session.family.id,
+      ownerUserId: session.user.id,
+      assignedToUserId,
+      title: requiredText(formData, "title"),
+      description: optionalText(formData, "description"),
+      priority: enumValue(formData, "priority", ["LOW", "MEDIUM", "HIGH", "URGENT"] as const, "MEDIUM"),
+      scope: scopeValue(formData),
+      startDate,
+      endDate,
+      intervalCount: interval.intervalCount,
+      intervalUnit: interval.intervalUnit,
+      leadTimeDays: defaultRecurringTaskLeadTimeDays(interval.intervalCount, interval.intervalUnit),
+      nextDueDate: startDate,
+      status: "ACTIVE"
+    }
+  });
+
+  await ensureDueRecurringTasks(session.family.id, session.user.id, new Date(), { force: true });
+  revalidatePath("/aufgaben");
+  revalidatePath("/dashboard");
+}
+
+export async function updateRecurringTask(formData: FormData) {
+  const session = await requireSession();
+  const id = requiredText(formData, "id");
+  const existing = await db.recurringTask.findFirst({
+    where: {
+      id,
+      familyId: session.family.id,
+      OR: [{ ownerUserId: session.user.id }, { assignedToUserId: session.user.id }]
+    }
+  });
+  if (!existing) throw new Error("Diese geplante Aufgabe ist nicht verfügbar.");
+
+  const assignedToUserId = await resolveTaskAssigneeId(session.family.id, optionalText(formData, "assignedToUserId"));
+  const startDate = parseRequiredDateInput(formData.get("startDate"));
+  const endDate = parseOptionalDateInput(formData.get("endDate"));
+  const interval = recurringTaskIntervalValue(formData);
+  const status = formData.has("status")
+    ? enumValue(formData, "status", ["ACTIVE", "PAUSED", "ARCHIVED"] as const, existing.status)
+    : existing.status;
+
+  await db.recurringTask.update({
+    where: { id: existing.id },
+    data: {
+      assignedToUserId,
+      title: requiredText(formData, "title"),
+      description: optionalText(formData, "description"),
+      priority: enumValue(formData, "priority", ["LOW", "MEDIUM", "HIGH", "URGENT"] as const, "MEDIUM"),
+      scope: scopeValue(formData),
+      startDate,
+      endDate,
+      intervalCount: interval.intervalCount,
+      intervalUnit: interval.intervalUnit,
+      leadTimeDays: defaultRecurringTaskLeadTimeDays(interval.intervalCount, interval.intervalUnit),
+      nextDueDate: startDate,
+      status
+    }
+  });
+
+  if (status === "ACTIVE") {
+    await ensureDueRecurringTasks(session.family.id, session.user.id, new Date(), { force: true });
+  }
+  revalidatePath("/aufgaben");
+  revalidatePath("/dashboard");
+}
+
+export async function pauseRecurringTask(formData: FormData) {
+  await setRecurringTaskStatus(formData, "PAUSED");
+}
+
+export async function resumeRecurringTask(formData: FormData) {
+  const session = await requireSession();
+  const id = requiredText(formData, "id");
+  const existing = await db.recurringTask.findFirst({
+    where: {
+      id,
+      familyId: session.family.id,
+      OR: [{ ownerUserId: session.user.id }, { assignedToUserId: session.user.id }]
+    }
+  });
+  if (!existing) throw new Error("Diese geplante Aufgabe ist nicht verfügbar.");
+  await db.recurringTask.update({
+    where: { id: existing.id },
+    data: {
+      status: "ACTIVE",
+      nextDueDate: existing.nextDueDate ?? existing.startDate
+    }
+  });
+  await ensureDueRecurringTasks(session.family.id, session.user.id, new Date(), { force: true });
+  revalidatePath("/aufgaben");
+  revalidatePath("/dashboard");
+}
+
+export async function archiveRecurringTask(formData: FormData) {
+  await setRecurringTaskStatus(formData, "ARCHIVED");
 }
 
 export async function createRecurringTransaction(formData: FormData) {
@@ -1618,6 +1728,20 @@ async function syncLinkedDocumentFromForm(
   });
 }
 
+async function setRecurringTaskStatus(formData: FormData, status: "PAUSED" | "ARCHIVED") {
+  const session = await requireSession();
+  await db.recurringTask.updateMany({
+    where: {
+      id: requiredText(formData, "id"),
+      familyId: session.family.id,
+      OR: [{ ownerUserId: session.user.id }, { assignedToUserId: session.user.id }]
+    },
+    data: { status }
+  });
+  revalidatePath("/aufgaben");
+  revalidatePath("/dashboard");
+}
+
 function requiredText(formData: FormData, key: string) {
   const value = String(formData.get(key) ?? "").trim();
   if (!value) throw new Error(`${key} ist erforderlich.`);
@@ -1687,6 +1811,30 @@ function billingIntervalValue(formData: FormData) {
 
 function recurringBillingIntervalValue(formData: FormData) {
   return enumValue(formData, "billingInterval", ["MONTHLY", "YEARLY", "QUARTERLY"] as const, "MONTHLY");
+}
+
+function recurringTaskIntervalValue(formData: FormData) {
+  const preset = String(formData.get("recurrencePreset") ?? "");
+  if (preset === "DAILY") return { intervalCount: 1, intervalUnit: "DAY" as const };
+  if (preset === "EVERY_2_DAYS") return { intervalCount: 2, intervalUnit: "DAY" as const };
+  if (preset === "WEEKLY") return { intervalCount: 7, intervalUnit: "DAY" as const };
+  if (preset === "EVERY_2_WEEKS") return { intervalCount: 14, intervalUnit: "DAY" as const };
+  if (preset === "MONTHLY") return { intervalCount: 1, intervalUnit: "MONTH" as const };
+  if (preset === "QUARTERLY") return { intervalCount: 3, intervalUnit: "MONTH" as const };
+  if (preset === "SEMIANNUAL") return { intervalCount: 6, intervalUnit: "MONTH" as const };
+  if (preset === "YEARLY") return { intervalCount: 1, intervalUnit: "YEAR" as const };
+  const intervalUnitValue = String(formData.get("intervalUnit") ?? "MONTH");
+  if (intervalUnitValue === "WEEK") {
+    return {
+      intervalCount: parseRequiredIntegerInput(formData.get("intervalCount"), { min: 1, max: 52 }) * 7,
+      intervalUnit: "DAY" as const
+    };
+  }
+  const intervalUnit = enumValue(formData, "intervalUnit", ["DAY", "MONTH", "YEAR"] as const, "MONTH");
+  return {
+    intervalCount: parseRequiredIntegerInput(formData.get("intervalCount"), { min: 1, max: 365 }),
+    intervalUnit
+  };
 }
 
 function priceChangeModeValue(formData: FormData) {

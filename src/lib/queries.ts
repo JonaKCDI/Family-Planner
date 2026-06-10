@@ -127,8 +127,31 @@ export async function getVisibleTasks(familyId: string, userId: string) {
       familyId,
       ...visibleScopeWhere(userId)
     },
-    include: { owner: true, assignee: true },
+    include: {
+      owner: true,
+      assignee: true,
+      recurringTask: {
+        select: {
+          id: true,
+          title: true,
+          intervalCount: true,
+          intervalUnit: true
+        }
+      }
+    },
     orderBy: [{ status: "asc" }, { dueDate: "asc" }]
+  });
+}
+
+export async function getVisibleRecurringTasks(familyId: string, userId: string, options: { includeArchived?: boolean } = {}) {
+  return db.recurringTask.findMany({
+    where: {
+      familyId,
+      ...(options.includeArchived ? {} : { status: { not: "ARCHIVED" as const } }),
+      ...visibleScopeWhere(userId)
+    },
+    include: { owner: true, assignee: true },
+    orderBy: [{ status: "asc" }, { nextDueDate: "asc" }, { title: "asc" }]
   });
 }
 

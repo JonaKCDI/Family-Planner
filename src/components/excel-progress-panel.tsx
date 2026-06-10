@@ -14,17 +14,6 @@ export function ExcelProgressPanel({ children }: ExcelProgressPanelProps) {
   const timeoutRef = useRef<number | null>(null);
   const activeElementRef = useRef<HTMLElement | null>(null);
 
-  useEffect(() => {
-    const clear = () => clearProgress();
-    window.addEventListener("pageshow", clear);
-    window.addEventListener("focus", clear);
-    return () => {
-      window.removeEventListener("pageshow", clear);
-      window.removeEventListener("focus", clear);
-      clearProgress();
-    };
-  }, []);
-
   function clearProgress() {
     setMessage(null);
     if (timeoutRef.current) {
@@ -40,6 +29,17 @@ export function ExcelProgressPanel({ children }: ExcelProgressPanelProps) {
     }
     activeElementRef.current = null;
   }
+
+  useEffect(() => {
+    const clear = () => clearProgress();
+    window.addEventListener("pageshow", clear);
+    window.addEventListener("focus", clear);
+    return () => {
+      window.removeEventListener("pageshow", clear);
+      window.removeEventListener("focus", clear);
+      clearProgress();
+    };
+  }, []);
 
   function startProgress(nextMessage: string, activeElement: HTMLElement | null) {
     clearProgress();

@@ -1,34 +1,43 @@
 import Link from "next/link";
+import { updateTaskStatus } from "@/lib/actions";
 import { requireSession } from "@/lib/auth";
 import { ensureDueContractExpenses } from "@/lib/contract-auto-expenses";
 import { getContractNextCancellationDate } from "@/lib/contracts";
 import { formatDate, formatMoney } from "@/lib/format";
+import { ensureDueRecurringTasks } from "@/lib/recurring-tasks";
 import { isImportantTask, taskRank } from "@/lib/tasks";
 import {
   getVisibleCategories,
   getVisibleContracts,
   getVisibleDocuments,
   getVisibleExpenses,
+  getRecurringTransactions,
   getVisibleTasks
 } from "@/lib/queries";
 
 export default async function DashboardPage() {
   const session = await requireSession();
-  await ensureDueContractExpenses(session.family.id, session.user.id);
-  const [expenses, tasks, contracts, documents, categories] = await Promise.all([
+  await Promise.all([
+    ensureDueContractExpenses(session.family.id, session.user.id),
+    ensureDueRecurringTasks(session.family.id, session.user.id)
+  ]);
+  const [expenses, tasks, contracts, documents, categories, recurringTransactions] = await Promise.all([
     getVisibleExpenses(session.family.id, session.user.id),
     getVisibleTasks(session.family.id, session.user.id),
     getVisibleContracts(session.family.id, session.user.id),
     getVisibleDocuments(session.family.id, session.user.id),
-    getVisibleCategories(session.family.id, session.user.id, "EXPENSE")
+    getVisibleCategories(session.family.id, session.user.id, "EXPENSE"),
+    getRecurringTransactions(session.family.id, session.user.id)
   ]);
 
   const today = new Date();
+  const greeting = getGreeting(today);
   const monthEntries = expenses.filter((entry) => isSameMonth(entry.date, today));
   const income = sumByKind(monthEntries, "INCOME");
   const spending = sumByKind(monthEntries, "EXPENSE");
   const saldo = income - spending;
-  const finance = buildFinanceInsight(expenses, categories, today);
+  const recurringIntervals = buildRecurringIntervalMap(recurringTransactions);
+  const finance = buildFinanceInsight(expenses, categories, today, recurringIntervals);
   const openTasks = tasks
     .filter((task) => task.status === "OPEN" || task.status === "IN_PROGRESS")
     .sort((a, b) => taskRank(b) - taskRank(a));
@@ -45,7 +54,7 @@ export default async function DashboardPage() {
       <header className="dashboard-hero compact-hero">
         <div>
           <span className="eyebrow">{longDateFormatter.format(today)}</span>
-          <h1>Guten Abend, {session.user.name}</h1>
+          <h1>{greeting}, {session.user.name}</h1>
           <p>Alles Wichtige für {session.family.name}: Aufgaben, Finanzen, Verträge und Dokumente an einem Ort.</p>
         </div>
       </header>
@@ -54,7 +63,7 @@ export default async function DashboardPage() {
         <DashboardStat label="Einnahmen" value={formatMoney(income)} detail="Dieser Monat" tone="green" />
         <DashboardStat label="Ausgaben" value={formatMoney(spending)} detail={`${monthEntries.length} Einträge`} tone="red" />
         <DashboardStat label="Saldo" value={formatMoney(saldo)} detail={saldo < 0 ? "Monat prüfen" : "Aktueller Stand"} tone={saldo < 0 ? "red" : "green"} />
-        <DashboardStat label="Prognose" value={formatMoney(finance.projectedMonth)} detail={finance.hasHistory ? "Bei aktuellem Tempo" : "Verlauf baut sich auf"} tone={finance.projectionTone} />
+        <DashboardStat label="Monatsende" value={formatMoney(finance.projectedMonth)} detail={finance.hasHistory ? "Wenn es so weitergeht" : "Verlauf baut sich auf"} tone={finance.projectionTone} />
         <DashboardStat label="Aufgaben" value={`${openTasks.length} offen`} detail={`${importantTasks.length} wichtig`} tone={importantTasks.length > 0 ? "amber" : "blue"} />
       </section>
 
@@ -69,9 +78,9 @@ export default async function DashboardPage() {
           </div>
           <div className="dashboard-mini-grid">
             <MiniMetric label="Bisher" value={formatMoney(finance.spendingToDate)} tone="red" />
-            <MiniMetric label="Normal bis heute" value={finance.hasHistory ? formatMoney(finance.usualByToday) : "-"} tone="green" />
-            <MiniMetric label="Abweichung" value={finance.hasHistory ? formatSignedMoney(finance.deltaToNormal) : "Noch kein Vergleich"} tone={finance.deltaToNormal > 0 ? "red" : "green"} />
-            <MiniMetric label="Prognose" value={formatMoney(finance.projectedMonth)} tone={finance.projectionTone === "red" ? "red" : "green"} />
+            <MiniMetric label="Sonst bis heute" value={finance.hasHistory ? formatMoney(finance.usualByToday) : "-"} tone="green" />
+            <MiniMetric label="Unterschied" value={finance.hasHistory ? formatSignedMoney(finance.deltaToNormal) : "Noch kein Vergleich"} tone={finance.deltaToNormal > 0 ? "red" : "green"} />
+            <MiniMetric label="Monatsende" value={formatMoney(finance.projectedMonth)} tone={finance.projectionTone === "red" ? "red" : "green"} />
           </div>
           <div className="dashboard-list" aria-label="Ausgaben im Vergleich">
             {finance.comparisonRows.map((row) => (
@@ -90,10 +99,10 @@ export default async function DashboardPage() {
             ))}
           </div>
           <div>
-            <h3 className="section-title">Auffällig</h3>
+            <h3 className="section-title">Achtung</h3>
             <div className="dashboard-list">
-              {finance.categorySignals.length === 0 ? <p className="empty-inline">Noch kein auffälliger Verlauf.</p> : null}
-              {finance.categorySignals.map((signal) => (
+              {finance.attentionSignals.length === 0 ? <p className="empty-inline">Kein Handlungsbedarf im steuerbaren Verlauf.</p> : null}
+              {finance.attentionSignals.map((signal) => (
                 <div className="analysis-row" key={signal.name}>
                   <div>
                     {signal.href ? <Link className="text-link" href={signal.href}>{signal.name}</Link> : <strong>{signal.name}</strong>}
@@ -104,6 +113,27 @@ export default async function DashboardPage() {
                   </div>
                   <div className="amount-column compact-amount">
                     <strong className={signal.delta > 0 ? "negative" : "positive"}>{formatSignedMoney(signal.delta)}</strong>
+                    <small>{formatMoney(signal.amount)}</small>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div>
+            <h3 className="section-title">Entlastend</h3>
+            <div className="dashboard-list">
+              {finance.reliefSignals.length === 0 ? <p className="empty-inline">Keine deutliche Entlastung gegenüber normal.</p> : null}
+              {finance.reliefSignals.map((signal) => (
+                <div className="analysis-row signal-relief-row" key={signal.name}>
+                  <div>
+                    {signal.href ? <Link className="text-link" href={signal.href}>{signal.name}</Link> : <strong>{signal.name}</strong>}
+                    <span className="muted">{signal.detail}</span>
+                  </div>
+                  <div className="bar-wrap" aria-hidden="true">
+                    <span style={{ width: `${signal.width}%`, background: signal.color }} />
+                  </div>
+                  <div className="amount-column compact-amount">
+                    <strong className="positive">{formatSignedMoney(signal.delta)}</strong>
                     <small>{formatMoney(signal.amount)}</small>
                   </div>
                 </div>
@@ -124,7 +154,13 @@ export default async function DashboardPage() {
             {openTasks.length === 0 ? <p className="empty-inline">Alles erledigt.</p> : null}
             {openTasks.slice(0, 4).map((task) => (
               <article className="task-item" key={task.id}>
-                <span className={`task-check ${isImportantTask(task) ? "urgent" : ""}`} />
+                <form action={updateTaskStatus} className="dashboard-task-complete">
+                  <input type="hidden" name="id" value={task.id} />
+                  <input type="hidden" name="status" value="DONE" />
+                  <button className={`task-check ${isImportantTask(task) ? "urgent" : ""}`} type="submit" aria-label={`${task.title} als erledigt markieren`} title="Erledigt markieren">
+                    <span aria-hidden="true">✓</span>
+                  </button>
+                </form>
                 <div>
                   <strong>{task.title}</strong>
                   <span className="item-meta">{task.assignee?.name ?? "Nicht zugewiesen"} · Fällig: {formatDate(task.dueDate)}</span>
@@ -229,28 +265,36 @@ const priorityLabels = {
   URGENT: "Dringend"
 };
 
-const longDateFormatter = new Intl.DateTimeFormat("de-DE", { weekday: "long", day: "2-digit", month: "long" });
+const berlinTimeZone = "Europe/Berlin";
+const longDateFormatter = new Intl.DateTimeFormat("de-DE", { weekday: "long", day: "2-digit", month: "long", timeZone: berlinTimeZone });
 
 type ExpenseEntry = Awaited<ReturnType<typeof getVisibleExpenses>>[number];
 type CategoryEntry = Awaited<ReturnType<typeof getVisibleCategories>>[number];
+type RecurringTransactionEntry = Awaited<ReturnType<typeof getRecurringTransactions>>[number];
 
-function buildFinanceInsight(expenses: ExpenseEntry[], categories: CategoryEntry[], today: Date) {
+function buildFinanceInsight(expenses: ExpenseEntry[], categories: CategoryEntry[], today: Date, recurringIntervals: RecurringIntervalMap) {
   const currentMonthKey = getMonthKey(today);
   const monthHref = `/ausgaben?month=${currentMonthKey}`;
-  const currentEntries = expenses.filter((entry) => isSameMonth(entry.date, today) && new Date(entry.date) <= endOfDay(today));
+  const currentEntries = expenses.filter((entry) => (
+    isSameMonth(entry.date, today) &&
+    new Date(entry.date) <= endOfDay(today) &&
+    isSteerableExpense(entry, recurringIntervals)
+  ));
   const spendingToDate = sumByKind(currentEntries, "EXPENSE");
-  const comparableMonths = buildComparableMonths(expenses, today, 6);
+  const comparableMonths = buildComparableMonths(expenses, today, 6, recurringIntervals);
   const hasHistory = comparableMonths.length > 0;
-  const usualByToday = hasHistory ? average(comparableMonths.map((month) => month.spendingToDate)) : 0;
-  const usualFullMonth = hasHistory ? average(comparableMonths.map((month) => month.fullMonthSpending)) : 0;
+  const usualByToday = hasHistory ? robustAverage(comparableMonths.map((month) => month.spendingToDate)) : 0;
+  const usualFullMonth = hasHistory ? robustAverage(comparableMonths.map((month) => month.fullMonthSpending)) : 0;
   const projectedMonth = projectMonth(spendingToDate, today);
   const deltaToNormal = spendingToDate - usualByToday;
   const maxComparison = Math.max(spendingToDate, usualByToday, projectedMonth, usualFullMonth, 1);
-  const projectionTone: "red" | "amber" | "blue" = hasHistory && projectedMonth > usualFullMonth * 1.15
+  const isCurrentlyAboveNormal = hasHistory && deltaToNormal > Math.max(2000, usualByToday * 0.05);
+  const projectionTone: "red" | "amber" | "blue" = isCurrentlyAboveNormal && projectedMonth > usualFullMonth * 1.15
     ? "red"
-    : hasHistory && projectedMonth > usualFullMonth * 1.05
+    : isCurrentlyAboveNormal && projectedMonth > usualFullMonth * 1.05
       ? "amber"
       : "blue";
+  const signals = buildCategorySignals(expenses, categories, today, comparableMonths, monthHref, recurringIntervals);
 
   return {
     hasHistory,
@@ -263,37 +307,38 @@ function buildFinanceInsight(expenses: ExpenseEntry[], categories: CategoryEntry
     monthHref,
     comparisonRows: [
       {
-        label: "Bisher ausgegeben",
-        detail: `${today.getDate()}. Tag im Monat`,
+        label: "Ausgaben bisher",
+        detail: `${getBerlinDayOfMonth(today)}. Tag im Monat, ohne Einmal-, Jahres- und Quartalskosten`,
         amount: spendingToDate,
         color: "var(--accent)",
         width: percentOf(spendingToDate, maxComparison)
       },
       {
-        label: "Normal bis heute",
-        detail: hasHistory ? `Durchschnitt aus ${comparableMonths.length} Monaten` : "Noch kein Vergleichsverlauf",
+        label: "Sonst bis heute",
+        detail: hasHistory ? `Typischer Stand aus ${comparableMonths.length} Monaten` : "Noch kein Vergleichsverlauf",
         amount: usualByToday,
         color: "var(--blue)",
         width: percentOf(usualByToday, maxComparison)
       },
       {
-        label: "Hochrechnung",
-        detail: hasHistory ? `Normaler Monat: ${formatMoney(usualFullMonth)}` : "Wird mit mehr Daten genauer",
+        label: "Wenn es so weitergeht",
+        detail: hasHistory ? `Sonst im ganzen Monat: ${formatMoney(usualFullMonth)}` : "Wird mit mehr Daten genauer",
         amount: projectedMonth,
         color: projectionTone === "red" ? "var(--red)" : projectionTone === "amber" ? "var(--amber)" : "var(--green)",
         width: percentOf(projectedMonth, maxComparison)
       }
     ],
-    categorySignals: buildCategorySignals(expenses, categories, today, comparableMonths, monthHref)
+    attentionSignals: signals.attention,
+    reliefSignals: signals.relief
   };
 }
 
-function buildComparableMonths(expenses: ExpenseEntry[], today: Date, count: number) {
+function buildComparableMonths(expenses: ExpenseEntry[], today: Date, count: number, recurringIntervals: RecurringIntervalMap) {
   return Array.from({ length: count }, (_, index) => shiftMonth(today, -(index + 1)))
     .map((monthDate) => {
-      const monthEntries = expenses.filter((entry) => isSameMonth(entry.date, monthDate));
+      const monthEntries = expenses.filter((entry) => isSameMonth(entry.date, monthDate) && isSteerableExpense(entry, recurringIntervals));
       if (monthEntries.length === 0) return null;
-      const cutoffDay = Math.min(today.getDate(), daysInMonth(monthDate));
+      const cutoffDay = Math.min(getBerlinDayOfMonth(today), daysInMonth(monthDate));
       return {
         key: getMonthKey(monthDate),
         spendingToDate: sumByKind(monthEntries.filter((entry) => new Date(entry.date).getDate() <= cutoffDay), "EXPENSE"),
@@ -308,20 +353,27 @@ function buildCategorySignals(
   categories: CategoryEntry[],
   today: Date,
   comparableMonths: { key: string; spendingToDate: number; fullMonthSpending: number }[],
-  monthHref: string
+  monthHref: string,
+  recurringIntervals: RecurringIntervalMap
 ) {
-  if (comparableMonths.length === 0) return [];
+  if (comparableMonths.length === 0) return { attention: [], relief: [] };
   const categoryMeta = new Map(categories.map((category) => [category.id, category]));
-  const currentEntries = expenses.filter((entry) => entry.kind === "EXPENSE" && isSameMonth(entry.date, today) && new Date(entry.date) <= endOfDay(today));
+  const currentEntries = expenses.filter((entry) => (
+    entry.kind === "EXPENSE" &&
+    isSameMonth(entry.date, today) &&
+    new Date(entry.date) <= endOfDay(today) &&
+    isSteerableExpense(entry, recurringIntervals)
+  ));
   const currentByCategory = groupExpenseAmounts(currentEntries);
   const historicalByCategory = new Map<string, number[]>();
   for (const month of comparableMonths) {
     const monthDate = monthKeyToDate(month.key);
-    const cutoffDay = Math.min(today.getDate(), daysInMonth(monthDate));
+    const cutoffDay = Math.min(getBerlinDayOfMonth(today), daysInMonth(monthDate));
     const monthEntries = expenses.filter((entry) => (
       entry.kind === "EXPENSE" &&
       isSameMonth(entry.date, monthDate) &&
-      new Date(entry.date).getDate() <= cutoffDay
+      new Date(entry.date).getDate() <= cutoffDay &&
+      isSteerableExpense(entry, recurringIntervals)
     ));
     const grouped = groupExpenseAmounts(monthEntries);
     for (const key of new Set([...currentByCategory.keys(), ...grouped.keys()])) {
@@ -334,7 +386,7 @@ function buildCategorySignals(
   const rows = [...new Set([...currentByCategory.keys(), ...historicalByCategory.keys()])]
     .map((key) => {
       const amount = currentByCategory.get(key) ?? 0;
-      const usual = average(historicalByCategory.get(key) ?? []);
+      const usual = robustAverage(historicalByCategory.get(key) ?? []);
       const delta = amount - usual;
       const category = key === uncategorizedKey ? null : categoryMeta.get(key);
       return {
@@ -347,11 +399,18 @@ function buildCategorySignals(
         detail: usual > 0 ? `normal bis heute ${formatMoney(usual)}` : "sonst selten genutzt"
       };
     })
-    .filter((row) => row.amount > 0 || row.usual > 0)
-    .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))
-    .slice(0, 3);
-  const maxAmount = Math.max(...rows.map((row) => Math.max(row.amount, row.usual)), 1);
-  return rows.map((row) => ({ ...row, width: percentOf(row.amount, maxAmount) }));
+    .filter((row) => row.amount > 0 || row.usual > 0);
+
+  return {
+    attention: withSignalWidths(rows
+      .filter((row) => isAttentionSignal(row.amount, row.usual, row.delta))
+      .sort((a, b) => b.delta - a.delta)
+      .slice(0, 3)),
+    relief: withSignalWidths(rows
+      .filter((row) => isReliefSignal(row.usual, row.delta))
+      .sort((a, b) => a.delta - b.delta)
+      .slice(0, 2))
+  };
 }
 
 function groupExpenseAmounts(entries: ExpenseEntry[]) {
@@ -391,9 +450,92 @@ function endOfDay(date: Date) {
   return value;
 }
 
+function getGreeting(date: Date) {
+  const hour = getBerlinHour(date);
+  if (hour >= 5 && hour < 11) return "Guten Morgen";
+  if (hour >= 11 && hour < 18) return "Guten Tag";
+  if (hour >= 18 && hour < 23) return "Guten Abend";
+  return "Gute Nacht";
+}
+
+function getBerlinHour(date: Date) {
+  const hour = new Intl.DateTimeFormat("de-DE", {
+    hour: "2-digit",
+    hour12: false,
+    timeZone: berlinTimeZone
+  }).formatToParts(date).find((part) => part.type === "hour")?.value;
+  return Number(hour ?? "0");
+}
+
+function getBerlinDayOfMonth(date: Date) {
+  const day = new Intl.DateTimeFormat("de-DE", {
+    day: "2-digit",
+    timeZone: berlinTimeZone
+  }).formatToParts(date).find((part) => part.type === "day")?.value;
+  return Number(day ?? date.getDate());
+}
+
 function average(values: number[]) {
   if (values.length === 0) return 0;
   return Math.round(values.reduce((sum, value) => sum + value, 0) / values.length);
+}
+
+function robustAverage(values: number[]) {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  if (sorted.length >= 5) return average(sorted.slice(1, -1));
+  const middle = Math.floor(sorted.length / 2);
+  if (sorted.length % 2 === 1) return sorted[middle];
+  return Math.round((sorted[middle - 1] + sorted[middle]) / 2);
+}
+
+function withSignalWidths<T extends { amount: number; usual: number }>(rows: T[]) {
+  const maxAmount = Math.max(...rows.map((row) => Math.max(row.amount, row.usual)), 1);
+  return rows.map((row) => ({ ...row, width: percentOf(row.amount, maxAmount) }));
+}
+
+function isAttentionSignal(amount: number, usual: number, delta: number) {
+  if (usual <= 0) return amount >= 5000;
+  return delta >= signalThreshold(usual);
+}
+
+function isReliefSignal(usual: number, delta: number) {
+  return usual >= 5000 && delta <= -signalThreshold(usual);
+}
+
+function signalThreshold(usual: number) {
+  return Math.max(2500, Math.round(usual * 0.25));
+}
+
+function buildRecurringIntervalMap(recurringTransactions: RecurringTransactionEntry[]): RecurringIntervalMap {
+  return new Map(recurringTransactions.map((transaction) => [transaction.id, transaction.pricePhases]));
+}
+
+function isSteerableExpense(entry: ExpenseEntry, recurringIntervals: RecurringIntervalMap) {
+  if (entry.kind !== "EXPENSE") return true;
+  const interval = linkedExpenseInterval(entry, recurringIntervals);
+  return interval !== "ONCE" && interval !== "QUARTERLY" && interval !== "YEARLY";
+}
+
+function linkedExpenseInterval(entry: ExpenseEntry, recurringIntervals: RecurringIntervalMap): BillingInterval | null {
+  const entryDate = new Date(entry.date);
+  if (entry.contract) {
+    return entry.contract.billingInterval;
+  }
+  if (entry.recurringTransactionId) {
+    return pricePhaseInterval(recurringIntervals.get(entry.recurringTransactionId) ?? [], entryDate);
+  }
+  return null;
+}
+
+function pricePhaseInterval(phases: PricePhaseEntry[], date: Date): BillingInterval | null {
+  return phases
+    .filter((phase) => {
+      const validFrom = new Date(phase.validFrom);
+      const validTo = phase.validTo ? new Date(phase.validTo) : null;
+      return validFrom.getTime() <= date.getTime() && (!validTo || date.getTime() <= validTo.getTime());
+    })
+    .sort((a, b) => new Date(b.validFrom).getTime() - new Date(a.validFrom).getTime())[0]?.billingInterval ?? null;
 }
 
 function percentOf(value: number, max: number) {
@@ -406,3 +548,11 @@ function formatSignedMoney(amountCents: number) {
 }
 
 const uncategorizedKey = "__uncategorized__";
+
+type BillingInterval = "MONTHLY" | "QUARTERLY" | "YEARLY" | "ONCE" | "OTHER";
+type PricePhaseEntry = {
+  billingInterval: BillingInterval;
+  validFrom: Date | string;
+  validTo: Date | string | null;
+};
+type RecurringIntervalMap = Map<string, PricePhaseEntry[]>;

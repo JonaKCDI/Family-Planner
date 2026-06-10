@@ -101,7 +101,18 @@ export async function buildSyncPull(session: SyncSession, since: string | null) 
           { assignedToUserId: session.user.id }
         ]
       },
-      include: { owner: true, assignee: true },
+      include: {
+        owner: true,
+        assignee: true,
+        recurringTask: {
+          select: {
+            id: true,
+            title: true,
+            intervalCount: true,
+            intervalUnit: true
+          }
+        }
+      },
       orderBy: { updatedAt: "asc" }
     })
   ]);
@@ -317,6 +328,14 @@ function serializeTask(task: Awaited<ReturnType<typeof getVisibleTasks>>[number]
     status: task.status,
     priority: task.priority,
     dueDate: task.dueDate?.toISOString() ?? null,
+    recurringTaskId: task.recurringTaskId,
+    recurringTaskDueDate: task.recurringTaskDueDate?.toISOString() ?? null,
+    recurringTask: task.recurringTask ? {
+      id: task.recurringTask.id,
+      title: task.recurringTask.title,
+      intervalCount: task.recurringTask.intervalCount,
+      intervalUnit: task.recurringTask.intervalUnit
+    } : null,
     scope: task.scope,
     assignedToUserId: task.assignedToUserId,
     updatedAt: task.updatedAt.toISOString(),
