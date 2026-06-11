@@ -5602,8 +5602,20 @@ body,
   .expense-row:not(.mileage-row) summary .expense-summary-amount {
     position: absolute;
     top: 50%;
-    right: 2rem;
+    right: 3rem;
+    width: min(38vw, 10rem);
     transform: translateY(-50%);
+    text-align: right;
+  }
+
+  .expense-row:not(.mileage-row) summary::after {
+    top: 0.95rem;
+    right: 1rem;
+    transform: rotate(45deg);
+  }
+
+  .expense-row:not(.mileage-row)[open] summary::after {
+    transform: rotate(225deg);
   }
 
   .expense-row:not(.mileage-row) summary .expense-summary-main {
