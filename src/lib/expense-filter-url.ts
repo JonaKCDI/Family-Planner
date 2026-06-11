@@ -1,3 +1,5 @@
+import { isExpenseSortKey, type ExpenseSortKey } from "@/lib/expense-sorting";
+
 export type ExpenseFilterParams = {
   from?: string | null;
   to?: string | null;
@@ -6,11 +8,12 @@ export type ExpenseFilterParams = {
   label?: string | null;
   category?: string | null;
   q?: string | null;
+  sort?: ExpenseSortKey | string | null;
   compareA?: string | null;
   compareB?: string | null;
 };
 
-const orderedKeys = ["from", "to", "year", "month", "label", "category", "q", "compareA", "compareB"] as const;
+const orderedKeys = ["from", "to", "year", "month", "label", "category", "q", "sort", "compareA", "compareB"] as const;
 
 export function getMonthKey(date = new Date()) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
@@ -95,6 +98,8 @@ function normalizeExpenseParams(params: ExpenseFilterParams) {
   } else if (next.year) {
     delete next.month;
   }
+
+  if (next.sort && !isExpenseSortKey(next.sort)) delete next.sort;
 
   return next;
 }

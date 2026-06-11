@@ -213,6 +213,13 @@ textarea {
   font-size: 0.9rem;
 }
 
+.form label small {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
 .form input,
 .form select,
 .form textarea {
@@ -484,6 +491,9 @@ textarea {
 
 .expense-section-summary {
   display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.9rem;
+  align-items: center;
   min-width: 0;
   cursor: pointer;
   list-style: none;
@@ -503,9 +513,53 @@ textarea {
   margin-bottom: 0;
 }
 
+.expense-section-heading {
+  min-width: 0;
+}
+
+.expense-section-meta {
+  min-width: 0;
+  white-space: normal;
+}
+
 .expense-load-more {
   justify-self: center;
   width: min(100%, 260px);
+}
+
+.expense-sort-control {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  justify-self: end;
+  min-width: 0;
+}
+
+.expense-sort-control > span {
+  max-width: 16rem;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 800;
+  white-space: normal;
+}
+
+.expense-sort-trigger {
+  width: 40px;
+  min-height: 38px;
+  padding-inline: 0;
+}
+
+.expense-sort-modal-form {
+  margin-top: 0.25rem;
+}
+
+.expense-sort-modal-form select {
+  min-width: 0;
+  width: 100%;
+  border: 1px solid #cfc9bd;
+  border-radius: 8px;
+  background: #fff;
+  padding: 0.62rem 0.7rem;
 }
 
 .category-editor-list,
@@ -1754,6 +1808,15 @@ body {
   color: #34383d;
 }
 
+.expense-secondary-actions {
+  justify-content: end;
+}
+
+.expense-secondary-actions .button {
+  background: #fbfaf6;
+  color: var(--muted);
+}
+
 .month-switcher {
   display: grid;
   grid-template-columns: 44px minmax(0, 1fr) 44px;
@@ -2094,6 +2157,18 @@ body {
   gap: 0.85rem;
 }
 
+.expense-setup-page-layout {
+  display: grid;
+  gap: 1rem;
+}
+
+.setup-page-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  margin: -0.35rem 0 1rem;
+}
+
 .setup-card {
   min-width: 0;
   border: 1px solid var(--line);
@@ -2145,6 +2220,66 @@ body {
 .setup-two-column {
   display: grid;
   gap: 0.75rem;
+}
+
+.inline-edit-row {
+  align-items: start;
+}
+
+.inline-edit-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(9rem, 0.8fr) minmax(8rem, 0.7fr) minmax(4.5rem, auto);
+  align-items: end;
+  gap: 0.55rem;
+  min-width: 0;
+}
+
+.autosave-status {
+  grid-column: 1 / -1;
+  min-height: 1.1rem;
+  color: var(--accent-dark);
+  font-size: 0.78rem;
+  font-weight: 800;
+  opacity: 0;
+  transition: opacity 0.18s ease;
+}
+
+.autosave-status.saved {
+  opacity: 1;
+}
+
+.autosave-status.saved::before {
+  content: "✓ ";
+}
+
+.modal-form-section {
+  background: #fbfaf6;
+}
+
+.contract-price-sync-toggle {
+  max-width: max-content;
+}
+
+.optional-section {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  padding: 0.85rem;
+}
+
+.optional-section summary {
+  cursor: pointer;
+  color: var(--accent-dark);
+  font-weight: 900;
+  list-style: none;
+}
+
+.optional-section summary::-webkit-details-marker {
+  display: none;
+}
+
+.optional-section[open] summary {
+  margin-bottom: 0.8rem;
 }
 
 .car-setup-card {
@@ -2441,6 +2576,102 @@ body {
   align-items: stretch;
 }
 
+.mileage-car-trigger,
+.mileage-car-static {
+  border-color: var(--line);
+  background: #fff;
+  color: var(--accent-dark);
+  font-weight: 900;
+}
+
+.mileage-car-trigger {
+  min-width: 9rem;
+}
+
+.mileage-car-menu {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.mileage-car-menu a {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  padding: 0.75rem;
+}
+
+.mileage-car-menu a.active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.mileage-car-menu a > span:last-child {
+  display: grid;
+  gap: 0.1rem;
+}
+
+.mileage-car-menu small {
+  color: var(--muted);
+  font-weight: 700;
+}
+
+@media (min-width: 901px) {
+  .filter-system {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+  }
+
+  .period-navigator {
+    grid-column: 1;
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .expense-secondary-actions {
+    grid-column: 2;
+    grid-row: 1;
+    flex-wrap: nowrap;
+    align-self: stretch;
+    align-items: stretch;
+    margin: 0;
+  }
+
+  .period-tools .button,
+  .expense-secondary-actions .button {
+    min-height: 44px;
+    padding-inline: 0.9rem;
+    font-size: 0.9rem;
+  }
+
+  .expense-secondary-actions .button {
+    border-color: var(--line);
+    background: #fff;
+  }
+
+  .mileage-secondary-actions {
+    grid-column: 2;
+    grid-row: 1;
+    flex-wrap: nowrap;
+    align-self: stretch;
+    align-items: stretch;
+    margin: 0;
+  }
+
+  .mileage-secondary-actions .button {
+    min-height: 44px;
+    border-color: var(--line);
+    background: #fff;
+    padding-inline: 0.9rem;
+    font-size: 0.9rem;
+  }
+
+  .active-filter-row {
+    grid-column: 1 / -1;
+  }
+}
+
 .period-tabs {
   display: flex;
   gap: 0.4rem;
@@ -2714,17 +2945,72 @@ body {
   color: var(--muted);
 }
 
-.label-management-actions,
-.category-editor-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem;
-  justify-content: flex-end;
+.category-management-row strong {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
 }
 
-.label-management-actions form,
-.category-editor-actions form {
+.label-management-actions,
+.category-editor-actions {
+  display: grid;
+  gap: 0.4rem;
+  grid-template-columns: repeat(3, minmax(7rem, 1fr));
+  justify-content: flex-end;
+  align-items: start;
+  width: min(100%, 34rem);
+}
+
+.label-management-actions > form,
+.category-editor-actions > form {
   display: contents;
+}
+
+.category-management-row .label-management-actions {
+  grid-template-columns: repeat(2, minmax(8rem, 1fr));
+  width: min(100%, 23rem);
+}
+
+.category-management-row .label-management-actions:has(.management-inline-panel) {
+  grid-template-columns: repeat(2, minmax(8rem, 1fr));
+  width: min(100%, 36rem);
+}
+
+.management-inline-panel {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  margin-top: 0.55rem;
+}
+
+.label-management-actions:has(.management-inline-panel) > .button {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.label-management-actions:has(.management-inline-panel) > form {
+  display: none;
+}
+
+.label-inline-form {
+  display: grid;
+  grid-template-columns: minmax(10rem, 1.2fr) minmax(7rem, 0.8fr) minmax(5rem, 0.5fr);
+  align-items: end;
+  gap: 0.55rem;
+  min-width: 0;
+  max-width: 36rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfaf6;
+  padding: 0.65rem;
+}
+
+.label-inline-form label {
+  min-width: 0;
+}
+
+.label-inline-form input[type="color"] {
+  min-height: 2.7rem;
+  padding: 0.2rem;
 }
 
 .category-editor-actions {
@@ -2740,7 +3026,7 @@ body {
   margin: 0;
 }
 
-.expense-row summary span:nth-child(2) {
+.expense-row summary .expense-summary-main {
   display: grid;
   gap: 0.08rem;
 }
@@ -3813,7 +4099,8 @@ details > summary {
   }
 
   .expense-row summary {
-    grid-template-columns: 72px minmax(0, 1fr) minmax(92px, auto);
+    grid-template-columns: minmax(0, 1fr) minmax(5.25rem, 7rem);
+    gap: 0.25rem 0.65rem;
   }
 
   .expense-overview-tags {
@@ -3822,8 +4109,54 @@ details > summary {
   }
 
   .expense-row summary strong {
-    grid-column: 3;
+    grid-column: 2;
     grid-row: 1;
+  }
+
+  .expense-row summary .expense-summary-date {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .expense-row summary .expense-summary-main {
+    display: block;
+    grid-column: 1;
+    grid-row: 2;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .expense-row summary .expense-summary-main small {
+    display: inline;
+    white-space: nowrap;
+  }
+
+  .expense-row summary .expense-summary-main small::before {
+    content: " \00b7 ";
+  }
+
+  .expense-row summary .expense-summary-amount {
+    grid-column: 2;
+    grid-row: 1;
+    justify-self: end;
+    text-align: right;
+  }
+
+  .expense-row summary .expense-overview-tags {
+    grid-column: 2;
+    grid-row: 2;
+    width: 100%;
+    max-width: 7rem;
+    flex-flow: row nowrap;
+    flex-wrap: nowrap;
+    overflow: hidden;
+    justify-content: flex-end;
+  }
+
+  .expense-row summary .overview-tag {
+    max-width: 100%;
   }
 
   .mileage-row summary {
@@ -4621,24 +4954,83 @@ body,
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .label-management-row .button {
+  .label-management-actions {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     width: 100%;
   }
 
+  .category-management-row .label-management-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
+  }
+
+  .label-management-actions .button {
+    width: 100%;
+    min-width: 0;
+    padding-inline: 0.55rem;
+  }
+
+  .label-inline-form {
+    grid-template-columns: minmax(0, 1fr);
+    max-width: none;
+  }
+
   .expense-row summary {
-    grid-template-columns: minmax(4.35rem, 0.42fr) minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr) minmax(5.25rem, 7rem);
+    gap: 0.25rem 0.65rem;
     padding-right: 1.75rem;
+  }
+
+  .expense-row summary .expense-summary-date {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .expense-row summary .expense-summary-main {
+    display: block;
+    grid-column: 1;
+    grid-row: 2;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .expense-row summary .expense-summary-main small {
+    display: inline;
+    white-space: nowrap;
+  }
+
+  .expense-row summary .expense-summary-main small::before {
+    content: " \00b7 ";
   }
 
   .expense-row summary > strong,
   .expense-row summary .expense-overview-tags {
-    grid-column: 2;
+    min-width: 0;
   }
 
   .expense-row summary > strong {
+    grid-column: 2;
+    grid-row: 1;
     max-width: 100%;
-    justify-self: start;
-    text-align: left;
+    justify-self: end;
+    text-align: right;
+  }
+
+  .expense-row summary .expense-overview-tags {
+    grid-column: 2;
+    grid-row: 2;
+    width: 100%;
+    max-width: 7rem;
+    flex-flow: row nowrap;
+    flex-wrap: nowrap;
+    overflow: hidden;
+    justify-content: flex-end;
+  }
+
+  .expense-row summary .overview-tag {
+    max-width: 100%;
   }
 
   .expense-overview-tags {
@@ -4760,5 +5152,335 @@ body,
     font-size: 0.82rem;
     line-height: 1.12;
     white-space: nowrap;
+  }
+}
+
+/* Final modal safety layer: iPhone/PWA safe areas and stable close/submit placement. */
+.modal-panel {
+  box-sizing: border-box;
+  position: relative;
+}
+
+.modal-close-button {
+  position: absolute;
+  top: 0.75rem;
+  right: 0.75rem;
+  z-index: 5;
+  width: 44px;
+  height: 44px;
+}
+
+.modal-submit-row {
+  grid-column: 1 / -1;
+}
+
+.modal-submit-row .button {
+  width: 100%;
+}
+
+/* Expense cards: prioritize date, description, amount, and category. */
+.expense-row:not(.mileage-row) summary {
+  grid-template-columns: minmax(0, 1fr) minmax(9.5rem, auto);
+  align-items: center;
+  gap: 0.65rem 0.85rem;
+  padding: 0.82rem 2rem 0.82rem 0.82rem;
+}
+
+.expense-row:not(.mileage-row) summary .expense-summary-copy {
+  display: grid;
+  min-width: 0;
+  gap: 0.34rem;
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+}
+
+.expense-row:not(.mileage-row) summary .expense-summary-date,
+.expense-row:not(.mileage-row) summary .expense-summary-main {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.expense-row:not(.mileage-row) summary .expense-summary-date {
+  color: #111827;
+}
+
+.expense-row:not(.mileage-row) summary .expense-summary-main {
+  font-size: 0.98rem;
+}
+
+.expense-row:not(.mileage-row) summary .expense-overview-tags {
+  display: flex;
+  grid-column: auto;
+  grid-row: auto;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  flex-flow: row wrap;
+  justify-content: flex-start;
+  gap: 0.34rem;
+  overflow: hidden;
+}
+
+.expense-row:not(.mileage-row) summary .expense-summary-value {
+  display: grid;
+  min-width: 0;
+  max-width: min(46vw, 21rem);
+  align-content: center;
+  justify-items: end;
+  justify-content: flex-end;
+  gap: 0.38rem;
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+}
+
+.expense-row:not(.mileage-row) summary .expense-summary-amount {
+  flex: 0 0 auto;
+  max-width: 100%;
+  justify-self: auto;
+  text-align: right;
+}
+
+.expense-row:not(.mileage-row) summary .expense-category-tag {
+  max-width: 8.5rem;
+  flex: 0 1 auto;
+}
+
+.expense-row:not(.mileage-row) summary .meta-overview-tag {
+  color: #4c5960;
+  font-weight: 760;
+}
+
+@media (max-width: 700px) {
+  .expense-row:not(.mileage-row) summary {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.5rem;
+    position: relative;
+  }
+
+  .expense-row:not(.mileage-row) summary .expense-summary-value {
+    position: absolute;
+    top: 0.82rem;
+    right: 2rem;
+    max-width: min(56vw, 12rem);
+    justify-content: flex-end;
+  }
+
+  .expense-row:not(.mileage-row) summary .expense-summary-copy {
+    padding-right: 0;
+  }
+
+  .expense-row:not(.mileage-row) summary .expense-summary-date {
+    box-sizing: border-box;
+    padding-right: min(54vw, 11.5rem);
+  }
+
+  .expense-row:not(.mileage-row) summary .expense-overview-tags {
+    flex-wrap: nowrap;
+  }
+
+  .expense-row:not(.mileage-row) summary .expense-category-tag {
+    max-width: min(42vw, 9rem);
+  }
+}
+
+.period-link-pending {
+  opacity: 0.68;
+  pointer-events: none;
+}
+
+.expense-row:not(.mileage-row) summary .expense-summary-value {
+  display: grid;
+  align-content: center;
+  justify-items: end;
+  gap: 0.38rem;
+}
+
+.expense-row:not(.mileage-row) summary .expense-summary-value > * {
+  grid-column: 1;
+  grid-row: auto;
+  justify-self: end;
+}
+
+.expense-row:not(.mileage-row) summary .expense-summary-value .expense-summary-amount {
+  text-align: right;
+}
+
+@media (max-width: 900px), (max-height: 760px), (max-aspect-ratio: 4/5) {
+  .modal-backdrop,
+  .action-modal-backdrop {
+    inset: 0;
+    width: 100%;
+    height: 100dvh;
+    min-height: 100dvh;
+    overflow: hidden;
+    padding: 0;
+  }
+
+  .modal-backdrop > .modal-panel,
+  .action-modal-backdrop > .modal-panel,
+  .modal-panel,
+  .modal-panel.action-modal-wide {
+    position: fixed;
+    inset: 0;
+    box-sizing: border-box;
+    width: 100vw;
+    max-width: 100vw;
+    height: 100dvh;
+    min-height: 100dvh;
+    max-height: 100dvh;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    border: 0;
+    border-radius: 0;
+    padding: calc(1rem + env(safe-area-inset-top)) max(1rem, env(safe-area-inset-right)) calc(1rem + env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left));
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .modal-panel .modal-head {
+    position: sticky;
+    top: calc(-1rem - env(safe-area-inset-top));
+    z-index: 3;
+    align-items: center;
+    background: #fff;
+    border-bottom: 1px solid var(--line);
+    margin: calc(-1rem - env(safe-area-inset-top)) calc(-1 * max(1rem, env(safe-area-inset-right))) 0 calc(-1 * max(1rem, env(safe-area-inset-left)));
+    padding: calc(1rem + env(safe-area-inset-top)) calc(4.6rem + env(safe-area-inset-right)) 0.85rem max(1rem, env(safe-area-inset-left));
+  }
+
+  .modal-close-button {
+    position: fixed !important;
+    top: calc(0.75rem + env(safe-area-inset-top)) !important;
+    right: calc(1.25rem + env(safe-area-inset-right)) !important;
+    z-index: 1002 !important;
+    width: 44px !important;
+    height: 44px !important;
+    margin: 0 !important;
+  }
+
+  .modal-submit-row {
+    padding-bottom: calc(8rem + env(safe-area-inset-bottom));
+  }
+
+  .modal-submit-row .button {
+    position: static;
+    box-shadow: none;
+  }
+
+  .inline-edit-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .expense-setup-page-layout {
+    gap: 0.75rem;
+  }
+
+  .create-dialog .button[type="submit"] {
+    min-height: 48px;
+  }
+}
+
+/* Final expense list layout: desktop stays table-like, compact views prioritize value/category. */
+@media (min-width: 901px) {
+  .expense-row:not(.mileage-row) summary {
+    grid-template-columns: minmax(8rem, 0.35fr) minmax(0, 1fr) minmax(10rem, auto) minmax(7rem, auto);
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.85rem 2rem 0.85rem 0.85rem;
+  }
+
+  .expense-row:not(.mileage-row) summary .expense-summary-copy,
+  .expense-row:not(.mileage-row) summary .expense-summary-value {
+    display: contents;
+  }
+
+  .expense-row:not(.mileage-row) summary .expense-summary-date {
+    grid-column: 1;
+    grid-row: 1 / span 2;
+    padding-right: 0;
+  }
+
+  .expense-row:not(.mileage-row) summary .expense-summary-main {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .expense-row:not(.mileage-row) summary .expense-overview-tags {
+    grid-column: 2;
+    grid-row: 2;
+    width: 100%;
+    max-width: 100%;
+    flex-wrap: nowrap;
+  }
+
+  .expense-row:not(.mileage-row) summary .expense-category-tag {
+    grid-column: 3;
+    grid-row: 1 / span 2;
+    max-width: 14rem;
+    justify-self: end;
+  }
+
+  .expense-row:not(.mileage-row) summary .expense-summary-amount {
+    grid-column: 4;
+    grid-row: 1 / span 2;
+    justify-self: end;
+  }
+}
+
+@media (max-width: 900px) {
+  .expense-row:not(.mileage-row) summary {
+    grid-template-columns: minmax(0, 1fr) minmax(7.5rem, auto);
+    align-items: center;
+    gap: 0.65rem;
+    position: relative;
+    padding: 0.82rem 2rem 0.82rem 0.82rem;
+  }
+
+  .expense-row:not(.mileage-row) summary .expense-summary-copy {
+    display: grid;
+    grid-column: 1;
+    min-width: 0;
+    gap: 0.34rem;
+    padding-right: 0;
+  }
+
+  .expense-row:not(.mileage-row) summary .expense-summary-date,
+  .expense-row:not(.mileage-row) summary .expense-summary-main {
+    padding-right: 0;
+  }
+
+  .expense-row:not(.mileage-row) summary .expense-overview-tags {
+    grid-column: auto;
+    grid-row: auto;
+    width: 100%;
+    max-width: 100%;
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+  }
+
+  .expense-row:not(.mileage-row) summary .expense-summary-value {
+    position: static;
+    display: grid;
+    grid-column: 2;
+    min-width: 0;
+    max-width: min(34vw, 12rem);
+    align-content: center;
+    justify-items: end;
+    justify-self: end;
+    gap: 0.38rem;
+  }
+
+  .expense-row:not(.mileage-row) summary .expense-summary-value > * {
+    grid-column: 1;
+    grid-row: auto;
+    justify-self: end;
+  }
+
+  .expense-row:not(.mileage-row) summary .expense-category-tag {
+    max-width: min(34vw, 10rem);
   }
 }

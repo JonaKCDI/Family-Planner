@@ -128,7 +128,24 @@ describe("expense filter URLs", () => {
       year: "2026",
       q: "versicherung",
       category: "cat_1",
-      label: "label_1"
-    }, 2026, -1)).toBe("/ausgaben?year=2025&label=label_1&category=cat_1&q=versicherung");
+      label: "label_1",
+      sort: "amount-desc"
+    }, 2026, -1)).toBe("/ausgaben?year=2025&label=label_1&category=cat_1&q=versicherung&sort=amount-desc");
+  });
+
+  test("sort is independent from filters and invalid values are removed", () => {
+    expect(buildFilterHref({
+      month: "2026-06",
+      sort: "category-frequency-desc"
+    }, {
+      category: "cat_food",
+      label: undefined,
+      q: "markt"
+    })).toBe("/ausgaben?month=2026-06&category=cat_food&q=markt&sort=category-frequency-desc");
+
+    expect(getCanonicalExpensesHref({
+      month: "2026-06",
+      sort: "pricey"
+    })).toBe("/ausgaben?month=2026-06");
   });
 });

@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
 import { toExpenseDocumentItem, toExpenseListItem } from "@/lib/expense-list";
 import { getMonthKey, type ExpenseFilterParams } from "@/lib/expense-filter-url";
+import { matchesExpenseSearch } from "@/lib/expense-search";
+import { sortExpenseEntries } from "@/lib/expense-sorting";
 import { getDocumentsForLinkedEntities, getVisibleExpenses } from "@/lib/queries";
 
 export async function GET(request: Request) {
@@ -10,17 +12,26 @@ export async function GET(request: Request) {
   const params = searchParamsToExpenseParams(url.searchParams);
   const offset = boundedInteger(url.searchParams.get("offset"), 0, 0, 10000);
   const limit = boundedInteger(url.searchParams.get("limit"), 100, 1, 100);
-  const range = getRange(params, getMonthKey());
   const query = normalizeSearch(params.q);
 
   const expenses = await getVisibleExpenses(session.family.id, session.user.id);
-  const selectedEntries = expenses
+  const range = getRange(params, getMonthKey(), expenses);
+  const rangeFilteredEntries = expenses
     .filter((entry) => isInRange(entry.date, range.from, range.to))
     .filter((entry) => !params.label || entry.labelId === params.label)
-    .filter((entry) => !params.category || entry.categoryId === params.category)
-    .filter((entry) => !query || matchesExpense(entry, query));
-  const entries = selectedEntries.slice(offset, offset + limit);
-  const documents = await getDocumentsForLinkedEntities(session.family.id, session.user.id, "EXPENSE", entries.map((entry) => entry.id));
+    .filter((entry) => !params.category || entry.categoryId === params.category);
+  const searchableDocuments = query
+    ? await getDocumentsForLinkedEntities(session.family.id, session.user.id, "EXPENSE", rangeFilteredEntries.map((entry) => entry.id))
+    : [];
+  const searchableDocumentsByExpense = groupBy(searchableDocuments, (document) => document.linkedEntityId ?? "");
+  const selectedEntries = rangeFilteredEntries
+    .filter((entry) => !query || matchesExpenseSearch(entry, query, { documents: searchableDocumentsByExpense[entry.id] ?? [] }));
+  const sortedEntries = sortExpenseEntries(selectedEntries, params.sort);
+  const entries = sortedEntries.slice(offset, offset + limit);
+  const entryIds = new Set(entries.map((entry) => entry.id));
+  const documents = query
+    ? searchableDocuments.filter((document) => document.linkedEntityId ? entryIds.has(document.linkedEntityId) : false)
+    : await getDocumentsForLinkedEntities(session.family.id, session.user.id, "EXPENSE", entries.map((entry) => entry.id));
 
   return NextResponse.json({
     entries: entries.map(toExpenseListItem),
@@ -37,7 +48,8 @@ function searchParamsToExpenseParams(searchParams: URLSearchParams): ExpenseFilt
     month: searchParams.get("month"),
     label: searchParams.get("label"),
     category: searchParams.get("category"),
-    q: searchParams.get("q")
+    q: searchParams.get("q"),
+    sort: searchParams.get("sort")
   };
 }
 
@@ -47,7 +59,7 @@ function boundedInteger(value: string | null, fallback: number, min: number, max
   return Math.min(max, Math.max(min, parsed));
 }
 
-function getRange(params: ExpenseFilterParams, currentMonthKey: string) {
+function getRange(params: ExpenseFilterParams, currentMonthKey: string, expenses: Awaited<ReturnType<typeof getVisibleExpenses>>) {
   const fallbackMonth = monthRange(currentMonthKey) ?? monthRange(getMonthKey())!;
   if (params.from || params.to) {
     return {
@@ -62,6 +74,9 @@ function getRange(params: ExpenseFilterParams, currentMonthKey: string) {
   if (params.year) {
     const year = Number(params.year);
     return { from: new Date(year, 0, 1), to: endOfDay(new Date(year, 11, 31)) };
+  }
+  if (hasFacetFilter(params)) {
+    return allExpenseRange(expenses) ?? fallbackMonth;
   }
   return fallbackMonth;
 }
@@ -80,23 +95,22 @@ function endOfDay(date: Date) {
   return date;
 }
 
+function allExpenseRange(expenses: Awaited<ReturnType<typeof getVisibleExpenses>>) {
+  if (expenses.length === 0) return null;
+  const times = expenses.map((expense) => new Date(expense.date).getTime());
+  return {
+    from: new Date(Math.min(...times)),
+    to: endOfDay(new Date(Math.max(...times)))
+  };
+}
+
+function hasFacetFilter(params: ExpenseFilterParams) {
+  return Boolean(params.q || params.category || params.label);
+}
+
 function isInRange(date: Date, from: Date, to: Date) {
   const value = new Date(date).getTime();
   return value >= from.getTime() && value <= to.getTime();
-}
-
-function matchesExpense(entry: Awaited<ReturnType<typeof getVisibleExpenses>>[number], query: string) {
-  return [
-    entry.description,
-    entry.store,
-    entry.paymentMethod,
-    entry.category?.name,
-    entry.label?.name,
-    entry.contract?.provider,
-    entry.contract?.contractType,
-    entry.kind === "INCOME" ? "einnahme" : "ausgabe",
-    entry.currency
-  ].some((value) => normalizeSearch(value).includes(query));
 }
 
 function normalizeSearch(value: unknown) {

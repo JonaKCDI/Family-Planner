@@ -30,6 +30,39 @@
 
 ## Agent Coordination
 
+- 2026-06-11 Codex: Prepared the app for deployment readiness after expense sorting/search, modal cleanup, and contract automation UI work.
+  - User goal: make the current app deployment-ready, verify search coverage, automated behavior, bug risk, and Synology deployment safety.
+  - User preferences locked in:
+    - Expense search should cover all user-visible entry information, not internal IDs.
+    - Deployment readiness should include a local Docker/Compose trial run before Synology handoff.
+    - Synology deployment should be treated as an update with existing data, so backups and volume preservation are mandatory.
+  - Current verified facts:
+    - `npm.cmd test` passed: 11 test files, 84 tests.
+    - `npm.cmd run lint` passed after fixing React hook and JSX quote blockers.
+    - `npm.cmd run build` passed after stopping the local dev server to release the Prisma Windows DLL lock.
+    - Localhost was restarted and `/api/health` returned `ok`.
+    - Browser smoke test passed for expense search, sort modal, global create modal, contracts with auto-expense/payment signals, and tasks page load.
+    - Docker CLI is not available in this Windows environment, so the local Docker/Compose trial run remains the only unexecuted readiness item before Synology handoff.
+  - Release blocker status:
+    - Lint errors in `src/app/(app)/vertraege/page.tsx` and `src/components/create-modal.tsx` from unescaped JSX quotes are fixed.
+    - `src/components/action-modal.tsx` avoids synchronous `setState` inside effects while preserving immediate modal opening for URL-backed modals.
+    - `src/components/autosave-form.tsx` avoids synchronous saved-status restoration inside effects.
+    - `src/components/period-nav-link.tsx` no longer uses an effect-based pending reset.
+    - Stop the local dev server before future `npm.cmd run build` runs if Prisma reports a Windows DLL lock again.
+  - Expense search status:
+    - `src/lib/expense-search.ts` now searches description, store, payment method, category, label, contract provider/type, kind, currency, amount formats, visible date text/date key, document title/url, fuel/tankstop metadata, recurring series title, and visible auto-contract/auto-fuel labels.
+    - Search intentionally does not target internal IDs.
+  - Automation status:
+    - Existing tests cover contract cancellation/renewal dates, automatic contract expenses, recurring transaction dates, price phase selection, paused/deleted recurring series, recurring task generation, lead times, month-end clamping, leap-year schedules, paused/archived/ended recurring tasks, and stale-plan advancement.
+    - Added/verified coverage for price phases split by the "Preis gilt ab" date; generated historical expenses are only updated by the server action when `updateGeneratedExpenses` is checked.
+  - Synology deployment safety:
+    - Treat deployment as existing-data update.
+    - Confirm fresh `.sql.gz` backup before updating.
+    - Preserve existing PostgreSQL Docker volume.
+    - Use `deploy/synology/compose.yaml`; app waits for DB, runs `prisma migrate deploy`, then starts Next.js via `scripts/docker-entrypoint.mjs`.
+    - Verify `APP_URL`, export folders, mileage folders, and backup folder mounts.
+    - Run a local Docker/Compose trial with temporary project name and temporary folders before touching Synology once Docker is available.
+  - Files touched in this readiness pass: `AGENTS.md`, `src/lib/expense-search.ts`, `tests/expense-search.test.ts`, `tests/contracts.test.ts`, `src/components/action-modal.tsx`, `src/components/autosave-form.tsx`, `src/components/period-nav-link.tsx`, `src/app/(app)/ausgaben/page.tsx`, `src/app/api/expenses/list/route.ts`, `src/app/(app)/vertraege/page.tsx`, and `src/components/create-modal.tsx`.
 - 2026-06-10 Codex: Working on dashboard/cockpit rework requested by the user.
   - Scope: time-based greeting, robust finance comparison/signals, direct task completion from cockpit, and dashboard revalidation for task status updates.
   - Expected files: `src/app/(app)/dashboard/page.tsx`, `src/lib/actions.ts`, `src/lib/queries.ts`, and narrowly scoped dashboard styles in `src/app/globals.css`.

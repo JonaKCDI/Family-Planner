@@ -150,6 +150,32 @@ describe("automatic contract expenses", () => {
     expect(getPricePhaseForDate(phases, new Date(Date.UTC(2025, 11, 31)))).toBeNull();
   });
 
+  test("keeps price phases separated by the Preis gilt ab date", () => {
+    const phases = [
+      { amountCents: 2000, currency: "EUR", billingInterval: "MONTHLY" as const, validFrom: new Date(Date.UTC(2026, 0, 1)), validTo: new Date(Date.UTC(2026, 1, 28)) },
+      { amountCents: 2500, currency: "EUR", billingInterval: "MONTHLY" as const, validFrom: new Date(Date.UTC(2026, 2, 1)), validTo: null }
+    ];
+    const dates = getDueContractExpenseDates({
+      id: "contract-1",
+      familyId: "family-1",
+      ownerUserId: "user-1",
+      provider: "Abo",
+      contractType: "Preisphase",
+      costCents: 2500,
+      currency: "EUR",
+      billingInterval: "MONTHLY",
+      startDate: new Date(Date.UTC(2026, 0, 1)),
+      endDate: null,
+      status: "ACTIVE",
+      autoRenewal: true,
+      autoCreateExpenses: true,
+      expensePaymentDay: 1,
+      pricePhases: phases
+    }, new Date(Date.UTC(2026, 2, 2)));
+
+    expect(dates.map((date) => getPricePhaseForDate(phases, date)?.amountCents)).toEqual([2000, 2000, 2500]);
+  });
+
   test("generates recurring transaction dates and respects pause and soft delete", () => {
     const base = {
       id: "series-1",
