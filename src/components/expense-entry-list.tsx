@@ -137,25 +137,27 @@ function ExpenseEntryRow({
   return (
     <details className="expense-row" onToggle={(event) => { if (event.currentTarget.open) setLoaded(true); }}>
       <summary>
-        <span className="expense-summary-date">{formatDate(expense.date)}</span>
-        <span className="expense-summary-main">
-          {expense.description}
-          {overviewMeta.length > 0 ? <small>{overviewMeta.join(" · ")}</small> : null}
+        <span className="expense-summary-copy">
+          <span className="expense-summary-date">{formatDate(expense.date)}</span>
+          <span className="expense-summary-main">{expense.description}</span>
+          <span className="expense-overview-tags">
+            {overviewMeta.map((item, index) => <span className="overview-tag meta-overview-tag" key={`${item}-${index}`}>{item}</span>)}
+            {expense.label ? <span className="overview-tag label-overview-tag" style={{ background: expense.label.color }}>{expense.label.name}</span> : null}
+            {expense.contract ? <span className="overview-tag">{expense.contract.provider}</span> : null}
+            {expense.generatedByContract ? <span className="overview-tag source-tag">Auto-Vertrag</span> : null}
+            {expense.recurringTransaction ? <span className="overview-tag source-tag">Serie: {expense.recurringTransaction.title}</span> : null}
+            {expense.fuelEntry ? <FuelEntryTag expense={expense} variant="overview" /> : null}
+            {duplicateCount > 1 ? <span className="overview-tag duplicate-tag">Mögliches Duplikat</span> : null}
+          </span>
         </span>
-        <span className="expense-overview-tags">
-          <span className="overview-tag" style={expense.category ? { borderColor: expense.category.color } : undefined}>
+        <span className="expense-summary-value">
+          <strong className={expense.kind === "INCOME" ? "positive expense-summary-amount" : "negative expense-summary-amount"}>
+            {expense.kind === "INCOME" ? "+" : "-"}{formatMoney(expense.amountCents, expense.currency)}
+          </strong>
+          <span className="overview-tag expense-category-tag" style={expense.category ? { borderColor: expense.category.color } : undefined}>
             {expense.category?.name ?? "Ohne Kategorie"}
           </span>
-          {expense.label ? <span className="overview-tag label-overview-tag" style={{ background: expense.label.color }}>{expense.label.name}</span> : null}
-          {expense.contract ? <span className="overview-tag">{expense.contract.provider}</span> : null}
-          {expense.generatedByContract ? <span className="overview-tag source-tag">Auto-Vertrag</span> : null}
-          {expense.recurringTransaction ? <span className="overview-tag source-tag">Serie: {expense.recurringTransaction.title}</span> : null}
-          {expense.fuelEntry ? <FuelEntryTag expense={expense} variant="overview" /> : null}
-          {duplicateCount > 1 ? <span className="overview-tag duplicate-tag">Mögliches Duplikat</span> : null}
         </span>
-        <strong className={expense.kind === "INCOME" ? "positive expense-summary-amount" : "negative expense-summary-amount"}>
-          {expense.kind === "INCOME" ? "+" : "-"}{formatMoney(expense.amountCents, expense.currency)}
-        </strong>
       </summary>
       {loaded ? (
         <div className="expense-detail">

@@ -5178,6 +5178,114 @@ body,
   width: 100%;
 }
 
+/* Expense cards: prioritize date, description, amount, and category. */
+.expense-row:not(.mileage-row) summary {
+  grid-template-columns: minmax(0, 1fr) minmax(9.5rem, auto);
+  align-items: start;
+  gap: 0.65rem 0.85rem;
+  padding: 0.82rem 2rem 0.82rem 0.82rem;
+}
+
+.expense-row:not(.mileage-row) summary .expense-summary-copy {
+  display: grid;
+  min-width: 0;
+  gap: 0.34rem;
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+}
+
+.expense-row:not(.mileage-row) summary .expense-summary-date,
+.expense-row:not(.mileage-row) summary .expense-summary-main {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.expense-row:not(.mileage-row) summary .expense-summary-date {
+  color: #111827;
+}
+
+.expense-row:not(.mileage-row) summary .expense-summary-main {
+  font-size: 0.98rem;
+}
+
+.expense-row:not(.mileage-row) summary .expense-overview-tags {
+  display: flex;
+  grid-column: auto;
+  grid-row: auto;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  flex-flow: row wrap;
+  justify-content: flex-start;
+  gap: 0.34rem;
+  overflow: hidden;
+}
+
+.expense-row:not(.mileage-row) summary .expense-summary-value {
+  display: flex;
+  min-width: 0;
+  max-width: min(46vw, 21rem);
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.4rem;
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+}
+
+.expense-row:not(.mileage-row) summary .expense-summary-amount {
+  flex: 0 0 auto;
+  max-width: 100%;
+  justify-self: auto;
+  text-align: right;
+}
+
+.expense-row:not(.mileage-row) summary .expense-category-tag {
+  max-width: 8.5rem;
+  flex: 0 1 auto;
+}
+
+.expense-row:not(.mileage-row) summary .meta-overview-tag {
+  color: #4c5960;
+  font-weight: 760;
+}
+
+@media (max-width: 700px) {
+  .expense-row:not(.mileage-row) summary {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.5rem;
+    position: relative;
+  }
+
+  .expense-row:not(.mileage-row) summary .expense-summary-value {
+    position: absolute;
+    top: 0.82rem;
+    right: 2rem;
+    max-width: min(56vw, 12rem);
+    justify-content: flex-end;
+  }
+
+  .expense-row:not(.mileage-row) summary .expense-summary-copy {
+    padding-right: 0;
+  }
+
+  .expense-row:not(.mileage-row) summary .expense-summary-date {
+    box-sizing: border-box;
+    padding-right: min(54vw, 11.5rem);
+  }
+
+  .expense-row:not(.mileage-row) summary .expense-overview-tags {
+    flex-wrap: nowrap;
+  }
+
+  .expense-row:not(.mileage-row) summary .expense-category-tag {
+    max-width: min(42vw, 9rem);
+  }
+}
+
 .period-link-pending {
   opacity: 0.68;
   pointer-events: none;
