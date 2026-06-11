@@ -96,7 +96,6 @@ export default async function MileagePage({ searchParams }: MileagePageProps) {
             <div className="period-navigator mileage-navigator">
               <MileagePeriodNavigator params={params} range={range} currentMonthKey={currentMonthKey} />
               <div className="period-tools mileage-period-tools">
-                <CarPicker cars={activeCars} selectedCarId={selectedCar.id} params={params} />
                 <PeriodNavLink className="button period-primary-action" href={getMileageHref(params, { month: currentMonthKey, year: undefined, from: undefined, to: undefined })}>Aktuell</PeriodNavLink>
                 <ActionModal title="Kilometer filtern" trigger="Filter" modalId="kilometer-filter" triggerClassName="button period-primary-action">
                   <MileageFilterForm
@@ -107,6 +106,7 @@ export default async function MileagePage({ searchParams }: MileagePageProps) {
                     monthOptions={monthOptions}
                   />
                 </ActionModal>
+                <CarPicker cars={activeCars} selectedCarId={selectedCar.id} params={params} />
                 <ActionModal title="Kilometer-Setup" trigger="Setup" modalId="kilometer-setup" triggerClassName="button secondary mileage-setup-action" wide>
                   <MileageSetupPanel
                     selectedCar={selectedCar}
