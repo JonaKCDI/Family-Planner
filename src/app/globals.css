@@ -5299,6 +5299,16 @@ body,
   gap: 0.38rem;
 }
 
+.expense-row:not(.mileage-row) summary .expense-summary-value > * {
+  grid-column: 1;
+  grid-row: auto;
+  justify-self: end;
+}
+
+.expense-row:not(.mileage-row) summary .expense-summary-value .expense-summary-amount {
+  text-align: right;
+}
+
 @media (max-width: 900px), (max-height: 760px), (max-aspect-ratio: 4/5) {
   .modal-backdrop,
   .action-modal-backdrop {
