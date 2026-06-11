@@ -47,7 +47,6 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
         <div className="stat"><span>Offen</span><strong>{activeTasks.filter((task) => task.status === "OPEN").length}</strong></div>
         <div className="stat"><span>Heute / überfällig</span><strong>{activeTasks.filter((task) => daysUntil(task.dueDate) <= 0).length}</strong></div>
         <div className="stat"><span>Geplant</span><strong>{plannedTasks.length}</strong></div>
-        <div className="stat"><span>Erledigt</span><strong>{completedTasks.length}</strong></div>
       </section>
 
       <section className="panel">
