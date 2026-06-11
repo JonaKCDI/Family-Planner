@@ -195,7 +195,7 @@ export default async function ContractsPage({ searchParams }: ContractsPageProps
                           <label>Drive-Link<input name="documentUrl" type="url" defaultValue={primaryDocument?.url ?? ""} placeholder="https://drive.google.com/..." /></label>
                         </div>
                       </details>
-                      <button className="button full-span autosave-submit" type="submit">Änderungen speichern</button>
+                      <button className="button full-span autosave-submit" type="submit">Speichern</button>
                     </AutosaveForm>
                   </ActionModal>
                   <ContractPayments

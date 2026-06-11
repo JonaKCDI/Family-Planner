@@ -130,7 +130,7 @@ function TaskCard({ task, members, completed = false }: { task: TaskLike; member
               </label>
               <label>Beschreibung<textarea name="description" defaultValue={task.description ?? ""} /></label>
               <ScopeSelect defaultValue={task.scope} />
-              <button className="button full-span autosave-submit" type="submit">Änderungen speichern</button>
+              <button className="button full-span autosave-submit" type="submit">Speichern</button>
             </AutosaveForm>
           </ActionModal>
         </div>
@@ -215,7 +215,7 @@ function PlannedTaskCard({ task, members }: { task: RecurringTaskLike; members: 
               </label>
               <label>Beschreibung<textarea name="description" defaultValue={task.description ?? ""} /></label>
               <ScopeSelect defaultValue={task.scope} />
-              <button className="button full-span autosave-submit" type="submit">Änderungen speichern</button>
+              <button className="button full-span autosave-submit" type="submit">Speichern</button>
             </AutosaveForm>
             <form action={archiveRecurringTask} className="form compact spacing-top">
               <input type="hidden" name="id" value={task.id} />

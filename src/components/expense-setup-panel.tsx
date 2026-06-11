@@ -276,7 +276,7 @@ export function RecurringTransactionsPanel({ recurringTransactions, categories, 
                       </span>
                     ))}
                   </div>
-                  <button className="button secondary full-span autosave-submit" type="submit">Änderungen speichern</button>
+                  <button className="button secondary full-span autosave-submit" type="submit">Speichern</button>
                 </AutosaveForm>
                 <div className="category-editor-actions">
                   <form action={pauseRecurringTransaction}>

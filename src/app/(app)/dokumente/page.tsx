@@ -71,7 +71,7 @@ export default async function DocumentsPage({ searchParams }: DocumentsPageProps
                       <label>Bezugs-ID optional<input name="linkedEntityId" defaultValue={document.linkedEntityId ?? ""} /></label>
                       <ScopeSelect defaultValue={document.scope} />
                       <label className="full-span">Beschreibung<textarea name="description" defaultValue={document.description ?? ""} /></label>
-                      <button className="button full-span autosave-submit" type="submit">Änderungen speichern</button>
+                      <button className="button full-span autosave-submit" type="submit">Speichern</button>
                     </AutosaveForm>
                   </ActionModal>
                   <form action={deleteDocumentReference}>

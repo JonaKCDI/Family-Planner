@@ -5170,10 +5170,6 @@ body,
   height: 44px;
 }
 
-.autosave-submit {
-  display: none;
-}
-
 .modal-submit-row {
   grid-column: 1 / -1;
 }

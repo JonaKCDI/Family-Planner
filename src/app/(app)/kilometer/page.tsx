@@ -211,7 +211,7 @@ export default async function MileagePage({ searchParams }: MileagePageProps) {
                             <label>Liter<input name="liters" inputMode="decimal" defaultValue={formatLitersInput(entry.litersMilli)} required /></label>
                             <label>Betrag in EUR<input name="cost" inputMode="decimal" defaultValue={formatEuroInputFromCents(entry.costCents)} required /></label>
                             <label className="full-span">Bemerkung<input name="note" defaultValue={entry.note} /></label>
-                            <button className="button full-span autosave-submit" type="submit">Änderungen speichern</button>
+                            <button className="button full-span autosave-submit" type="submit">Speichern</button>
                           </AutosaveForm>
                         </ActionModal>
                       </div>
@@ -512,7 +512,7 @@ function MileageSetupPanel({
                     <label>Kennzeichen<input name="licensePlate" defaultValue={car.licensePlate} /></label>
                     <label>Farbe<input name="color" type="color" defaultValue={car.color} /></label>
                     <label>Notizen<textarea name="notes" defaultValue={car.notes} /></label>
-                    <button className="button secondary autosave-submit" type="submit">Änderungen speichern</button>
+                    <button className="button secondary autosave-submit" type="submit">Speichern</button>
                   </AutosaveForm>
                   <form action={car.archivedAt ? unarchiveCar : archiveCar} className="inline-form">
                     <input type="hidden" name="id" value={car.id} />
