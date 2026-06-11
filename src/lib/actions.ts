@@ -149,6 +149,7 @@ export async function createExpenseLabel(formData: FormData) {
   });
 
   revalidatePath("/ausgaben");
+  redirectToReturnToIfPresent(formData);
 }
 
 export async function updateExpenseLabel(formData: FormData) {
@@ -190,6 +191,7 @@ export async function updateExpenseLabel(formData: FormData) {
 
   revalidatePath("/ausgaben");
   revalidatePath("/dashboard");
+  redirectToReturnToIfPresent(formData);
 }
 
 export async function deleteExpenseLabel(formData: FormData) {
@@ -226,6 +228,7 @@ export async function deleteExpenseLabel(formData: FormData) {
   await db.expenseLabel.delete({ where: { id: label.id } });
   revalidatePath("/ausgaben");
   revalidatePath("/dashboard");
+  redirectToReturnToIfPresent(formData);
 }
 
 export async function archiveExpenseLabel(formData: FormData) {
@@ -240,6 +243,7 @@ export async function archiveExpenseLabel(formData: FormData) {
   });
 
   revalidatePath("/ausgaben");
+  redirectToReturnToIfPresent(formData);
 }
 
 export async function unarchiveExpenseLabel(formData: FormData) {
@@ -254,6 +258,7 @@ export async function unarchiveExpenseLabel(formData: FormData) {
   });
 
   revalidatePath("/ausgaben");
+  redirectToReturnToIfPresent(formData);
 }
 
 export async function mergeExpenseLabels(formData: FormData) {
@@ -288,6 +293,7 @@ export async function mergeExpenseLabels(formData: FormData) {
 
   revalidatePath("/ausgaben");
   revalidatePath("/dashboard");
+  redirectToReturnToIfPresent(formData);
 }
 
 async function importExpenseRows(familyId: string, userId: string, rows: ExpenseFormatRow[]) {
@@ -754,6 +760,7 @@ export async function createCategory(formData: FormData) {
   });
 
   revalidatePath("/ausgaben");
+  redirectToReturnToIfPresent(formData);
 }
 
 export async function updateCategory(formData: FormData) {
@@ -778,6 +785,7 @@ export async function updateCategory(formData: FormData) {
 
   revalidatePath("/ausgaben");
   revalidatePath("/dashboard");
+  redirectToReturnToIfPresent(formData);
 }
 
 export async function deleteCategory(formData: FormData) {
@@ -814,6 +822,7 @@ export async function deleteCategory(formData: FormData) {
   await db.category.delete({ where: { id: category.id } });
   revalidatePath("/ausgaben");
   revalidatePath("/dashboard");
+  redirectToReturnToIfPresent(formData);
 }
 
 export async function deleteExpense(formData: FormData) {
@@ -922,6 +931,7 @@ export async function mergeExpenseCategories(formData: FormData) {
 
   revalidatePath("/ausgaben");
   revalidatePath("/dashboard");
+  redirectToReturnToIfPresent(formData);
 }
 
 export async function createTask(formData: FormData) {
@@ -1767,6 +1777,12 @@ function actionReturnTo(formData: FormData, fallback: string) {
   if (!value) return fallback;
   if (!value.startsWith("/") || value.startsWith("//") || value.includes("://")) return fallback;
   return value;
+}
+
+function redirectToReturnToIfPresent(formData: FormData) {
+  const value = optionalText(formData, "returnTo");
+  if (!value) return;
+  redirect(actionReturnTo(formData, "/ausgaben"));
 }
 
 function duplicateExpenseKey(expense: {

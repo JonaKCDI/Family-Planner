@@ -5,6 +5,7 @@ import { getFamilyMembers, getVisibleRecurringTasks, getVisibleTasks } from "@/l
 import { ensureDueRecurringTasks } from "@/lib/recurring-tasks";
 import { daysUntil, getRecurringTaskIntervalLabel, taskRank, taskUrgency } from "@/lib/tasks";
 import { ActionModal } from "@/components/action-modal";
+import { AutosaveForm } from "@/components/autosave-form";
 import { TaskStatusControl } from "@/components/task-status-control";
 import { EmptyState, PageHeader, ScopeSelect } from "@/components/ui";
 
@@ -106,8 +107,8 @@ function TaskCard({ task, members, completed = false }: { task: TaskLike; member
         </div>
         <div className="task-actions">
           <TaskStatusControl taskId={task.id} initialStatus={task.status} />
-          <ActionModal title="Aufgabe bearbeiten" trigger="Bearbeiten">
-            <form action={updateTask} className="form form-grid modal-form">
+          <ActionModal title="Aufgabe bearbeiten" trigger="Bearbeiten" modalId={`task-${task.id}`}>
+            <AutosaveForm action={updateTask} className="form form-grid modal-form">
               <input type="hidden" name="id" value={task.id} />
               <label>Titel<input name="title" defaultValue={task.title} required /></label>
               <label>
@@ -129,8 +130,8 @@ function TaskCard({ task, members, completed = false }: { task: TaskLike; member
               </label>
               <label>Beschreibung<textarea name="description" defaultValue={task.description ?? ""} /></label>
               <ScopeSelect defaultValue={task.scope} />
-              <button className="button full-span" type="submit">Änderungen speichern</button>
-            </form>
+              <button className="button full-span autosave-submit" type="submit">Änderungen speichern</button>
+            </AutosaveForm>
           </ActionModal>
         </div>
       </div>
@@ -172,8 +173,8 @@ function PlannedTaskCard({ task, members }: { task: RecurringTaskLike; members: 
               <button className="button secondary" type="submit">Pausieren</button>
             </form>
           )}
-          <ActionModal title="Geplante Aufgabe bearbeiten" trigger="Bearbeiten">
-            <form action={updateRecurringTask} className="form form-grid modal-form">
+          <ActionModal title="Geplante Aufgabe bearbeiten" trigger="Bearbeiten" modalId={`recurring-task-${task.id}`}>
+            <AutosaveForm action={updateRecurringTask} className="form form-grid modal-form">
               <input type="hidden" name="id" value={task.id} />
               <label>Titel<input name="title" defaultValue={task.title} required /></label>
               <label>
@@ -214,8 +215,8 @@ function PlannedTaskCard({ task, members }: { task: RecurringTaskLike; members: 
               </label>
               <label>Beschreibung<textarea name="description" defaultValue={task.description ?? ""} /></label>
               <ScopeSelect defaultValue={task.scope} />
-              <button className="button full-span" type="submit">Änderungen speichern</button>
-            </form>
+              <button className="button full-span autosave-submit" type="submit">Änderungen speichern</button>
+            </AutosaveForm>
             <form action={archiveRecurringTask} className="form compact spacing-top">
               <input type="hidden" name="id" value={task.id} />
               <button className="button secondary" type="submit">Archivieren</button>

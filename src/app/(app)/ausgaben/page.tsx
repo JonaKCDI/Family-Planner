@@ -1,36 +1,20 @@
-import {
-  archiveExpenseLabel,
-  createCategory,
-  createExpenseLabel,
-  createRecurringTransaction,
-  deleteCategory,
-  deleteExpenseLabel,
-  exportExpensesToSynologyExcel,
-  importExpensesFromSynologyExcel,
-  importExpensesFromUploadedXlsx,
-  mergeDuplicateExpenses,
-  mergeExpenseCategories,
-  mergeExpenseLabels,
-  pauseRecurringTransaction,
-  softDeleteRecurringTransaction,
-  unarchiveExpenseLabel,
-  updateCategory,
-  updateExpenseLabel,
-  updateRecurringTransaction,
-} from "@/lib/actions";
+﻿import { mergeDuplicateExpenses } from "@/lib/actions";
 import { redirect } from "next/navigation";
 import { requireSession } from "@/lib/auth";
 import { ensureDueContractExpenses } from "@/lib/contract-auto-expenses";
 import { toExpenseDocumentItem, toExpenseListItem } from "@/lib/expense-list";
-import { formatDate, formatMoney, toDateInputValue } from "@/lib/format";
+import { matchesExpenseSearch } from "@/lib/expense-search";
+import { expenseSortOptions, getExpenseSortKey, sortExpenseEntries } from "@/lib/expense-sorting";
+import { formatDate, formatMoney } from "@/lib/format";
 import { buildExpensesHref, buildMonthNavigationHref, buildPeriodHref, buildYearNavigationHref, getCanonicalExpensesHref, getMonthKey, getRawExpensesHref, type ExpenseFilterParams } from "@/lib/expense-filter-url";
 import { formatMonthKeyLabel } from "@/lib/month-options";
 import { getDocumentsForLinkedEntities, getExpenseLabels, getRecurringTransactions, getVisibleCategories, getVisibleContracts, getVisibleExpenses } from "@/lib/queries";
 import { ActionModal } from "@/components/action-modal";
-import { ExcelProgressPanel } from "@/components/excel-progress-panel";
+import { ListFilter } from "lucide-react";
+import { ExpenseSetupPanel, RecurringTransactionsPanel } from "@/components/expense-setup-panel";
 import { ExpenseEntryList } from "@/components/expense-entry-list";
 import { ExpenseFilterForm } from "@/components/expense-filter-form";
-import { SearchableSelect } from "@/components/searchable-select";
+import { PeriodNavLink } from "@/components/period-nav-link";
 import { EmptyState, PageHeader } from "@/components/ui";
 
 type ExpensesPageProps = {
@@ -56,12 +40,18 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
   const currentYear = Number(currentMonthKey.slice(0, 4));
   const years = [...new Set([currentYear, ...expenses.map((entry) => new Date(entry.date).getFullYear())])].sort((a, b) => b - a);
   const range = getRange(params, currentMonthKey, expenses);
-  const exportYear = range.from.getFullYear();
-  const selectedEntries = expenses
+  const rangeFilteredEntries = expenses
     .filter((entry) => isInRange(entry.date, range.from, range.to))
     .filter((entry) => !params.label || entry.labelId === params.label)
-    .filter((entry) => !params.category || entry.categoryId === params.category)
-    .filter((entry) => !query || matchesExpense(entry, query));
+    .filter((entry) => !params.category || entry.categoryId === params.category);
+  const searchableDocuments = query
+    ? await getDocumentsForLinkedEntities(session.family.id, session.user.id, "EXPENSE", rangeFilteredEntries.map((entry) => entry.id))
+    : [];
+  const searchableDocumentsByExpense = groupBy(searchableDocuments, (document) => document.linkedEntityId ?? "");
+  const selectedEntries = rangeFilteredEntries
+    .filter((entry) => !query || matchesExpenseSearch(entry, query, { documents: searchableDocumentsByExpense[entry.id] ?? [] }));
+  const sortKey = getExpenseSortKey(params.sort);
+  const sortedEntries = sortExpenseEntries(selectedEntries, sortKey);
   const duplicateGroups = buildDuplicateGroups(selectedEntries);
   const duplicateCounts = buildDuplicateCounts(duplicateGroups);
   const income = sumByKind(selectedEntries, "INCOME");
@@ -77,12 +67,17 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
   const pie = buildPie(categoryRows);
   const activeFilterChips = buildActiveFilterChips(params, categories, allLabels, range);
   const initialEntryLimit = getInitialEntryLimit(range.mode);
-  const initialEntries = selectedEntries.slice(0, initialEntryLimit);
-  const documents = await getDocumentsForLinkedEntities(session.family.id, session.user.id, "EXPENSE", initialEntries.map((expense) => expense.id));
+  const initialEntries = sortedEntries.slice(0, initialEntryLimit);
+  const initialEntryIds = new Set(initialEntries.map((expense) => expense.id));
+  const documents = query
+    ? searchableDocuments.filter((document) => document.linkedEntityId ? initialEntryIds.has(document.linkedEntityId) : false)
+    : await getDocumentsForLinkedEntities(session.family.id, session.user.id, "EXPENSE", initialEntries.map((expense) => expense.id));
   const documentsByExpense = groupBy(documents.map(toExpenseDocumentItem), (document) => document.linkedEntityId ?? "");
   const expenseListEntries = initialEntries.map(toExpenseListItem);
   const expenseListLoadUrl = buildExpenseListLoadUrl(params);
   const returnTo = getRawExpensesHref(params);
+  const exportYear = range.from.getFullYear();
+  const setupReturnTo = `${returnTo}${returnTo.includes("?") ? "&" : "?"}modal=ausgaben-setup`;
 
   return (
     <>
@@ -102,196 +97,26 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
         <div className="period-navigator">
           <PeriodNavigator params={params} range={range} currentMonthKey={currentMonthKey} />
           <div className="period-tools">
-            <a className="button period-primary-action" href={buildPeriodHref(params, { month: currentMonthKey })}>Aktuell</a>
-            <ActionModal title="Ausgaben filtern" trigger="Filter" triggerClassName="button period-primary-action">
+            <PeriodNavLink className="button period-primary-action" href={buildPeriodHref(params, { month: currentMonthKey })}>Aktuell</PeriodNavLink>
+            <ActionModal title="Ausgaben filtern" trigger="Filter" modalId="ausgaben-filter" triggerClassName="button period-primary-action">
               <ExpenseFilterForm params={params} categories={categories} labels={labels} years={years} currentMonthKey={currentMonthKey} />
             </ActionModal>
           </div>
         </div>
-        <div className="overview-actions secondary-filter-actions">
-        <ActionModal title="Serien verwalten" trigger="Serien" wide>
-          <RecurringTransactionsPanel recurringTransactions={recurringTransactions} categories={categories} labels={labels} />
-        </ActionModal>
-
-        <ActionModal title="Ausgaben-Setup" trigger="Setup" wide>
-          <div className="expense-setup-layout">
-            <section className="setup-card setup-card-primary">
-              <div className="setup-card-head">
-                <div>
-                  <h2 className="section-title">Excel-Sicherung</h2>
-                  <p className="muted">Export und Import für das aktuell ausgewählte Jahr {exportYear}.</p>
-                </div>
-              </div>
-              <ExcelProgressPanel>
-                <div className="excel-actions">
-                  <a className="button secondary" href={`/api/expenses/export?year=${exportYear}`} data-excel-progress={`Excel ${exportYear} wird vorbereitet ...`}>Excel {exportYear} herunterladen</a>
-                  <form action={importExpensesFromUploadedXlsx} className="upload-form">
-                    <input name="xlsxFile" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required />
-                    <button className="button secondary" type="submit" data-excel-progress="Excel-Datei wird importiert ...">Excel hochladen</button>
-                  </form>
-                  <div className="setup-action-row">
-                    <form action={importExpensesFromSynologyExcel}>
-                      <input type="hidden" name="year" value={exportYear} />
-                      <button className="button secondary" type="submit" data-excel-progress="Synology-Import läuft ...">Synology importieren</button>
-                    </form>
-                    <form action={exportExpensesToSynologyExcel}>
-                      <input type="hidden" name="year" value={exportYear} />
-                      <button className="button secondary" type="submit" data-excel-progress="Synology-Export läuft ...">Synology exportieren</button>
-                    </form>
-                  </div>
-                </div>
-              </ExcelProgressPanel>
-            </section>
-
-            <details className="setup-card" open>
-              <summary>
-                <span>
-                  <strong>Anlegen</strong>
-                  <small>Neue Labels und Kategorien</small>
-                </span>
-              </summary>
-              <div className="setup-two-column">
-                <form action={createExpenseLabel} className="form compact" id="label-erfassen">
-                  <strong>Label hinzufügen</strong>
-                  <label>Name<input name="name" placeholder="Dienstreise Berlin, Gartenprojekt ..." required /></label>
-                  <label>Budget in EUR<input name="budget" inputMode="decimal" placeholder="500,00" /></label>
-                  <label>Farbe<input name="color" type="color" defaultValue="#16776f" /></label>
-                  <button className="button secondary" type="submit">Label speichern</button>
-                </form>
-                <form action={createCategory} className="form compact" id="kategorie-erfassen">
-                  <strong>Kategorie hinzufügen</strong>
-                  <input type="hidden" name="type" value="EXPENSE" />
-                  <label>Name<input name="name" placeholder="Schule, Urlaub, Kindergeld ..." required /></label>
-                  <label>Monatsbudget in EUR<input name="monthlyBudget" inputMode="decimal" placeholder="250,00" /></label>
-                  <label>Farbe<input name="color" type="color" defaultValue="#2f6fed" /></label>
-                  <button className="button secondary" type="submit">Kategorie speichern</button>
-                </form>
-              </div>
-            </details>
-
-            <details className="setup-card">
-              <summary>
-                <span>
-                  <strong>Labels verwalten</strong>
-                  <small>Aktive Labels nach letzter Nutzung, archivierte am Ende</small>
-                </span>
-              </summary>
-              <div className="label-management-list">
-                {allLabels.length === 0 ? <EmptyState>Noch keine Labels vorhanden.</EmptyState> : null}
-                {allLabels.map((label) => (
-                  <div className={label.archivedAt ? "label-management-row archived" : "label-management-row"} key={label.id}>
-                    <div>
-                      <strong>{label.name}</strong>
-                      <span className="muted">
-                        {label.archivedAt ? "Archiviert" : "Aktiv"}{" · "}{label.lastUsedAt ? `Zuletzt genutzt: ${formatDate(label.lastUsedAt)}` : "Noch nicht genutzt"}
-                      </span>
-                    </div>
-                    <div className="label-management-actions">
-                      <ActionModal title="Label bearbeiten" trigger="Bearbeiten">
-                        <form action={updateExpenseLabel} className="form compact">
-                          <input type="hidden" name="id" value={label.id} />
-                          <label>Name<input name="name" defaultValue={label.name} required /></label>
-                          <label>Budget in EUR<input name="budget" inputMode="decimal" defaultValue={formatEuroInput(label.budgetCents)} /></label>
-                          <label>Farbe<input name="color" type="color" defaultValue={label.color} /></label>
-                          <button className="button secondary" type="submit">Änderungen speichern</button>
-                        </form>
-                      </ActionModal>
-                      <form action={label.archivedAt ? unarchiveExpenseLabel : archiveExpenseLabel}>
-                        <input type="hidden" name="id" value={label.id} />
-                        <button className="button secondary" type="submit">{label.archivedAt ? "Wieder aktivieren" : "Archivieren"}</button>
-                      </form>
-                      <form action={deleteExpenseLabel}>
-                        <input type="hidden" name="id" value={label.id} />
-                        <button className="button secondary danger-subtle" type="submit">Löschen</button>
-                      </form>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </details>
-
-            <details className="setup-card">
-              <summary>
-                <span>
-                  <strong>Zusammenführen</strong>
-                  <small>Typo-Daten in das richtige Ziel schieben</small>
-                </span>
-              </summary>
-              <div className="merge-tools">
-                <form action={mergeExpenseLabels} className="form compact">
-                  <strong>Labels</strong>
-                  <label>
-                    Von
-                    <select name="sourceLabelId" required defaultValue="">
-                      <option value="" disabled>Typo wählen</option>
-                      {allLabels.map((label) => <option value={label.id} key={label.id}>{label.name}{label.archivedAt ? " (archiviert)" : ""}</option>)}
-                    </select>
-                  </label>
-                  <label>
-                    Nach
-                    <select name="targetLabelId" required defaultValue="">
-                      <option value="" disabled>Ziel wählen</option>
-                      {allLabels.map((label) => <option value={label.id} key={label.id}>{label.name}{label.archivedAt ? " (archiviert)" : ""}</option>)}
-                    </select>
-                  </label>
-                  <button className="button secondary" type="submit" disabled={allLabels.length < 2}>Labels zusammenführen</button>
-                </form>
-                <form action={mergeExpenseCategories} className="form compact">
-                  <strong>Kategorien</strong>
-                  <label>
-                    Von
-                    <select name="sourceCategoryId" required defaultValue="">
-                      <option value="" disabled>Typo wählen</option>
-                      {categories.map((category) => <option value={category.id} key={category.id}>{category.name}</option>)}
-                    </select>
-                  </label>
-                  <label>
-                    Nach
-                    <select name="targetCategoryId" required defaultValue="">
-                      <option value="" disabled>Ziel wählen</option>
-                      {categories.map((category) => <option value={category.id} key={category.id}>{category.name}</option>)}
-                    </select>
-                  </label>
-                  <button className="button secondary" type="submit" disabled={categories.length < 2}>Kategorien zusammenführen</button>
-                </form>
-              </div>
-            </details>
-
-            <details className="setup-card">
-              <summary>
-                <span>
-                  <strong>Kategorien bearbeiten</strong>
-                  <small>Budget, Farbe und Name anpassen</small>
-                </span>
-              </summary>
-              <div className="category-editor-list">
-                {categories.map((category) => (
-                  <details className="category-editor" key={category.id}>
-                    <summary>
-                      <span className="color-dot" style={{ background: category.color }} />
-                      <span>{category.name}</span>
-                      <strong>{formatMoney(category.monthlyBudgetCents)}</strong>
-                    </summary>
-                    <form action={updateCategory} className="form compact">
-                      <input type="hidden" name="id" value={category.id} />
-                      <label>Name<input name="name" defaultValue={category.name} required /></label>
-                      <label>Monatsbudget in EUR<input name="monthlyBudget" inputMode="decimal" defaultValue={formatEuroInput(category.monthlyBudgetCents)} /></label>
-                      <label>Farbe<input name="color" type="color" defaultValue={category.color} /></label>
-                      <input type="hidden" name="scope" value="PRIVATE" />
-                      <button className="button secondary" type="submit">Änderungen speichern</button>
-                    </form>
-                    <div className="category-editor-actions">
-                      <form action={deleteCategory}>
-                        <input type="hidden" name="id" value={category.id} />
-                        <button className="button secondary danger-subtle" type="submit">Kategorie löschen</button>
-                      </form>
-                    </div>
-                  </details>
-                ))}
-              </div>
-            </details>
-          </div>
-        </ActionModal>
+        <div className="overview-actions secondary-filter-actions expense-secondary-actions">
+          <ActionModal title="Serien verwalten" trigger="Serien" modalId="ausgaben-serien" wide>
+            <RecurringTransactionsPanel recurringTransactions={recurringTransactions} categories={categories} labels={labels} />
+          </ActionModal>
+          <ActionModal title="Ausgaben-Setup" trigger="Setup" modalId="ausgaben-setup" wide>
+            <ExpenseSetupPanel
+              exportYear={exportYear}
+              categories={categories}
+              labels={labels}
+              allLabels={allLabels}
+              recurringTransactions={recurringTransactions}
+              returnTo={setupReturnTo}
+            />
+          </ActionModal>
         </div>
         {activeFilterChips.length > 0 ? (
           <div className="active-filter-row" aria-label="Aktive Filter">
@@ -328,10 +153,11 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
 
       <details className="panel expense-section" open>
         <summary className="expense-section-summary">
-          <div>
+          <div className="expense-section-heading">
             <h2 className="section-title">Einträge</h2>
-            <p className="muted">{formatDate(range.from)} bis {formatDate(range.to)} · {selectedEntries.length} Einträge</p>
+            <p className="muted expense-section-meta">{formatDate(range.from)} bis {formatDate(range.to)} · {selectedEntries.length} Einträge</p>
           </div>
+          {selectedEntries.length > 0 ? <ExpenseSortControl params={params} sortKey={sortKey} /> : null}
         </summary>
         {selectedEntries.length === 0 ? (
           <EmptyState>Noch keine Einträge im gewählten Zeitraum.</EmptyState>
@@ -459,7 +285,7 @@ function DuplicateReviewPanel({ groups, returnTo }: { groups: DuplicateGroup[]; 
         <strong>Duplikatprüfung</strong>
         <span>{groups.length} Gruppen mit {duplicateEntryCount} ähnlichen Einträgen</span>
       </div>
-      <ActionModal title="Duplikate prüfen" trigger="Duplikate" triggerClassName="button duplicate-action-button" wide>
+      <ActionModal title="Duplikate prüfen" trigger="Duplikate" modalId="ausgaben-duplikate" triggerClassName="button duplicate-action-button" wide>
         <div className="duplicate-review">
           <div className="duplicate-review-head">
             <div>
@@ -478,7 +304,7 @@ function DuplicateReviewPanel({ groups, returnTo }: { groups: DuplicateGroup[]; 
                   {group.entries.map((entry) => (
                     <form action={mergeDuplicateExpenses} className="duplicate-choice" key={entry.id}>
                       <input type="hidden" name="keepExpenseId" value={entry.id} />
-                      <input type="hidden" name="returnTo" value={returnTo} />
+                      <input type="hidden" name="returnTo" value={withModalParam(returnTo, "ausgaben-duplikate")} />
                       {group.entries.map((duplicate) => <input type="hidden" name="expenseId" value={duplicate.id} key={duplicate.id} />)}
                       <div>
                         <strong>{entry.description || "Ohne Beschreibung"}</strong>
@@ -497,6 +323,16 @@ function DuplicateReviewPanel({ groups, returnTo }: { groups: DuplicateGroup[]; 
     </div>
   );
 }
+
+function withModalParam(href: string, modalId: string) {
+  const [pathWithQuery, hash = ""] = href.split("#", 2);
+  const [pathname, query = ""] = pathWithQuery.split("?", 2);
+  const params = new URLSearchParams(query);
+  params.set("modal", modalId);
+  const nextQuery = params.toString();
+  return `${pathname}${nextQuery ? `?${nextQuery}` : ""}${hash ? `#${hash}` : ""}`;
+}
+
 function PeriodNavigator({
   params,
   range,
@@ -516,118 +352,20 @@ function PeriodNavigator({
 
   return (
     <div className="period-nav-main">
-      <a className="period-nav-button" href={previousHref} aria-label={isYear ? "Vorheriges Jahr" : "Vorheriger Monat"} title={isYear ? "Vorheriges Jahr" : "Vorheriger Monat"}>
+      <PeriodNavLink className="period-nav-button" href={previousHref} aria-label={isYear ? "Vorheriges Jahr" : "Vorheriger Monat"} title={isYear ? "Vorheriges Jahr" : "Vorheriger Monat"}>
         <span aria-hidden="true">&lsaquo;</span>
-      </a>
+      </PeriodNavLink>
       <div className="period-nav-current" aria-live="polite">
         <span>{detail}</span>
         <strong>{title}</strong>
       </div>
-      <a className="period-nav-button" href={nextHref} aria-label={isYear ? "Nächstes Jahr" : "Nächster Monat"} title={isYear ? "Nächstes Jahr" : "Nächster Monat"}>
+      <PeriodNavLink className="period-nav-button" href={nextHref} aria-label={isYear ? "Nächstes Jahr" : "Nächster Monat"} title={isYear ? "Nächstes Jahr" : "Nächster Monat"}>
         <span aria-hidden="true">&rsaquo;</span>
-      </a>
+      </PeriodNavLink>
       <div className="period-mode-toggle" role="list" aria-label="Zeitraum-Modus">
-        <a role="listitem" className={!isYear && range.mode !== "custom" ? "active" : ""} href={buildPeriodHref(params, { month: monthKey })}>Monat</a>
-        <a role="listitem" className={isYear ? "active" : ""} href={buildPeriodHref(params, { year: String(currentYear) })}>Jahr</a>
+        <PeriodNavLink role="listitem" className={!isYear && range.mode !== "custom" ? "active" : ""} href={buildPeriodHref(params, { month: monthKey })}>Monat</PeriodNavLink>
+        <PeriodNavLink role="listitem" className={isYear ? "active" : ""} href={buildPeriodHref(params, { year: String(currentYear) })}>Jahr</PeriodNavLink>
       </div>
-    </div>
-  );
-}
-
-function RecurringTransactionsPanel({
-  recurringTransactions,
-  categories,
-  labels
-}: {
-  recurringTransactions: Awaited<ReturnType<typeof getRecurringTransactions>>;
-  categories: CategoryLike[];
-  labels: LabelLike[];
-}) {
-  const today = new Date().toISOString().slice(0, 10);
-  const categoryOptions = categories.map((category) => ({ id: category.id, name: category.name, color: category.color }));
-  const labelOptions = labels.map((label) => ({ id: label.id, name: label.name, color: label.color }));
-  return (
-    <div className="recurring-layout">
-      <section className="setup-card setup-card-primary">
-        <div className="setup-card-head">
-          <div>
-            <h2 className="section-title">Neue Serie</h2>
-            <p className="muted">Regelmäßige private Einnahmen oder Ausgaben automatisch buchen.</p>
-          </div>
-        </div>
-        <form action={createRecurringTransaction} className="form form-grid compact">
-          <label>Titel<input name="title" placeholder="Gehalt, Miete, Sparrate ..." required /></label>
-          <label>Art<select name="kind" defaultValue="EXPENSE"><option value="EXPENSE">Ausgabe</option><option value="INCOME">Einnahme</option></select></label>
-          <label>Betrag in EUR<input name="amount" inputMode="decimal" placeholder="42,50" required /></label>
-          <label>Intervall<select name="billingInterval" defaultValue="MONTHLY"><option value="MONTHLY">Monatlich</option><option value="QUARTERLY">Quartalsweise</option><option value="YEARLY">Jährlich</option></select></label>
-          <label>Startdatum<input name="startDate" type="date" defaultValue={today} required /></label>
-          <label>Enddatum optional<input name="endDate" type="date" /></label>
-          <PaymentMethodSelect />
-          <label>Laden / Quelle<input name="store" placeholder="Arbeitgeber, Vermieter, Bank ..." /></label>
-          <SearchableSelect name="categoryId" label="Kategorie" options={categoryOptions} emptyLabel="Keine Kategorie" placeholder="Kategorie suchen oder auswählen" />
-          <SearchableSelect name="labelId" label="Label / Projekt" options={labelOptions} emptyLabel="Kein Label" placeholder="Label suchen oder auswählen" />
-          <input type="hidden" name="status" value="ACTIVE" />
-          <label className="full-span">Beschreibung<input name="description" placeholder="Optionaler Hinweis für erzeugte Buchungen" /></label>
-          <button className="button secondary full-span" type="submit">Serie speichern</button>
-        </form>
-      </section>
-
-      <section className="setup-card">
-        <h2 className="section-title">Bestehende Serien</h2>
-        <div className="category-editor-list">
-          {recurringTransactions.length === 0 ? <EmptyState>Noch keine Serien vorhanden.</EmptyState> : null}
-          {recurringTransactions.map((series) => {
-            const currentPhase = series.pricePhases.at(-1);
-            return (
-              <details className="category-editor" key={series.id}>
-                <summary>
-                  <span className="color-dot" style={{ background: series.category?.color ?? "#6b6f76" }} />
-                  <span>{series.title}<small>{series.status === "ACTIVE" ? "Aktiv" : "Pausiert"} · {series.kind === "INCOME" ? "Einnahme" : "Ausgabe"}</small></span>
-                  <strong>{currentPhase ? formatMoney(currentPhase.amountCents, currentPhase.currency) : "-"}</strong>
-                </summary>
-                <form action={updateRecurringTransaction} className="form form-grid compact">
-                  <input type="hidden" name="id" value={series.id} />
-                  <label>Titel<input name="title" defaultValue={series.title} required /></label>
-                  <label>Art<select name="kind" defaultValue={series.kind}><option value="EXPENSE">Ausgabe</option><option value="INCOME">Einnahme</option></select></label>
-                  <label>Betrag in EUR<input name="amount" inputMode="decimal" defaultValue={formatEuroInput(currentPhase?.amountCents ?? 0)} required /></label>
-                  <label>Gültig ab<input name="priceValidFrom" type="date" defaultValue={toDateInputValue(currentPhase?.validFrom ?? series.startDate)} required /></label>
-                  <label>Preisänderung<select name="priceChangeMode" defaultValue="NEW_PHASE"><option value="NEW_PHASE">Neue Preisphase ab Gültig-ab</option><option value="CORRECT_CURRENT">Aktuelle Phase korrigieren</option></select></label>
-                  <p className="muted full-span">Die Preisphase ändert die Vorlage für zukünftige automatische Buchungen. Die Checkbox unten ändert zusätzlich bereits erzeugte Auto-Buchungen im betroffenen Zeitraum.</p>
-                  <label>Intervall<select name="billingInterval" defaultValue={currentPhase?.billingInterval ?? "MONTHLY"}><option value="MONTHLY">Monatlich</option><option value="QUARTERLY">Quartalsweise</option><option value="YEARLY">Jährlich</option></select></label>
-                  <label>Startdatum<input name="startDate" type="date" defaultValue={toDateInputValue(series.startDate)} required /></label>
-                  <label>Enddatum optional<input name="endDate" type="date" defaultValue={toDateInputValue(series.endDate)} /></label>
-                  <label>Status<select name="status" defaultValue={series.status}><option value="ACTIVE">Aktiv</option><option value="PAUSED">Pausiert</option></select></label>
-                  <PaymentMethodSelect defaultValue={series.paymentMethod} />
-                  <label>Laden / Quelle<input name="store" defaultValue={series.store} /></label>
-                  <SearchableSelect name="categoryId" label="Kategorie" options={categoryOptions} defaultValue={series.categoryId} emptyLabel="Keine Kategorie" placeholder="Kategorie suchen oder auswählen" />
-                  <SearchableSelect name="labelId" label="Label / Projekt" options={labelOptions} defaultValue={series.labelId} emptyLabel="Kein Label" placeholder="Label suchen oder auswählen" />
-                  <label className="checkbox-field full-span"><input name="updateGeneratedExpenses" type="checkbox" /> Bereits erzeugte Auto-Buchungen ab Gültig-ab aktualisieren</label>
-                  <label className="full-span">Beschreibung<input name="description" defaultValue={series.description} /></label>
-                  <div className="full-span price-history">
-                    <strong>Preisentwicklung</strong>
-                    {series.pricePhases.map((phase) => (
-                      <span className="badge" key={phase.id}>
-                        {formatMoney(phase.amountCents, phase.currency)} · {recurringIntervalLabels[phase.billingInterval]} · ab {formatDate(phase.validFrom)}{phase.validTo ? ` bis ${formatDate(phase.validTo)}` : ""}
-                      </span>
-                    ))}
-                  </div>
-                  <button className="button secondary full-span" type="submit">Änderungen speichern</button>
-                </form>
-                <div className="category-editor-actions">
-                  <form action={pauseRecurringTransaction}>
-                    <input type="hidden" name="id" value={series.id} />
-                    <button className="button secondary" type="submit">Pausieren</button>
-                  </form>
-                  <form action={softDeleteRecurringTransaction}>
-                    <input type="hidden" name="id" value={series.id} />
-                    <button className="button secondary danger-subtle" type="submit">Entfernen</button>
-                  </form>
-                </div>
-              </details>
-            );
-          })}
-        </div>
-      </section>
     </div>
   );
 }
@@ -662,34 +400,23 @@ function labelRowMeta(row: { budget: number; neverUsed?: boolean }) {
   return row.neverUsed ? `Noch nicht genutzt · ${budget}` : budget;
 }
 
-function PaymentMethodSelect({ defaultValue = "Nicht angegeben" }: { defaultValue?: string }) {
-  const value = defaultValue || "Nicht angegeben";
-  const options = ["Nicht angegeben", "Karte", "Bar", "Überweisung", "Lastschrift", "PayPal", "Apple Pay"];
-  const visibleOptions = options.includes(value) ? options : [value, ...options];
-  return (
-    <label>
-      Bezahlart
-      <select name="paymentMethod" defaultValue={value}>
-        {visibleOptions.map((option) => <option value={option} key={option}>{option}</option>)}
-      </select>
-    </label>
-  );
-}
-
 function FilterHiddenFields({
   params,
   includeSearch = false,
   includePeriod = false,
-  includeFacets = true
+  includeFacets = true,
+  includeSort = true
 }: {
   params: Awaited<ExpensesPageProps["searchParams"]>;
   includeSearch?: boolean;
   includePeriod?: boolean;
   includeFacets?: boolean;
+  includeSort?: boolean;
 }) {
   return (
     <>
       {includeSearch && params.q ? <input type="hidden" name="q" value={params.q} /> : null}
+      {includeSort && params.sort ? <input type="hidden" name="sort" value={params.sort} /> : null}
       {includePeriod && params.year ? <input type="hidden" name="year" value={params.year} /> : null}
       {includePeriod && params.month ? <input type="hidden" name="month" value={params.month} /> : null}
       {includePeriod && params.from ? <input type="hidden" name="from" value={params.from} /> : null}
@@ -697,6 +424,39 @@ function FilterHiddenFields({
       {includeFacets && params.label ? <input type="hidden" name="label" value={params.label} /> : null}
       {includeFacets && params.category ? <input type="hidden" name="category" value={params.category} /> : null}
     </>
+  );
+}
+
+function ExpenseSortControl({
+  params,
+  sortKey
+}: {
+  params: Awaited<ExpensesPageProps["searchParams"]>;
+  sortKey: ReturnType<typeof getExpenseSortKey>;
+}) {
+  const activeOption = expenseSortOptions.find((option) => option.value === sortKey) ?? expenseSortOptions[0];
+  return (
+    <div className="expense-sort-control">
+      <span title={`Sortiert: ${activeOption.label}`}>{activeOption.label}</span>
+      <ActionModal
+        title="Einträge sortieren"
+        trigger={<ListFilter aria-hidden="true" size={18} />}
+        triggerLabel="Einträge sortieren"
+        modalId="ausgaben-sortierung"
+        triggerClassName="button secondary expense-sort-trigger"
+      >
+        <form className="form compact expense-sort-modal-form">
+          <FilterHiddenFields params={params} includeSearch includePeriod includeSort={false} />
+          <label>
+            Sortieren nach
+            <select name="sort" defaultValue={sortKey}>
+              {expenseSortOptions.map((option) => <option value={option.value} key={option.value}>{option.label}</option>)}
+            </select>
+          </label>
+          <button className="button" type="submit">Übernehmen</button>
+        </form>
+      </ActionModal>
+    </div>
   );
 }
 
@@ -731,7 +491,7 @@ function getInitialEntryLimit(mode: ReturnType<typeof getRange>["mode"]) {
 
 function buildExpenseListLoadUrl(params: Awaited<ExpensesPageProps["searchParams"]>) {
   const search = new URLSearchParams();
-  for (const key of ["from", "to", "year", "month", "label", "category", "q"] as const) {
+  for (const key of ["from", "to", "year", "month", "label", "category", "q", "sort"] as const) {
     const value = params[key];
     if (value) search.set(key, value);
   }
@@ -902,20 +662,6 @@ function buildPie(rows: ReturnType<typeof buildCategoryRows>) {
   return { background: `conic-gradient(${stops.join(", ")})` };
 }
 
-function matchesExpense(entry: ExpenseLike, query: string) {
-  return [
-    entry.description,
-    entry.store,
-    entry.paymentMethod,
-    entry.category?.name,
-    entry.label?.name,
-    entry.contract?.provider,
-    entry.contract?.contractType,
-    entry.kind === "INCOME" ? "einnahme" : "ausgabe",
-    entry.currency
-  ].some((value) => normalizeSearch(value).includes(query));
-}
-
 function normalizeSearch(value: unknown) {
   return String(value ?? "").trim().toLowerCase();
 }
@@ -992,13 +738,6 @@ function buildActiveFilterChips(
   return chips;
 }
 
-const recurringIntervalLabels = {
-  MONTHLY: "Monatlich",
-  YEARLY: "Jährlich",
-  QUARTERLY: "Quartalsweise",
-  ONCE: "Einmalig",
-  OTHER: "Sonstiges"
-};
 
 type ExpenseLike = Awaited<ReturnType<typeof getVisibleExpenses>>[number];
 type CategoryLike = Awaited<ReturnType<typeof getVisibleCategories>>[number];

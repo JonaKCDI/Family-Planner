@@ -18,7 +18,7 @@ services:
       - ${EXPENSE_EXCEL_HOST_DIR:-./data/expenses}:/data/expenses
       - ${MILEAGE_EXCEL_HOST_DIR:-./data/mileage}:/data/mileage
     healthcheck:
-      test: ["CMD-SHELL", "node -e \"fetch('http://127.0.0.1:3000/api/health').then(r=>r.text()).then(t=>process.exit(t.trim()==='ok'?0:1)).catch(()=>process.exit(1))\""]
+      test: ["CMD-SHELL", "node -e \"const os=require('os');const urls=['http://127.0.0.1:3000/api/health','http://'+os.hostname()+':3000/api/health'];(async()=>{for(const url of urls){try{const res=await fetch(url);if((await res.text()).trim()==='ok')process.exit(0)}catch{}}process.exit(1)})()\""]
       interval: 5m
       timeout: 5s
       retries: 5

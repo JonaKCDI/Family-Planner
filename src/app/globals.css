@@ -213,6 +213,13 @@ textarea {
   font-size: 0.9rem;
 }
 
+.form label small {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
 .form input,
 .form select,
 .form textarea {
@@ -484,6 +491,9 @@ textarea {
 
 .expense-section-summary {
   display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.9rem;
+  align-items: center;
   min-width: 0;
   cursor: pointer;
   list-style: none;
@@ -503,9 +513,53 @@ textarea {
   margin-bottom: 0;
 }
 
+.expense-section-heading {
+  min-width: 0;
+}
+
+.expense-section-meta {
+  min-width: 0;
+  white-space: normal;
+}
+
 .expense-load-more {
   justify-self: center;
   width: min(100%, 260px);
+}
+
+.expense-sort-control {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  justify-self: end;
+  min-width: 0;
+}
+
+.expense-sort-control > span {
+  max-width: 16rem;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 800;
+  white-space: normal;
+}
+
+.expense-sort-trigger {
+  width: 40px;
+  min-height: 38px;
+  padding-inline: 0;
+}
+
+.expense-sort-modal-form {
+  margin-top: 0.25rem;
+}
+
+.expense-sort-modal-form select {
+  min-width: 0;
+  width: 100%;
+  border: 1px solid #cfc9bd;
+  border-radius: 8px;
+  background: #fff;
+  padding: 0.62rem 0.7rem;
 }
 
 .category-editor-list,
@@ -1754,6 +1808,15 @@ body {
   color: #34383d;
 }
 
+.expense-secondary-actions {
+  justify-content: end;
+}
+
+.expense-secondary-actions .button {
+  background: #fbfaf6;
+  color: var(--muted);
+}
+
 .month-switcher {
   display: grid;
   grid-template-columns: 44px minmax(0, 1fr) 44px;
@@ -2094,6 +2157,18 @@ body {
   gap: 0.85rem;
 }
 
+.expense-setup-page-layout {
+  display: grid;
+  gap: 1rem;
+}
+
+.setup-page-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  margin: -0.35rem 0 1rem;
+}
+
 .setup-card {
   min-width: 0;
   border: 1px solid var(--line);
@@ -2145,6 +2220,66 @@ body {
 .setup-two-column {
   display: grid;
   gap: 0.75rem;
+}
+
+.inline-edit-row {
+  align-items: start;
+}
+
+.inline-edit-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(9rem, 0.8fr) minmax(8rem, 0.7fr) minmax(4.5rem, auto);
+  align-items: end;
+  gap: 0.55rem;
+  min-width: 0;
+}
+
+.autosave-status {
+  grid-column: 1 / -1;
+  min-height: 1.1rem;
+  color: var(--accent-dark);
+  font-size: 0.78rem;
+  font-weight: 800;
+  opacity: 0;
+  transition: opacity 0.18s ease;
+}
+
+.autosave-status.saved {
+  opacity: 1;
+}
+
+.autosave-status.saved::before {
+  content: "✓ ";
+}
+
+.modal-form-section {
+  background: #fbfaf6;
+}
+
+.contract-price-sync-toggle {
+  max-width: max-content;
+}
+
+.optional-section {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  padding: 0.85rem;
+}
+
+.optional-section summary {
+  cursor: pointer;
+  color: var(--accent-dark);
+  font-weight: 900;
+  list-style: none;
+}
+
+.optional-section summary::-webkit-details-marker {
+  display: none;
+}
+
+.optional-section[open] summary {
+  margin-bottom: 0.8rem;
 }
 
 .car-setup-card {
@@ -2441,6 +2576,102 @@ body {
   align-items: stretch;
 }
 
+.mileage-car-trigger,
+.mileage-car-static {
+  border-color: var(--line);
+  background: #fff;
+  color: var(--accent-dark);
+  font-weight: 900;
+}
+
+.mileage-car-trigger {
+  min-width: 9rem;
+}
+
+.mileage-car-menu {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.mileage-car-menu a {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  padding: 0.75rem;
+}
+
+.mileage-car-menu a.active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.mileage-car-menu a > span:last-child {
+  display: grid;
+  gap: 0.1rem;
+}
+
+.mileage-car-menu small {
+  color: var(--muted);
+  font-weight: 700;
+}
+
+@media (min-width: 901px) {
+  .filter-system {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+  }
+
+  .period-navigator {
+    grid-column: 1;
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .expense-secondary-actions {
+    grid-column: 2;
+    grid-row: 1;
+    flex-wrap: nowrap;
+    align-self: stretch;
+    align-items: stretch;
+    margin: 0;
+  }
+
+  .period-tools .button,
+  .expense-secondary-actions .button {
+    min-height: 44px;
+    padding-inline: 0.9rem;
+    font-size: 0.9rem;
+  }
+
+  .expense-secondary-actions .button {
+    border-color: var(--line);
+    background: #fff;
+  }
+
+  .mileage-secondary-actions {
+    grid-column: 2;
+    grid-row: 1;
+    flex-wrap: nowrap;
+    align-self: stretch;
+    align-items: stretch;
+    margin: 0;
+  }
+
+  .mileage-secondary-actions .button {
+    min-height: 44px;
+    border-color: var(--line);
+    background: #fff;
+    padding-inline: 0.9rem;
+    font-size: 0.9rem;
+  }
+
+  .active-filter-row {
+    grid-column: 1 / -1;
+  }
+}
+
 .period-tabs {
   display: flex;
   gap: 0.4rem;
@@ -2714,17 +2945,72 @@ body {
   color: var(--muted);
 }
 
-.label-management-actions,
-.category-editor-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem;
-  justify-content: flex-end;
+.category-management-row strong {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
 }
 
-.label-management-actions form,
-.category-editor-actions form {
+.label-management-actions,
+.category-editor-actions {
+  display: grid;
+  gap: 0.4rem;
+  grid-template-columns: repeat(3, minmax(7rem, 1fr));
+  justify-content: flex-end;
+  align-items: start;
+  width: min(100%, 34rem);
+}
+
+.label-management-actions > form,
+.category-editor-actions > form {
   display: contents;
+}
+
+.category-management-row .label-management-actions {
+  grid-template-columns: repeat(2, minmax(8rem, 1fr));
+  width: min(100%, 23rem);
+}
+
+.category-management-row .label-management-actions:has(.management-inline-panel) {
+  grid-template-columns: repeat(2, minmax(8rem, 1fr));
+  width: min(100%, 36rem);
+}
+
+.management-inline-panel {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  margin-top: 0.55rem;
+}
+
+.label-management-actions:has(.management-inline-panel) > .button {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.label-management-actions:has(.management-inline-panel) > form {
+  display: none;
+}
+
+.label-inline-form {
+  display: grid;
+  grid-template-columns: minmax(10rem, 1.2fr) minmax(7rem, 0.8fr) minmax(5rem, 0.5fr);
+  align-items: end;
+  gap: 0.55rem;
+  min-width: 0;
+  max-width: 36rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfaf6;
+  padding: 0.65rem;
+}
+
+.label-inline-form label {
+  min-width: 0;
+}
+
+.label-inline-form input[type="color"] {
+  min-height: 2.7rem;
+  padding: 0.2rem;
 }
 
 .category-editor-actions {
@@ -4621,8 +4907,25 @@ body,
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .label-management-row .button {
+  .label-management-actions {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     width: 100%;
+  }
+
+  .category-management-row .label-management-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
+  }
+
+  .label-management-actions .button {
+    width: 100%;
+    min-width: 0;
+    padding-inline: 0.55rem;
+  }
+
+  .label-inline-form {
+    grid-template-columns: minmax(0, 1fr);
+    max-width: none;
   }
 
   .expense-row summary {
@@ -4760,5 +5063,112 @@ body,
     font-size: 0.82rem;
     line-height: 1.12;
     white-space: nowrap;
+  }
+}
+
+/* Final modal safety layer: iPhone/PWA safe areas and stable close/submit placement. */
+.modal-panel {
+  box-sizing: border-box;
+  position: relative;
+}
+
+.modal-close-button {
+  position: absolute;
+  top: 0.75rem;
+  right: 0.75rem;
+  z-index: 5;
+  width: 44px;
+  height: 44px;
+}
+
+.autosave-submit {
+  display: none;
+}
+
+.modal-submit-row {
+  grid-column: 1 / -1;
+}
+
+.modal-submit-row .button {
+  width: 100%;
+}
+
+.period-link-pending {
+  opacity: 0.68;
+  pointer-events: none;
+}
+
+@media (max-width: 900px), (max-height: 760px), (max-aspect-ratio: 4/5) {
+  .modal-backdrop,
+  .action-modal-backdrop {
+    inset: 0;
+    width: 100%;
+    height: 100dvh;
+    min-height: 100dvh;
+    overflow: hidden;
+    padding: 0;
+  }
+
+  .modal-backdrop > .modal-panel,
+  .action-modal-backdrop > .modal-panel,
+  .modal-panel,
+  .modal-panel.action-modal-wide {
+    position: fixed;
+    inset: 0;
+    box-sizing: border-box;
+    width: 100vw;
+    max-width: 100vw;
+    height: 100dvh;
+    min-height: 100dvh;
+    max-height: 100dvh;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    border: 0;
+    border-radius: 0;
+    padding: calc(1rem + env(safe-area-inset-top)) max(1rem, env(safe-area-inset-right)) calc(1rem + env(safe-area-inset-bottom)) max(1rem, env(safe-area-inset-left));
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .modal-panel .modal-head {
+    position: sticky;
+    top: calc(-1rem - env(safe-area-inset-top));
+    z-index: 3;
+    align-items: center;
+    background: #fff;
+    border-bottom: 1px solid var(--line);
+    margin: calc(-1rem - env(safe-area-inset-top)) calc(-1 * max(1rem, env(safe-area-inset-right))) 0 calc(-1 * max(1rem, env(safe-area-inset-left)));
+    padding: calc(1rem + env(safe-area-inset-top)) calc(4.6rem + env(safe-area-inset-right)) 0.85rem max(1rem, env(safe-area-inset-left));
+  }
+
+  .modal-close-button {
+    position: fixed !important;
+    top: calc(0.75rem + env(safe-area-inset-top)) !important;
+    right: calc(1.25rem + env(safe-area-inset-right)) !important;
+    z-index: 1002 !important;
+    width: 44px !important;
+    height: 44px !important;
+    margin: 0 !important;
+  }
+
+  .modal-submit-row {
+    padding-bottom: calc(8rem + env(safe-area-inset-bottom));
+  }
+
+  .modal-submit-row .button {
+    position: static;
+    box-shadow: none;
+  }
+
+  .inline-edit-form {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .expense-setup-page-layout {
+    gap: 0.75rem;
+  }
+
+  .create-dialog .button[type="submit"] {
+    min-height: 48px;
   }
 }

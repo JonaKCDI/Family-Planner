@@ -6,6 +6,7 @@ import { deleteExpense, updateExpense } from "@/lib/actions";
 import type { ExpenseDocumentItem, ExpenseListItem } from "@/lib/expense-list";
 import { formatDate, formatMoney, toDateInputValue } from "@/lib/format";
 import { ActionModal } from "@/components/action-modal";
+import { AutosaveForm } from "@/components/autosave-form";
 import { SearchableSelect, type SearchableSelectOption } from "@/components/searchable-select";
 
 export type ExpenseEntryOption = {
@@ -181,40 +182,57 @@ function ExpenseEntryRow({
               <input type="hidden" name="returnTo" value={returnTo} />
               <button className="button secondary danger-subtle" type="submit">Löschen</button>
             </form>
-            <ActionModal title="Eintrag bearbeiten" trigger="Bearbeiten">
-              <form action={updateExpense} className="form form-grid modal-form">
+            <ActionModal title="Eintrag bearbeiten" trigger="Bearbeiten" modalId={`expense-${expense.id}`}>
+              <AutosaveForm action={updateExpense} className="form form-grid modal-form" statusKey={`expense-${expense.id}`}>
                 <input type="hidden" name="id" value={expense.id} />
                 <input type="hidden" name="returnTo" value={returnTo} />
-                <label>
-                  Art
-                  <select name="kind" defaultValue={expense.kind}>
-                    <option value="EXPENSE">Ausgabe</option>
-                    <option value="INCOME">Einnahme</option>
-                  </select>
-                </label>
-                <label>Betrag in EUR<input name="amount" inputMode="decimal" defaultValue={formatEuroInput(expense.amountCents)} required /></label>
-                <label>Datum<input name="date" type="date" defaultValue={toDateInputValue(expense.date)} required /></label>
-                <label>Beschreibung<input name="description" defaultValue={expense.description} /></label>
-                <label>Bezahlart<input name="paymentMethod" list="payment-methods" defaultValue={expense.paymentMethod} /></label>
-                <label>Laden<input name="store" defaultValue={expense.store} placeholder="Rewe, Lidl, Amazon ..." /></label>
-                <SearchableSelect name="categoryId" label="Kategorie" options={categoryOptions} defaultValue={expense.categoryId} emptyLabel="Keine Kategorie" placeholder="Kategorie suchen oder auswählen" />
-                <SearchableSelect name="labelId" label="Label / Projekt" options={labelOptions} defaultValue={expense.labelId} emptyLabel="Kein Label" placeholder="Label suchen oder auswählen" />
-                <label>
-                  Vertrag
-                  <select name="contractId" defaultValue={expense.contractId ?? ""}>
-                    <option value="">Kein Vertrag</option>
-                    {contracts.map((contract) => <option value={contract.id} key={contract.id}>{contract.provider} · {contract.contractType}</option>)}
-                  </select>
-                </label>
-                <PaymentMethods />
-                <fieldset className="fieldset full-span">
-                  <legend>Drive-Link optional verknüpfen</legend>
-                  <input type="hidden" name="documentId" value={primaryDocument?.id ?? ""} />
-                  <label>Dokumenttitel<input name="documentTitle" defaultValue={primaryDocument?.title ?? ""} placeholder="Rechnung, Beleg, Nachweis ..." /></label>
-                  <label>Drive-Link<input name="documentUrl" type="url" defaultValue={primaryDocument?.url ?? ""} placeholder="https://drive.google.com/..." /></label>
+                <fieldset className="fieldset modal-form-section full-span">
+                  <legend>Kernangaben</legend>
+                  <div className="form-grid">
+                    <label>
+                      Art
+                      <select name="kind" defaultValue={expense.kind}>
+                        <option value="EXPENSE">Ausgabe</option>
+                        <option value="INCOME">Einnahme</option>
+                      </select>
+                    </label>
+                    <label>Betrag in EUR<input name="amount" inputMode="decimal" defaultValue={formatEuroInput(expense.amountCents)} required /></label>
+                    <label>Datum<input name="date" type="date" defaultValue={toDateInputValue(expense.date)} required /></label>
+                  </div>
                 </fieldset>
-                <button className="button full-span" type="submit">Änderungen speichern</button>
-              </form>
+                <fieldset className="fieldset modal-form-section full-span">
+                  <legend>Details</legend>
+                  <div className="form-grid">
+                    <label>Beschreibung<input name="description" defaultValue={expense.description} /></label>
+                    <label>Bezahlart<input name="paymentMethod" list="payment-methods" defaultValue={expense.paymentMethod} /></label>
+                    <label>Laden<input name="store" defaultValue={expense.store} placeholder="Rewe, Lidl, Amazon ..." /></label>
+                  </div>
+                </fieldset>
+                <fieldset className="fieldset modal-form-section full-span">
+                  <legend>Zuordnung</legend>
+                  <div className="form-grid">
+                    <SearchableSelect name="categoryId" label="Kategorie" options={categoryOptions} defaultValue={expense.categoryId} emptyLabel="Keine Kategorie" placeholder="Kategorie suchen oder auswählen" />
+                    <SearchableSelect name="labelId" label="Label / Projekt" options={labelOptions} defaultValue={expense.labelId} emptyLabel="Kein Label" placeholder="Label suchen oder auswählen" />
+                    <label>
+                      Vertrag
+                      <select name="contractId" defaultValue={expense.contractId ?? ""}>
+                        <option value="">Kein Vertrag</option>
+                        {contracts.map((contract) => <option value={contract.id} key={contract.id}>{contract.provider} · {contract.contractType}</option>)}
+                      </select>
+                    </label>
+                  </div>
+                </fieldset>
+                <PaymentMethods />
+                <details className="optional-section full-span" open={Boolean(primaryDocument)}>
+                  <summary>Beleg / Drive-Link hinzufügen</summary>
+                  <input type="hidden" name="documentId" value={primaryDocument?.id ?? ""} />
+                  <div className="form-grid">
+                    <label>Dokumenttitel<input name="documentTitle" defaultValue={primaryDocument?.title ?? ""} placeholder="Rechnung, Beleg, Nachweis ..." /></label>
+                    <label>Drive-Link<input name="documentUrl" type="url" defaultValue={primaryDocument?.url ?? ""} placeholder="https://drive.google.com/..." /></label>
+                  </div>
+                </details>
+                <button className="button full-span autosave-submit" type="submit">Änderungen speichern</button>
+              </AutosaveForm>
             </ActionModal>
           </div>
         </div>

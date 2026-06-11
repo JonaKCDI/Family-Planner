@@ -3,6 +3,7 @@ import { requireSession } from "@/lib/auth";
 import { formatDate } from "@/lib/format";
 import { getVisibleDocuments } from "@/lib/queries";
 import { ActionModal } from "@/components/action-modal";
+import { AutosaveForm } from "@/components/autosave-form";
 import { EmptyState, PageHeader, ScopeSelect } from "@/components/ui";
 
 type DocumentsPageProps = {
@@ -53,8 +54,8 @@ export default async function DocumentsPage({ searchParams }: DocumentsPageProps
                 </div>
                 <div className="entry-actions">
                   <a className="button secondary" href={document.url} target="_blank" rel="noreferrer">Öffnen</a>
-                  <ActionModal title="Dokument bearbeiten" trigger="Bearbeiten">
-                    <form action={updateDocumentReference} className="form form-grid modal-form">
+                  <ActionModal title="Dokument bearbeiten" trigger="Bearbeiten" modalId={`document-${document.id}`}>
+                    <AutosaveForm action={updateDocumentReference} className="form form-grid modal-form">
                       <input type="hidden" name="id" value={document.id} />
                       <label>Titel<input name="title" defaultValue={document.title} required /></label>
                       <label>Drive-Link<input name="url" type="url" defaultValue={document.url} required /></label>
@@ -70,8 +71,8 @@ export default async function DocumentsPage({ searchParams }: DocumentsPageProps
                       <label>Bezugs-ID optional<input name="linkedEntityId" defaultValue={document.linkedEntityId ?? ""} /></label>
                       <ScopeSelect defaultValue={document.scope} />
                       <label className="full-span">Beschreibung<textarea name="description" defaultValue={document.description ?? ""} /></label>
-                      <button className="button full-span" type="submit">Änderungen speichern</button>
-                    </form>
+                      <button className="button full-span autosave-submit" type="submit">Änderungen speichern</button>
+                    </AutosaveForm>
                   </ActionModal>
                   <form action={deleteDocumentReference}>
                     <input type="hidden" name="id" value={document.id} />

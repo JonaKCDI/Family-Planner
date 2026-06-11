@@ -5,6 +5,7 @@ import { getContractNextCancellationDate, toAnnualCancellationInputValue } from 
 import { formatDate, formatMoney, toDateInputValue } from "@/lib/format";
 import { getDocumentsForLinkedEntities, getExpenseLabels, getVisibleCategories, getVisibleContractPayments, getVisibleContractsWithExpenseDetails } from "@/lib/queries";
 import { ActionModal } from "@/components/action-modal";
+import { AutosaveForm } from "@/components/autosave-form";
 import { ContractPayments } from "@/components/contract-payments";
 import { SearchableSelect } from "@/components/searchable-select";
 import { EmptyState, PageHeader, ScopeSelect } from "@/components/ui";
@@ -108,64 +109,75 @@ export default async function ContractsPage({ searchParams }: ContractsPageProps
                   </div>
                 </summary>
                 <div className="contract-body">
-                  <ActionModal title="Vertrag bearbeiten" trigger="Bearbeiten">
-                    <form action={updateContract} className="form form-grid modal-form">
+                  <ActionModal title="Vertrag bearbeiten" trigger="Bearbeiten" modalId={`contract-${contract.id}`}>
+                    <AutosaveForm action={updateContract} className="form form-grid modal-form">
                       <input type="hidden" name="id" value={contract.id} />
-                      <label>Anbieter<input name="provider" defaultValue={contract.provider} required /></label>
-                      <label>Vertragsart<input name="contractType" defaultValue={contract.contractType} required /></label>
-                      <label>Kosten in EUR<input name="cost" inputMode="decimal" defaultValue={formatEuroInput(contract.costCents)} required /></label>
-                      <label>Gültig ab<input name="priceValidFrom" type="date" defaultValue={toDateInputValue(currentPricePhase?.validFrom ?? contract.startDate)} required /></label>
-                      <label>
-                        Preisänderung
-                        <select name="priceChangeMode" defaultValue="NEW_PHASE">
-                          <option value="NEW_PHASE">Neue Preisphase ab Gültig-ab</option>
-                          <option value="CORRECT_CURRENT">Aktuelle Phase korrigieren</option>
-                        </select>
-                      </label>
-                      <p className="muted full-span">Die Preisphase ändert den Vertrag für zukünftige automatische Ausgaben. Die Checkbox im Bereich „Automatische Ausgabe“ ändert zusätzlich bereits erzeugte Auto-Ausgaben im betroffenen Zeitraum.</p>
-                      <label>
-                        Intervall
-                        <select name="billingInterval" defaultValue={contract.billingInterval}>
-                          <option value="MONTHLY">Monatlich</option>
-                          <option value="YEARLY">Jährlich</option>
-                          <option value="QUARTERLY">Quartalsweise</option>
-                          <option value="ONCE">Einmalig</option>
-                          <option value="OTHER">Sonstiges</option>
-                        </select>
-                      </label>
-                      <label>Startdatum<input name="startDate" type="date" defaultValue={toDateInputValue(contract.startDate)} required /></label>
-                      <fieldset className="fieldset full-span">
-                        <legend>Automatische Ausgabe</legend>
-                        <label className="checkbox-field"><input name="autoCreateExpenses" type="checkbox" defaultChecked={contract.autoCreateExpenses} /> Automatisch als Ausgabe eintragen</label>
-                        <label>Einzugstag<input name="expensePaymentDay" type="number" min="1" max="31" defaultValue={contract.expensePaymentDay ?? new Date(contract.startDate).getDate()} /></label>
-                        <SearchableSelect name="expenseCategoryId" label="Ausgaben-Kategorie" options={categories} defaultValue={contract.expenseCategoryId} emptyLabel="Keine Kategorie" placeholder="Kategorie suchen oder auswählen" />
-                        <SearchableSelect name="expenseLabelId" label="Label / Projekt" options={labels} defaultValue={contract.expenseLabelId} emptyLabel="Kein Label" placeholder="Label suchen oder auswählen" />
-                        <label className="checkbox-field"><input name="updateGeneratedExpenses" type="checkbox" /> Bereits erzeugte Auto-Ausgaben ab Gültig-ab aktualisieren</label>
+                      <fieldset className="fieldset modal-form-section full-span">
+                        <legend>Vertrag</legend>
+                        <div className="form-grid">
+                          <label>Anbieter<input name="provider" defaultValue={contract.provider} required /></label>
+                          <label>Vertragsart<input name="contractType" defaultValue={contract.contractType} required /></label>
+                          <label>Startdatum<input name="startDate" type="date" defaultValue={toDateInputValue(contract.startDate)} required /></label>
+                          <label>
+                            Status
+                            <select name="status" defaultValue={contract.status}>
+                              <option value="ACTIVE">Aktiv</option>
+                              <option value="DRAFT">Entwurf</option>
+                              <option value="CANCELLED">Gekündigt</option>
+                              <option value="EXPIRED">Ausgelaufen</option>
+                            </select>
+                          </label>
+                          <ScopeSelect defaultValue={contract.scope} />
+                        </div>
                       </fieldset>
-                      <label>Ende/Laufzeit bis<input name="endDate" type="date" defaultValue={toDateInputValue(contract.endDate)} /></label>
-                      <label>Kündigung spätestens am<input name="cancellationDeadline" type="date" defaultValue={toAnnualCancellationInputValue(contract.cancellationDeadlineMonth, contract.cancellationDeadlineDay)} /></label>
-                      <label>Kündigungsfrist in Tagen<input name="cancellationNoticeDays" type="number" min="0" defaultValue={contract.cancellationNoticeDays ?? ""} /></label>
-                      <input type="hidden" name="renewalAnchorDay" value={contract.renewalAnchorDay ?? ""} />
-                      <label className="checkbox-field"><input name="autoRenewal" type="checkbox" defaultChecked={contract.autoRenewal} /> Verlängert sich automatisch</label>
-                      <label>
-                        Verlängerung
-                        <select name="renewalInterval" defaultValue={contract.renewalInterval}>
-                          <option value="MONTHLY">Monatlich</option>
-                          <option value="QUARTERLY">Quartalsweise</option>
-                          <option value="YEARLY">Jährlich</option>
-                        </select>
-                      </label>
-                      <p className="muted full-span">Bei automatischer Verlängerung ist „Ende/Laufzeit bis“ der nächste Vertrags- oder Verlängerungstermin. Die App rollt die Kündigungsfrist danach automatisch weiter.</p>
-                      <label>
-                        Status
-                        <select name="status" defaultValue={contract.status}>
-                          <option value="ACTIVE">Aktiv</option>
-                          <option value="DRAFT">Entwurf</option>
-                          <option value="CANCELLED">Gekündigt</option>
-                          <option value="EXPIRED">Ausgelaufen</option>
-                        </select>
-                      </label>
-                      <ScopeSelect defaultValue={contract.scope} />
+                      <fieldset className="fieldset modal-form-section full-span">
+                        <legend>Kosten & Abbuchung</legend>
+                        <div className="form-grid">
+                          <label>Kosten in EUR<input name="cost" inputMode="decimal" defaultValue={formatEuroInput(contract.costCents)} required /></label>
+                          <label>Preis gilt ab<input name="priceValidFrom" type="date" defaultValue={toDateInputValue(currentPricePhase?.validFrom ?? contract.startDate)} required /></label>
+                          <input type="hidden" name="priceChangeMode" value="NEW_PHASE" />
+                          <label>
+                            Zahlungsrhythmus
+                            <select name="billingInterval" defaultValue={contract.billingInterval}>
+                              <option value="MONTHLY">Monatlich</option>
+                              <option value="YEARLY">Jährlich</option>
+                              <option value="QUARTERLY">Quartalsweise</option>
+                              <option value="ONCE">Einmalig</option>
+                              <option value="OTHER">Sonstiges</option>
+                            </select>
+                          </label>
+                        </div>
+                        <p className="muted">Die App legt daraus automatisch eine Preisphase an. Liegt das Datum in der Vergangenheit, bleiben bereits erzeugte Auto-Ausgaben unverändert, solange die Option nicht aktiv ist.</p>
+                        <label className="checkbox-field contract-price-sync-toggle"><input name="updateGeneratedExpenses" type="checkbox" /> Bereits erzeugte Auto-Ausgaben ab &quot;Preis gilt ab&quot; anpassen</label>
+                      </fieldset>
+                      <fieldset className="fieldset modal-form-section full-span">
+                        <legend>Automatische Ausgabe</legend>
+                        <div className="form-grid">
+                          <label className="checkbox-field full-span"><input name="autoCreateExpenses" type="checkbox" defaultChecked={contract.autoCreateExpenses} /> Automatisch als Ausgabe eintragen</label>
+                          <label>Einzugstag<input name="expensePaymentDay" type="number" min="1" max="31" defaultValue={contract.expensePaymentDay ?? new Date(contract.startDate).getDate()} /></label>
+                          <SearchableSelect name="expenseCategoryId" label="Ausgaben-Kategorie" options={categories} defaultValue={contract.expenseCategoryId} emptyLabel="Keine Kategorie" placeholder="Kategorie suchen oder auswählen" />
+                          <SearchableSelect name="expenseLabelId" label="Label / Projekt" options={labels} defaultValue={contract.expenseLabelId} emptyLabel="Kein Label" placeholder="Label suchen oder auswählen" />
+                        </div>
+                      </fieldset>
+                      <fieldset className="fieldset modal-form-section full-span">
+                        <legend>Laufzeit & Kündigung</legend>
+                        <div className="form-grid">
+                          <label>Ende/Laufzeit bis<input name="endDate" type="date" defaultValue={toDateInputValue(contract.endDate)} /></label>
+                          <label>Kündigung spätestens am<input name="cancellationDeadline" type="date" defaultValue={toAnnualCancellationInputValue(contract.cancellationDeadlineMonth, contract.cancellationDeadlineDay)} /></label>
+                          <label>Kündigungsfrist in Tagen<input name="cancellationNoticeDays" type="number" min="0" defaultValue={contract.cancellationNoticeDays ?? ""} /></label>
+                          <input type="hidden" name="renewalAnchorDay" value={contract.renewalAnchorDay ?? ""} />
+                          <label className="checkbox-field"><input name="autoRenewal" type="checkbox" defaultChecked={contract.autoRenewal} /> Verlängert sich automatisch</label>
+                          <label>
+                            Verlängerungsrhythmus
+                            <select name="renewalInterval" defaultValue={contract.renewalInterval}>
+                              <option value="MONTHLY">Monatlich</option>
+                              <option value="QUARTERLY">Quartalsweise</option>
+                              <option value="YEARLY">Jährlich</option>
+                            </select>
+                          </label>
+                        </div>
+                        <p className="muted">Bei automatischer Verlängerung ist &quot;Ende/Laufzeit bis&quot; der nächste Vertrags- oder Verlängerungstermin. Die App rollt die Kündigungsfrist danach automatisch weiter.</p>
+                      </fieldset>
                       <label className="full-span">Notizen<textarea name="description" defaultValue={contract.description ?? ""} /></label>
                       <div className="full-span price-history">
                         <strong>Preisentwicklung</strong>
@@ -175,14 +187,16 @@ export default async function ContractsPage({ searchParams }: ContractsPageProps
                           </span>
                         ))}
                       </div>
-                      <fieldset className="fieldset full-span">
-                        <legend>Drive-Link optional verknüpfen</legend>
+                      <details className="optional-section full-span" open={Boolean(primaryDocument)}>
+                        <summary>Beleg / Drive-Link hinzufügen</summary>
                         <input type="hidden" name="documentId" value={primaryDocument?.id ?? ""} />
-                        <label>Dokumenttitel<input name="documentTitle" defaultValue={primaryDocument?.title ?? ""} placeholder="Vertrag, Rechnung, Nachweis ..." /></label>
-                        <label>Drive-Link<input name="documentUrl" type="url" defaultValue={primaryDocument?.url ?? ""} placeholder="https://drive.google.com/..." /></label>
-                      </fieldset>
-                      <button className="button full-span" type="submit">Änderungen speichern</button>
-                    </form>
+                        <div className="form-grid">
+                          <label>Dokumenttitel<input name="documentTitle" defaultValue={primaryDocument?.title ?? ""} placeholder="Vertrag, Rechnung, Nachweis ..." /></label>
+                          <label>Drive-Link<input name="documentUrl" type="url" defaultValue={primaryDocument?.url ?? ""} placeholder="https://drive.google.com/..." /></label>
+                        </div>
+                      </details>
+                      <button className="button full-span autosave-submit" type="submit">Änderungen speichern</button>
+                    </AutosaveForm>
                   </ActionModal>
                   <ContractPayments
                     payments={contractPayments.map((payment) => ({

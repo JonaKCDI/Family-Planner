@@ -1,7 +1,7 @@
-"use client";
+﻿"use client";
 
 import type { FormEvent } from "react";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { ClipboardCheck, Euro, FileText, Fuel, Plus, ScrollText, X } from "lucide-react";
 import { usePathname } from "next/navigation";
 import {
@@ -59,6 +59,7 @@ export function CreateModal({ categories, labels, contracts, members, cars, fuel
   const [open, setOpen] = useState(false);
   const [type, setType] = useState<CreateType>(defaultType);
   const [returnTo, setReturnTo] = useState(pathname);
+  const panelRef = useRef<HTMLElement>(null);
   const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
   const selectedType = allowedTypes.some((item) => item.id === type) ? type : defaultType;
   function openCreateModal() {
@@ -83,15 +84,15 @@ export function CreateModal({ categories, labels, contracts, members, cars, fuel
       {open ? (
         <ModalPortal>
           <div className="modal-backdrop" role="presentation">
-            <section className="modal-panel create-dialog" role="dialog" aria-modal="true" aria-labelledby="create-modal-title">
+            <section ref={panelRef} className="modal-panel create-dialog" role="dialog" aria-modal="true" aria-labelledby="create-modal-title">
+              <button className="icon-button modal-close-button" type="button" aria-label="Schließen" title="Schließen" onClick={() => setOpen(false)}>
+                <X size={20} />
+              </button>
               <div className="modal-head">
                 <div>
                   <span className="eyebrow">Neu erstellen</span>
                   <h2 id="create-modal-title">{createTypes.find((item) => item.id === selectedType)?.label}</h2>
                 </div>
-                <button className="icon-button" type="button" aria-label="Schließen" title="Schließen" onClick={() => setOpen(false)}>
-                  <X size={20} />
-                </button>
               </div>
               {allowedTypes.length > 1 ? (
                 <div className="create-type-grid">
@@ -160,22 +161,41 @@ function ExpenseForm({
   return (
     <form action={createExpense} className="form form-grid modal-form" onSubmit={handleSubmit}>
       <input type="hidden" name="returnTo" value={returnTo} />
-      <label>Art<select name="kind" defaultValue="EXPENSE"><option value="EXPENSE">Ausgabe</option><option value="INCOME">Einnahme</option></select></label>
-      <label>Betrag in EUR<input name="amount" inputMode="decimal" placeholder="42,50" required /></label>
-      <label>Datum<input name="date" type="date" defaultValue={today} required /></label>
-      <label>Beschreibung<input name="description" placeholder="Wocheneinkauf, Dienstreise, Rückerstattung ..." /></label>
-      <label>Bezahlart<input name="paymentMethod" list="payment-methods" placeholder="Karte, Bar, Überweisung ..." /></label>
-      <label>Laden<input name="store" placeholder="Rewe, Lidl, Amazon ..." /></label>
-      <SearchableSelect name="categoryId" label="Kategorie" options={categories} emptyLabel="Keine Kategorie" placeholder="Kategorie suchen oder auswählen" />
-      <SearchableSelect name="labelId" label="Label / Projekt" options={labels} emptyLabel="Kein Label" placeholder="Label suchen oder auswählen" />
-      <label>Vertrag<select name="contractId" defaultValue=""><option value="">Kein Vertrag</option>{contracts.filter((contract) => contract.status === "ACTIVE").map((contract) => <option value={contract.id} key={contract.id}>{contract.provider} · {contract.contractType}</option>)}</select></label>
-      <PaymentMethods />
-      <fieldset className="fieldset full-span">
-        <legend>Drive-Link optional verknüpfen</legend>
-        <label>Dokumenttitel<input name="documentTitle" placeholder="Rechnung, Beleg, Nachweis ..." /></label>
-        <label>Drive-Link<input name="documentUrl" type="url" placeholder="https://drive.google.com/..." /></label>
+      <fieldset className="fieldset modal-form-section full-span">
+        <legend>Kernangaben</legend>
+        <div className="form-grid">
+          <label>Art<select name="kind" defaultValue="EXPENSE"><option value="EXPENSE">Ausgabe</option><option value="INCOME">Einnahme</option></select></label>
+          <label>Betrag in EUR<input name="amount" inputMode="decimal" placeholder="42,50" required /></label>
+          <label>Datum<input name="date" type="date" defaultValue={today} required /></label>
+        </div>
       </fieldset>
-      <button className="button full-span" type="submit">Speichern</button>
+      <fieldset className="fieldset modal-form-section full-span">
+        <legend>Details</legend>
+        <div className="form-grid">
+          <label>Beschreibung<input name="description" placeholder="Wocheneinkauf, Dienstreise, Rückerstattung ..." /></label>
+          <label>Bezahlart<input name="paymentMethod" list="payment-methods" placeholder="Karte, Bar, Überweisung ..." /></label>
+          <label>Laden<input name="store" placeholder="Rewe, Lidl, Amazon ..." /></label>
+        </div>
+      </fieldset>
+      <fieldset className="fieldset modal-form-section full-span">
+        <legend>Zuordnung</legend>
+        <div className="form-grid">
+          <SearchableSelect name="categoryId" label="Kategorie" options={categories} emptyLabel="Keine Kategorie" placeholder="Kategorie suchen oder auswählen" />
+          <SearchableSelect name="labelId" label="Label / Projekt" options={labels} emptyLabel="Kein Label" placeholder="Label suchen oder auswählen" />
+          <label>Vertrag<select name="contractId" defaultValue=""><option value="">Kein Vertrag</option>{contracts.filter((contract) => contract.status === "ACTIVE").map((contract) => <option value={contract.id} key={contract.id}>{contract.provider} · {contract.contractType}</option>)}</select></label>
+        </div>
+      </fieldset>
+      <PaymentMethods />
+      <details className="optional-section full-span">
+        <summary>Beleg / Drive-Link hinzufügen</summary>
+        <div className="form-grid">
+          <label>Dokumenttitel<input name="documentTitle" placeholder="Rechnung, Beleg, Nachweis ..." /></label>
+          <label>Drive-Link<input name="documentUrl" type="url" placeholder="https://drive.google.com/..." /></label>
+        </div>
+      </details>
+      <div className="modal-submit-row">
+        <button className="button full-span" type="submit">Speichern</button>
+      </div>
     </form>
   );
 }
@@ -205,38 +225,57 @@ function FuelForm({
   return (
     <form action={createFuelEntry} className="form form-grid modal-form" onSubmit={onSubmit}>
       <input type="hidden" name="returnTo" value={returnTo} />
-      <label>
-        Auto
-        <select name="carId" defaultValue={cars[0]?.id ?? ""} required>
-          {cars.map((car) => <option value={car.id} key={car.id}>{car.name}{car.licensePlate ? ` · ${car.licensePlate}` : ""}</option>)}
-        </select>
-      </label>
-      <label>Datum<input name="date" type="date" defaultValue={today} required /></label>
-      <label>Kilometerstand<input name="odometerKm" type="number" inputMode="numeric" min="0" required /></label>
-      <label>Liter<input name="liters" inputMode="decimal" placeholder="45,34" required /></label>
-      <label>Betrag in EUR<input name="cost" inputMode="decimal" placeholder="71,01" required /></label>
-      <label className="full-span">Bemerkung<input name="note" placeholder="Urlaub, bezahlt von ..., Werkstatt ..." /></label>
-      <label className="checkbox-field full-span">
-        <input name="createExpenseFromFuel" type="checkbox" checked={bookExpense} onChange={(event) => setBookExpense(event.currentTarget.checked)} />
-        Als Ausgabe buchen
-      </label>
+      <fieldset className="fieldset modal-form-section full-span">
+        <legend>Tankstopp</legend>
+        <div className="form-grid">
+          <label>
+            Auto
+            <select name="carId" defaultValue={cars[0]?.id ?? ""} required>
+              {cars.map((car) => <option value={car.id} key={car.id}>{car.name}{car.licensePlate ? ` · ${car.licensePlate}` : ""}</option>)}
+            </select>
+          </label>
+          <label>Datum<input name="date" type="date" defaultValue={today} required /></label>
+          <label>Kilometerstand<input name="odometerKm" type="number" inputMode="numeric" min="0" required /></label>
+        </div>
+      </fieldset>
+      <fieldset className="fieldset modal-form-section full-span">
+        <legend>Verbrauch & Kosten</legend>
+        <div className="form-grid">
+          <label>Liter<input name="liters" inputMode="decimal" placeholder="45,34" required /></label>
+          <label>Betrag in EUR<input name="cost" inputMode="decimal" placeholder="71,01" required /></label>
+          <label>Bemerkung<input name="note" placeholder="Urlaub, bezahlt von ..., Werkstatt ..." /></label>
+        </div>
+      </fieldset>
+      <fieldset className="fieldset modal-form-section full-span">
+        <legend>Ausgabe</legend>
+        <label className="checkbox-field full-span">
+          <input name="createExpenseFromFuel" type="checkbox" checked={bookExpense} onChange={(event) => setBookExpense(event.currentTarget.checked)} />
+          Als Ausgabe buchen
+        </label>
+      </fieldset>
       {bookExpense ? (
-        <fieldset className="fieldset full-span">
-          <legend>Ausgabe</legend>
-          <SearchableSelect name="expenseCategoryId" label="Kategorie" options={categories} defaultValue={settings?.defaultCategoryId} emptyLabel="Keine Kategorie" placeholder="Kategorie suchen oder auswählen" />
-          <SearchableSelect name="expenseLabelId" label="Label / Projekt" options={labels} defaultValue={settings?.defaultLabelId} emptyLabel="Kein Label" placeholder="Label suchen oder auswählen" />
-          <label>Bezahlart<input name="expensePaymentMethod" list="payment-methods" defaultValue={settings?.defaultPaymentMethod ?? ""} placeholder="Karte, Bar, Überweisung ..." /></label>
-          <label>Laden<input name="expenseStore" defaultValue={settings?.defaultStore ?? ""} placeholder="Tankstelle oder Händler" /></label>
-          <label className="full-span">Beschreibung<input name="expenseDescription" defaultValue={settings?.defaultDescription ?? ""} /></label>
-          <fieldset className="fieldset full-span">
-            <legend>Drive-Link optional verknüpfen</legend>
-            <label>Dokumenttitel<input name="documentTitle" placeholder="Rechnung, Beleg, Nachweis ..." /></label>
-            <label>Drive-Link<input name="documentUrl" type="url" placeholder="https://drive.google.com/..." /></label>
-          </fieldset>
+        <fieldset className="fieldset modal-form-section full-span">
+          <legend>Ausgaben-Details</legend>
+          <div className="form-grid">
+            <SearchableSelect name="expenseCategoryId" label="Kategorie" options={categories} defaultValue={settings?.defaultCategoryId} emptyLabel="Keine Kategorie" placeholder="Kategorie suchen oder auswählen" />
+            <SearchableSelect name="expenseLabelId" label="Label / Projekt" options={labels} defaultValue={settings?.defaultLabelId} emptyLabel="Kein Label" placeholder="Label suchen oder auswählen" />
+            <label>Bezahlart<input name="expensePaymentMethod" list="payment-methods" defaultValue={settings?.defaultPaymentMethod ?? ""} placeholder="Karte, Bar, Überweisung ..." /></label>
+            <label>Laden<input name="expenseStore" defaultValue={settings?.defaultStore ?? ""} placeholder="Tankstelle oder Händler" /></label>
+            <label className="full-span">Beschreibung<input name="expenseDescription" defaultValue={settings?.defaultDescription ?? ""} /></label>
+          </div>
+          <details className="optional-section full-span">
+            <summary>Beleg / Drive-Link hinzufügen</summary>
+            <div className="form-grid">
+              <label>Dokumenttitel<input name="documentTitle" placeholder="Rechnung, Beleg, Nachweis ..." /></label>
+              <label>Drive-Link<input name="documentUrl" type="url" placeholder="https://drive.google.com/..." /></label>
+            </div>
+          </details>
           <PaymentMethods />
         </fieldset>
       ) : null}
-      <button className="button full-span" type="submit">Speichern</button>
+      <div className="modal-submit-row">
+        <button className="button full-span" type="submit">Speichern</button>
+      </div>
     </form>
   );
 }
@@ -265,46 +304,63 @@ function TaskForm({ members, today, onSubmit }: { members: CreateModalProps["mem
 
   return (
     <form action={isRecurring ? createRecurringTask : createTask} className="form form-grid modal-form" onSubmit={handleSubmit}>
-      <label>Titel<input name="title" required /></label>
-      <label>Zuweisen an<select name="assignedToUserId" defaultValue=""><option value="">Nicht zugewiesen</option>{members.map((member) => <option value={member.userId} key={member.id}>{member.user.name}</option>)}</select></label>
-      <label>{isRecurring ? "Startdatum" : "Deadline"}<input key={isRecurring ? "recurring-date" : "single-date"} name="dueDate" type="date" defaultValue={isRecurring ? today : ""} required={isRecurring} /></label>
-      <label>Priorität<select name="priority" defaultValue="MEDIUM"><option value="LOW">Niedrig</option><option value="MEDIUM">Mittel</option><option value="HIGH">Hoch</option><option value="URGENT">Dringend</option></select></label>
-      <label>Sichtbarkeit<select name="scope" defaultValue="FAMILY"><option value="FAMILY">Familie</option><option value="PRIVATE">Privat</option></select></label>
-      <fieldset className="fieldset full-span">
-        <legend>Wiederholen</legend>
-        <label>
-          Rhythmus
-          <select name="recurrencePreset" value={recurrencePreset} onChange={(event) => setRecurrencePreset(event.currentTarget.value)}>
-            <option value="NONE">Einmalig</option>
-            <option value="DAILY">Täglich</option>
-            <option value="EVERY_2_DAYS">Alle 2 Tage</option>
-            <option value="WEEKLY">Wöchentlich</option>
-            <option value="EVERY_2_WEEKS">Alle 2 Wochen</option>
-            <option value="MONTHLY">Monatlich</option>
-            <option value="QUARTERLY">Vierteljährlich</option>
-            <option value="SEMIANNUAL">Halbjährlich</option>
-            <option value="YEARLY">Jährlich</option>
-            <option value="CUSTOM">Individuell</option>
-          </select>
-        </label>
-        {recurrencePreset === "CUSTOM" ? (
-          <>
-            <label>Alle<input name="intervalCount" type="number" min="1" max={customIntervalMax} defaultValue="1" required /></label>
-            <label>
-              Einheit
-              <select name="intervalUnit" value={customIntervalUnit} onChange={(event) => setCustomIntervalUnit(event.currentTarget.value)}>
-                <option value="DAY">Tage</option>
-                <option value="WEEK">Wochen</option>
-                <option value="MONTH">Monate</option>
-                <option value="YEAR">Jahre</option>
-              </select>
-            </label>
-          </>
-        ) : null}
-        {isRecurring ? <label>Enddatum optional<input name="endDate" type="date" /></label> : null}
+      <fieldset className="fieldset modal-form-section full-span">
+        <legend>Aufgabe</legend>
+        <div className="form-grid">
+          <label>Titel<input name="title" required /></label>
+          <label>Zuweisen an<select name="assignedToUserId" defaultValue=""><option value="">Nicht zugewiesen</option>{members.map((member) => <option value={member.userId} key={member.id}>{member.user.name}</option>)}</select></label>
+          <label>Priorität<select name="priority" defaultValue="MEDIUM"><option value="LOW">Niedrig</option><option value="MEDIUM">Mittel</option><option value="HIGH">Hoch</option><option value="URGENT">Dringend</option></select></label>
+        </div>
       </fieldset>
-      <label className="full-span">Beschreibung<textarea name="description" /></label>
-      <button className="button full-span" type="submit">Speichern</button>
+      <fieldset className="fieldset modal-form-section full-span">
+        <legend>Planung</legend>
+        <div className="form-grid">
+          <label>{isRecurring ? "Startdatum" : "Deadline"}<input key={isRecurring ? "recurring-date" : "single-date"} name="dueDate" type="date" defaultValue={isRecurring ? today : ""} required={isRecurring} /></label>
+          <label>Sichtbarkeit<select name="scope" defaultValue="FAMILY"><option value="FAMILY">Familie</option><option value="PRIVATE">Privat</option></select></label>
+        </div>
+      </fieldset>
+      <fieldset className="fieldset modal-form-section full-span">
+        <legend>Wiederholen</legend>
+        <div className="form-grid">
+          <label>
+            Rhythmus
+            <select name="recurrencePreset" value={recurrencePreset} onChange={(event) => setRecurrencePreset(event.currentTarget.value)}>
+              <option value="NONE">Einmalig</option>
+              <option value="DAILY">Täglich</option>
+              <option value="EVERY_2_DAYS">Alle 2 Tage</option>
+              <option value="WEEKLY">Wöchentlich</option>
+              <option value="EVERY_2_WEEKS">Alle 2 Wochen</option>
+              <option value="MONTHLY">Monatlich</option>
+              <option value="QUARTERLY">Vierteljährlich</option>
+              <option value="SEMIANNUAL">Halbjährlich</option>
+              <option value="YEARLY">Jährlich</option>
+              <option value="CUSTOM">Individuell</option>
+            </select>
+          </label>
+          {recurrencePreset === "CUSTOM" ? (
+            <>
+              <label>Alle<input name="intervalCount" type="number" min="1" max={customIntervalMax} defaultValue="1" required /></label>
+              <label>
+                Einheit
+                <select name="intervalUnit" value={customIntervalUnit} onChange={(event) => setCustomIntervalUnit(event.currentTarget.value)}>
+                  <option value="DAY">Tage</option>
+                  <option value="WEEK">Wochen</option>
+                  <option value="MONTH">Monate</option>
+                  <option value="YEAR">Jahre</option>
+                </select>
+              </label>
+            </>
+          ) : null}
+          {isRecurring ? <label>Enddatum optional<input name="endDate" type="date" /></label> : null}
+        </div>
+      </fieldset>
+      <fieldset className="fieldset modal-form-section full-span">
+        <legend>Details</legend>
+        <label>Beschreibung<textarea name="description" /></label>
+      </fieldset>
+      <div className="modal-submit-row">
+        <button className="button full-span" type="submit">Speichern</button>
+      </div>
     </form>
   );
 }
@@ -322,42 +378,66 @@ function ContractForm({
 }) {
   return (
     <form action={createContract} className="form form-grid modal-form" onSubmit={onSubmit}>
-      <label>Anbieter<input name="provider" required /></label>
-      <label>Vertragsart<input name="contractType" placeholder="Mobilfunk, Versicherung, Abo ..." required /></label>
-      <label>Kosten in EUR<input name="cost" inputMode="decimal" placeholder="29,99" required /></label>
       <input type="hidden" name="priceValidFrom" value={today} />
       <input type="hidden" name="priceChangeMode" value="NEW_PHASE" />
-      <label>Intervall<select name="billingInterval" defaultValue="MONTHLY"><option value="MONTHLY">Monatlich</option><option value="YEARLY">Jährlich</option><option value="QUARTERLY">Quartalsweise</option><option value="ONCE">Einmalig</option><option value="OTHER">Sonstiges</option></select></label>
-      <label>Startdatum<input name="startDate" type="date" defaultValue={today} required /></label>
-      <fieldset className="fieldset full-span">
+      <fieldset className="fieldset modal-form-section full-span">
+        <legend>Vertrag</legend>
+        <div className="form-grid">
+          <label>Anbieter<input name="provider" required /></label>
+          <label>Vertragsart<input name="contractType" placeholder="Mobilfunk, Versicherung, Abo ..." required /></label>
+          <label>Startdatum<input name="startDate" type="date" defaultValue={today} required /></label>
+          <label>Status<select name="status" defaultValue="ACTIVE"><option value="ACTIVE">Aktiv</option><option value="DRAFT">Entwurf</option><option value="CANCELLED">Gekündigt</option><option value="EXPIRED">Ausgelaufen</option></select></label>
+          <label>Sichtbarkeit<select name="scope" defaultValue="FAMILY"><option value="FAMILY">Familie</option><option value="PRIVATE">Privat</option></select></label>
+        </div>
+      </fieldset>
+      <fieldset className="fieldset modal-form-section full-span">
+        <legend>Kosten & Abbuchung</legend>
+        <div className="form-grid">
+          <label>Kosten in EUR<input name="cost" inputMode="decimal" placeholder="29,99" required /></label>
+          <label>
+            Zahlungsrhythmus
+            <select name="billingInterval" defaultValue="MONTHLY"><option value="MONTHLY">Monatlich</option><option value="YEARLY">Jährlich</option><option value="QUARTERLY">Quartalsweise</option><option value="ONCE">Einmalig</option><option value="OTHER">Sonstiges</option></select>
+          </label>
+        </div>
+      </fieldset>
+      <fieldset className="fieldset modal-form-section full-span">
         <legend>Automatische Ausgabe</legend>
-        <label className="checkbox-field"><input name="autoCreateExpenses" type="checkbox" /> Automatisch als Ausgabe eintragen</label>
-        <label>Einzugstag<input name="expensePaymentDay" type="number" min="1" max="31" defaultValue={new Date(`${today}T00:00:00`).getDate()} /></label>
-        <SearchableSelect name="expenseCategoryId" label="Ausgaben-Kategorie" options={categories} emptyLabel="Keine Kategorie" placeholder="Kategorie suchen oder auswählen" />
-        <SearchableSelect name="expenseLabelId" label="Label / Projekt" options={labels} emptyLabel="Kein Label" placeholder="Label suchen oder auswählen" />
+        <div className="form-grid">
+          <label className="checkbox-field full-span"><input name="autoCreateExpenses" type="checkbox" /> Automatisch als Ausgabe eintragen</label>
+          <label>Einzugstag<input name="expensePaymentDay" type="number" min="1" max="31" defaultValue={new Date(`${today}T00:00:00`).getDate()} /></label>
+          <SearchableSelect name="expenseCategoryId" label="Ausgaben-Kategorie" options={categories} emptyLabel="Keine Kategorie" placeholder="Kategorie suchen oder auswählen" />
+          <SearchableSelect name="expenseLabelId" label="Label / Projekt" options={labels} emptyLabel="Kein Label" placeholder="Label suchen oder auswählen" />
+        </div>
       </fieldset>
-      <label>Ende/Laufzeit bis<input name="endDate" type="date" /></label>
-      <label>Kündigung spätestens am<input name="cancellationDeadline" type="date" /></label>
-      <label>Kündigungsfrist in Tagen<input name="cancellationNoticeDays" type="number" min="0" /></label>
-      <label className="checkbox-field"><input name="autoRenewal" type="checkbox" /> Verlängert sich automatisch</label>
-      <label>
-        Verlängerung
-        <select name="renewalInterval" defaultValue="MONTHLY">
-          <option value="MONTHLY">Monatlich</option>
-          <option value="QUARTERLY">Quartalsweise</option>
-          <option value="YEARLY">Jährlich</option>
-        </select>
-      </label>
-      <p className="muted full-span">Bei automatisch verlängerten Verträgen ist „Ende/Laufzeit bis“ der nächste Vertrags- oder Verlängerungstermin. Die App rollt die Kündigungsfrist danach automatisch weiter.</p>
-      <label>Status<select name="status" defaultValue="ACTIVE"><option value="ACTIVE">Aktiv</option><option value="DRAFT">Entwurf</option><option value="CANCELLED">Gekündigt</option><option value="EXPIRED">Ausgelaufen</option></select></label>
-      <label>Sichtbarkeit<select name="scope" defaultValue="FAMILY"><option value="FAMILY">Familie</option><option value="PRIVATE">Privat</option></select></label>
+      <fieldset className="fieldset modal-form-section full-span">
+        <legend>Laufzeit & Kündigung</legend>
+        <div className="form-grid">
+          <label>Ende/Laufzeit bis<input name="endDate" type="date" /></label>
+          <label>Kündigung spätestens am<input name="cancellationDeadline" type="date" /></label>
+          <label>Kündigungsfrist in Tagen<input name="cancellationNoticeDays" type="number" min="0" /></label>
+          <label className="checkbox-field"><input name="autoRenewal" type="checkbox" /> Verlängert sich automatisch</label>
+          <label>
+            Verlängerungsrhythmus
+            <select name="renewalInterval" defaultValue="MONTHLY">
+              <option value="MONTHLY">Monatlich</option>
+              <option value="QUARTERLY">Quartalsweise</option>
+              <option value="YEARLY">Jährlich</option>
+            </select>
+          </label>
+        </div>
+        <p className="muted">Bei automatischer Verlängerung ist &quot;Ende/Laufzeit bis&quot; der nächste Vertrags- oder Verlängerungstermin. Die App rollt die Kündigungsfrist danach automatisch weiter.</p>
+      </fieldset>
       <label className="full-span">Notizen<textarea name="description" /></label>
-      <fieldset className="fieldset full-span">
-        <legend>Drive-Link optional verknüpfen</legend>
-        <label>Dokumenttitel<input name="documentTitle" placeholder="Vertrag, Rechnung, Nachweis ..." /></label>
-        <label>Drive-Link<input name="documentUrl" type="url" placeholder="https://drive.google.com/..." /></label>
-      </fieldset>
-      <button className="button full-span" type="submit">Speichern</button>
+      <details className="optional-section full-span">
+        <summary>Beleg / Drive-Link hinzufügen</summary>
+        <div className="form-grid">
+          <label>Dokumenttitel<input name="documentTitle" placeholder="Vertrag, Rechnung, Nachweis ..." /></label>
+          <label>Drive-Link<input name="documentUrl" type="url" placeholder="https://drive.google.com/..." /></label>
+        </div>
+      </details>
+      <div className="modal-submit-row">
+        <button className="button full-span" type="submit">Speichern</button>
+      </div>
     </form>
   );
 }
@@ -365,13 +445,28 @@ function ContractForm({
 function DocumentForm({ onSubmit }: { onSubmit: () => void }) {
   return (
     <form action={createDocumentReference} className="form form-grid modal-form" onSubmit={onSubmit}>
-      <label>Titel<input name="title" required /></label>
-      <label>Drive-Link<input name="url" type="url" placeholder="https://drive.google.com/..." required /></label>
-      <label>Bezug<select name="linkedEntityType" defaultValue="GENERAL"><option value="GENERAL">Allgemein</option><option value="EXPENSE">Ausgabe</option><option value="TASK">Aufgabe</option><option value="CONTRACT">Vertrag</option></select></label>
-      <label>Sichtbarkeit<select name="scope" defaultValue="FAMILY"><option value="FAMILY">Familie</option><option value="PRIVATE">Privat</option></select></label>
-      <label>Bezugs-ID optional<input name="linkedEntityId" /></label>
-      <label className="full-span">Beschreibung<textarea name="description" /></label>
-      <button className="button full-span" type="submit">Speichern</button>
+      <fieldset className="fieldset modal-form-section full-span">
+        <legend>Dokument</legend>
+        <div className="form-grid">
+          <label>Titel<input name="title" required /></label>
+          <label>Drive-Link<input name="url" type="url" placeholder="https://drive.google.com/..." required /></label>
+        </div>
+      </fieldset>
+      <fieldset className="fieldset modal-form-section full-span">
+        <legend>Zuordnung</legend>
+        <div className="form-grid">
+          <label>Bezug<select name="linkedEntityType" defaultValue="GENERAL"><option value="GENERAL">Allgemein</option><option value="EXPENSE">Ausgabe</option><option value="TASK">Aufgabe</option><option value="CONTRACT">Vertrag</option></select></label>
+          <label>Sichtbarkeit<select name="scope" defaultValue="FAMILY"><option value="FAMILY">Familie</option><option value="PRIVATE">Privat</option></select></label>
+          <label>Bezugs-ID optional<input name="linkedEntityId" /></label>
+        </div>
+      </fieldset>
+      <fieldset className="fieldset modal-form-section full-span">
+        <legend>Details</legend>
+        <label>Beschreibung<textarea name="description" /></label>
+      </fieldset>
+      <div className="modal-submit-row">
+        <button className="button full-span" type="submit">Speichern</button>
+      </div>
     </form>
   );
 }
