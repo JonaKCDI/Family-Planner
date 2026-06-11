@@ -107,20 +107,18 @@ export default async function MileagePage({ searchParams }: MileagePageProps) {
                     monthOptions={monthOptions}
                   />
                 </ActionModal>
+                <ActionModal title="Kilometer-Setup" trigger="Setup" modalId="kilometer-setup" triggerClassName="button secondary mileage-setup-action" wide>
+                  <MileageSetupPanel
+                    selectedCar={selectedCar}
+                    activeCars={activeCars}
+                    allCars={allCars}
+                    categories={categories}
+                    labels={labels}
+                    fuelExpenseSettings={fuelExpenseSettings}
+                    isAdmin={isAdmin}
+                  />
+                </ActionModal>
               </div>
-            </div>
-            <div className="overview-actions secondary-filter-actions mileage-secondary-actions">
-              <ActionModal title="Kilometer-Setup" trigger="Setup" modalId="kilometer-setup" wide>
-                <MileageSetupPanel
-                  selectedCar={selectedCar}
-                  activeCars={activeCars}
-                  allCars={allCars}
-                  categories={categories}
-                  labels={labels}
-                  fuelExpenseSettings={fuelExpenseSettings}
-                  isAdmin={isAdmin}
-                />
-              </ActionModal>
             </div>
             {activeFilterChips.length > 0 ? (
               <div className="active-filter-row" aria-label="Aktive Filter">
