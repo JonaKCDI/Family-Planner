@@ -5569,6 +5569,53 @@ body,
 }
 
 @media (max-width: 700px) {
+  .expense-row:not(.mileage-row) summary {
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    padding-right: min(39vw, 10.5rem);
+  }
+
+  .expense-row:not(.mileage-row) summary .expense-summary-copy,
+  .expense-row:not(.mileage-row) summary .expense-summary-value {
+    display: contents;
+  }
+
+  .expense-row:not(.mileage-row) summary .expense-summary-date {
+    grid-column: 1;
+    grid-row: 1;
+    align-self: center;
+  }
+
+  .expense-row:not(.mileage-row) summary .expense-category-tag {
+    display: block;
+    grid-column: 2;
+    grid-row: 1;
+    max-width: 100%;
+    min-width: 0;
+    align-self: center;
+    justify-self: start;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .expense-row:not(.mileage-row) summary .expense-summary-amount {
+    position: absolute;
+    top: 50%;
+    right: 2rem;
+    transform: translateY(-50%);
+  }
+
+  .expense-row:not(.mileage-row) summary .expense-summary-main {
+    grid-column: 1 / span 2;
+    grid-row: 2;
+  }
+
+  .expense-row:not(.mileage-row) summary .expense-overview-tags {
+    grid-column: 1 / span 2;
+    grid-row: 3;
+  }
+
   .priority-task .task-actions {
     grid-template-columns: minmax(0, 1fr) minmax(7rem, 0.48fr);
     align-items: end;
