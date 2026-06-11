@@ -132,14 +132,15 @@ function ExpenseEntryRow({
   const primaryDocument = linkedDocuments[0];
   const categoryOptions = includeSelectedOption(categories, expense.category ? { id: expense.category.id, name: expense.category.name } : null);
   const labelOptions = includeSelectedOption(labels, expense.label ? { id: expense.label.id, name: expense.label.name, meta: "archiviert" } : null);
+  const overviewMeta = [expense.store, expense.paymentMethod].filter(isUsefulExpenseMeta);
 
   return (
     <details className="expense-row" onToggle={(event) => { if (event.currentTarget.open) setLoaded(true); }}>
       <summary>
-        <span>{formatDate(expense.date)}</span>
-        <span>
+        <span className="expense-summary-date">{formatDate(expense.date)}</span>
+        <span className="expense-summary-main">
           {expense.description}
-          <small>{[expense.store, expense.paymentMethod].filter(Boolean).join(" · ")}</small>
+          {overviewMeta.length > 0 ? <small>{overviewMeta.join(" · ")}</small> : null}
         </span>
         <span className="expense-overview-tags">
           <span className="overview-tag" style={expense.category ? { borderColor: expense.category.color } : undefined}>
@@ -152,7 +153,7 @@ function ExpenseEntryRow({
           {expense.fuelEntry ? <FuelEntryTag expense={expense} variant="overview" /> : null}
           {duplicateCount > 1 ? <span className="overview-tag duplicate-tag">Mögliches Duplikat</span> : null}
         </span>
-        <strong className={expense.kind === "INCOME" ? "positive" : "negative"}>
+        <strong className={expense.kind === "INCOME" ? "positive expense-summary-amount" : "negative expense-summary-amount"}>
           {expense.kind === "INCOME" ? "+" : "-"}{formatMoney(expense.amountCents, expense.currency)}
         </strong>
       </summary>
@@ -160,7 +161,7 @@ function ExpenseEntryRow({
         <div className="expense-detail">
           <div className="expense-detail-meta">
             <span className="badge">{expense.kind === "INCOME" ? "Einnahme" : "Ausgabe"}</span>
-            <span className="badge">{expense.paymentMethod}</span>
+            {isUsefulExpenseMeta(expense.paymentMethod) ? <span className="badge">{expense.paymentMethod}</span> : null}
             {expense.store ? <span className="badge">{expense.store}</span> : null}
             {expense.category ? <span className="badge" style={{ borderColor: expense.category.color }}>{expense.category.name}</span> : null}
             {expense.label ? <span className="badge label-badge" style={{ background: expense.label.color }}>{expense.label.name}</span> : null}
@@ -278,4 +279,9 @@ function formatEuroInput(amountCents: number) {
 function includeSelectedOption<T extends SearchableSelectOption>(options: T[], selected: SearchableSelectOption | null) {
   if (!selected || options.some((option) => option.id === selected.id)) return options;
   return [selected, ...options];
+}
+
+function isUsefulExpenseMeta(value: string | null | undefined) {
+  const normalized = String(value ?? "").trim().toLocaleLowerCase("de-DE");
+  return Boolean(normalized) && normalized !== "nicht angegeben";
 }
