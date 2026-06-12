@@ -1,9 +1,9 @@
 "use client";
 
 import type React from "react";
-import { useId, useRef, useState } from "react";
+import { useId, useState } from "react";
 import { X } from "lucide-react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { ModalPortal } from "@/components/modal-portal";
 
 type ActionModalProps = {
@@ -19,32 +19,31 @@ type ActionModalProps = {
 export function ActionModal({ title, trigger, triggerLabel, modalId, triggerClassName = "button secondary", wide = false, children }: ActionModalProps) {
   const generatedId = useId();
   const resolvedModalId = modalId ?? `modal-${generatedId.replace(/:/g, "")}`;
-  const panelRef = useRef<HTMLElement>(null);
   const [localOpen, setLocalOpen] = useState(false);
-  const router = useRouter();
-  const pathname = usePathname();
+  const [locallyClosed, setLocallyClosed] = useState(false);
   const searchParams = useSearchParams();
-  const open = localOpen || (modalId ? searchParams.get("modal") === resolvedModalId : false);
+  const openFromUrl = modalId ? searchParams.get("modal") === resolvedModalId : false;
+  const open = localOpen || (openFromUrl && !locallyClosed);
 
   function setModalParam(nextOpen: boolean) {
     if (!modalId) return;
-    const params = new URLSearchParams(searchParams.toString());
+    const url = new URL(window.location.href);
+    const params = url.searchParams;
     if (nextOpen) params.set("modal", resolvedModalId);
     else if (params.get("modal") === resolvedModalId) params.delete("modal");
-    const query = params.toString();
-    const hash = typeof window === "undefined" ? "" : window.location.hash;
-    router.replace(`${pathname}${query ? `?${query}` : ""}${hash}`, { scroll: false });
+    window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
   }
 
   function openModal() {
     setLocalOpen(true);
+    setLocallyClosed(false);
     setModalParam(true);
   }
 
-  function closeModal() {
-    if (!submitDirtyAutosaveForms(panelRef.current)) return;
+  function closeModal(updateUrl = true) {
     setLocalOpen(false);
-    setModalParam(false);
+    setLocallyClosed(true);
+    if (updateUrl) setModalParam(false);
   }
 
   return (
@@ -56,17 +55,16 @@ export function ActionModal({ title, trigger, triggerLabel, modalId, triggerClas
         <ModalPortal>
           <div className="modal-backdrop action-modal-backdrop" role="presentation">
             <section
-              ref={panelRef}
               className={wide ? "modal-panel action-modal action-modal-wide" : "modal-panel action-modal"}
               role="dialog"
               aria-modal="true"
               aria-labelledby={`action-modal-${resolvedModalId}`}
               onSubmit={(event) => {
                 const form = event.target instanceof HTMLFormElement ? event.target : null;
-                if (!event.defaultPrevented && form?.method.toLowerCase() === "get") window.setTimeout(closeModal, 0);
+                if (!event.defaultPrevented && form) window.setTimeout(() => closeModal(false), 0);
               }}
             >
-              <button className="icon-button modal-close-button" type="button" aria-label="Schließen" title="Schließen" onClick={closeModal}>
+              <button className="icon-button modal-close-button" type="button" aria-label="Schließen" title="Schließen" onClick={() => closeModal()}>
                 <X size={20} />
               </button>
               <div className="modal-head">
@@ -79,15 +77,4 @@ export function ActionModal({ title, trigger, triggerLabel, modalId, triggerClas
       ) : null}
     </>
   );
-}
-
-function submitDirtyAutosaveForms(root: HTMLElement | null) {
-  if (!root) return true;
-  const forms = [...root.querySelectorAll<HTMLFormElement>("form[data-autosave-form='true']")];
-  for (const form of forms) {
-    if (form.dataset.autosaveDirty !== "true") continue;
-    if (!form.reportValidity()) return false;
-    form.requestSubmit();
-  }
-  return true;
 }

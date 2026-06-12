@@ -123,6 +123,7 @@ export function ExpenseSetupPanel({ exportYear, categories, labels, allLabels, r
                     <label>Name<input name="name" defaultValue={label.name} required /></label>
                     <label>Budget in EUR<input name="budget" inputMode="decimal" defaultValue={formatEuroInput(label.budgetCents)} /></label>
                     <label>Farbe<input name="color" type="color" defaultValue={label.color} /></label>
+                    <button className="button secondary autosave-submit" type="submit">Speichern</button>
                   </AutosaveForm>
                 </InlineEditPanel>
                 <form action={label.archivedAt ? unarchiveExpenseLabel : archiveExpenseLabel}>
@@ -189,6 +190,7 @@ export function ExpenseSetupPanel({ exportYear, categories, labels, allLabels, r
                     <label>Monatsbudget in EUR<input name="monthlyBudget" inputMode="decimal" defaultValue={formatEuroInput(category.monthlyBudgetCents)} /></label>
                     <label>Farbe<input name="color" type="color" defaultValue={category.color} /></label>
                     <input type="hidden" name="scope" value="PRIVATE" />
+                    <button className="button secondary autosave-submit" type="submit">Speichern</button>
                   </AutosaveForm>
                 </InlineEditPanel>
                 <form action={deleteCategory}>

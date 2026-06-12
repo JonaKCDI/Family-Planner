@@ -5654,3 +5654,143 @@ body,
     padding-inline: 0.65rem;
   }
 }
+
+.expense-mobile-tags,
+.expense-detail-description {
+  display: none;
+}
+
+/* Authoritative mobile expense card layout. Desktop rules above 900px stay untouched. */
+@media (max-width: 900px) {
+  .expense-row:not(.mileage-row) summary {
+    grid-template-columns: minmax(0, 1fr) minmax(6.8rem, max-content);
+    grid-template-areas:
+      "expense-date expense-amount"
+      "expense-main expense-main"
+      "expense-tags expense-tags";
+    align-items: start;
+    gap: 0.45rem 0.75rem;
+    padding: 0.88rem 2.35rem 0.9rem 0.88rem;
+  }
+
+  .expense-row:not(.mileage-row) summary .expense-summary-copy,
+  .expense-row:not(.mileage-row) summary .expense-summary-value {
+    display: contents;
+    min-width: 0;
+    overflow: visible;
+  }
+
+  .expense-row:not(.mileage-row) summary .expense-summary-date {
+    grid-area: expense-date;
+    min-width: 0;
+    padding: 0;
+    overflow: visible;
+    color: #111827;
+    line-height: 1.2;
+    text-overflow: clip;
+    white-space: nowrap;
+  }
+
+  .expense-row:not(.mileage-row) summary .expense-summary-main {
+    display: -webkit-box;
+    grid-area: expense-main;
+    min-width: 0;
+    padding: 0;
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    font-size: 1rem;
+    line-height: 1.28;
+    text-overflow: clip;
+    white-space: normal;
+  }
+
+  .expense-row:not(.mileage-row) summary .expense-summary-amount {
+    position: static;
+    grid-area: expense-amount;
+    align-self: start;
+    justify-self: end;
+    width: auto;
+    min-width: 6.8rem;
+    max-width: 100%;
+    transform: none;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.2;
+    text-align: right;
+    white-space: nowrap;
+  }
+
+  .expense-row:not(.mileage-row) summary .expense-summary-copy > .expense-overview-tags,
+  .expense-row:not(.mileage-row) summary .expense-summary-value > .expense-category-tag {
+    display: none;
+  }
+
+  .expense-row:not(.mileage-row) summary .expense-mobile-tags {
+    display: flex;
+    grid-area: expense-tags;
+    min-width: 0;
+    max-width: 100%;
+    flex-wrap: wrap;
+    gap: 0.36rem;
+    align-items: center;
+    justify-content: flex-start;
+    overflow: visible;
+  }
+
+  .expense-row:not(.mileage-row) summary .overview-tag {
+    box-sizing: border-box;
+    min-width: 0;
+    max-width: 100%;
+    justify-content: center;
+    line-height: 1.15;
+    text-align: center;
+  }
+
+  .expense-row:not(.mileage-row) summary .expense-mobile-tags .overview-tag {
+    min-height: 26px;
+    padding: 0.24rem 0.6rem;
+  }
+
+  .expense-row:not(.mileage-row) summary .expense-mobile-tags .expense-category-tag {
+    max-width: min(100%, 16rem);
+  }
+
+  .expense-row:not(.mileage-row) summary .expense-mobile-tags .fuel-entry-tag {
+    grid-template-columns: 17px minmax(0, auto);
+  }
+
+  .expense-row:not(.mileage-row) summary::after {
+    top: 1rem;
+    right: 0.95rem;
+    transform: rotate(45deg);
+  }
+
+  .expense-row:not(.mileage-row)[open] summary::after {
+    transform: rotate(225deg);
+  }
+
+  .expense-detail > .expense-detail-description:first-child {
+    display: grid;
+    min-width: 0;
+    gap: 0.22rem;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: #fff;
+    padding: 0.62rem 0.7rem;
+  }
+
+  .expense-detail-description span {
+    color: var(--muted);
+    font-size: 0.72rem;
+    font-weight: 900;
+    text-transform: uppercase;
+  }
+
+  .expense-detail-description p {
+    margin: 0;
+    color: #1f2933;
+    line-height: 1.4;
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+  }
+}

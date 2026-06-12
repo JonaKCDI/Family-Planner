@@ -158,9 +158,25 @@ function ExpenseEntryRow({
             {expense.category?.name ?? "Ohne Kategorie"}
           </span>
         </span>
+        <span className="expense-mobile-tags">
+          <span className="overview-tag expense-category-tag" style={expense.category ? { borderColor: expense.category.color } : undefined}>
+            {expense.category?.name ?? "Ohne Kategorie"}
+          </span>
+          {overviewMeta.map((item, index) => <span className="overview-tag meta-overview-tag" key={`mobile-${item}-${index}`}>{item}</span>)}
+          {expense.label ? <span className="overview-tag label-overview-tag" style={{ background: expense.label.color }}>{expense.label.name}</span> : null}
+          {expense.contract ? <span className="overview-tag">{expense.contract.provider}</span> : null}
+          {expense.generatedByContract ? <span className="overview-tag source-tag">Auto-Vertrag</span> : null}
+          {expense.recurringTransaction ? <span className="overview-tag source-tag">Serie: {expense.recurringTransaction.title}</span> : null}
+          {expense.fuelEntry ? <FuelEntryTag expense={expense} variant="overview" /> : null}
+          {duplicateCount > 1 ? <span className="overview-tag duplicate-tag">Mögliches Duplikat</span> : null}
+        </span>
       </summary>
       {loaded ? (
         <div className="expense-detail">
+          <div className="expense-detail-description">
+            <span>Beschreibung</span>
+            <p>{expense.description || "Ohne Beschreibung"}</p>
+          </div>
           <div className="expense-detail-meta">
             <span className="badge">{expense.kind === "INCOME" ? "Einnahme" : "Ausgabe"}</span>
             {isUsefulExpenseMeta(expense.paymentMethod) ? <span className="badge">{expense.paymentMethod}</span> : null}
