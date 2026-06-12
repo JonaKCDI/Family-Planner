@@ -2905,6 +2905,11 @@ body {
   color: var(--accent-dark);
 }
 
+.combobox-option.selected:not(.active) {
+  background: #f0f4f3;
+  color: #24282c;
+}
+
 .combobox-empty {
   padding: 0.55rem 0.6rem;
 }
