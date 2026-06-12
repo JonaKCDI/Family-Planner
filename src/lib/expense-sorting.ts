@@ -13,6 +13,7 @@ export type ExpenseSortKey = typeof expenseSortOptions[number]["value"];
 
 type SortableExpenseEntry = {
   id: string;
+  kind: "EXPENSE" | "INCOME";
   amountCents: number;
   date: Date | string;
   createdAt?: Date | string;
@@ -38,9 +39,9 @@ export function sortExpenseEntries<T extends SortableExpenseEntry>(entries: T[],
       case "date-asc":
         return compareDate(a.date, b.date) || fallbackCompare(a, b);
       case "amount-desc":
-        return b.amountCents - a.amountCents || fallbackCompare(a, b);
+        return signedAmountCents(b) - signedAmountCents(a) || fallbackCompare(a, b);
       case "amount-asc":
-        return a.amountCents - b.amountCents || fallbackCompare(a, b);
+        return signedAmountCents(a) - signedAmountCents(b) || fallbackCompare(a, b);
       case "category-asc":
         return compareCategory(a, b) || fallbackCompare(a, b);
       case "category-desc":
@@ -67,6 +68,10 @@ function buildCategoryCounts(entries: SortableExpenseEntry[]) {
 
 function compareCategory(a: SortableExpenseEntry, b: SortableExpenseEntry) {
   return categoryName(a).localeCompare(categoryName(b), "de-DE", { sensitivity: "base" });
+}
+
+function signedAmountCents(entry: SortableExpenseEntry) {
+  return entry.kind === "INCOME" ? entry.amountCents : -entry.amountCents;
 }
 
 function categoryName(entry: SortableExpenseEntry) {

@@ -2,18 +2,18 @@ import { describe, expect, test } from "vitest";
 import { sortExpenseEntries } from "@/lib/expense-sorting";
 
 const entries = [
-  entry("1", 1200, "2026-06-10", "Wohnen"),
-  entry("2", 300, "2026-06-12", "Mobilität"),
-  entry("3", 4500, "2026-06-11", "Wohnen"),
-  entry("4", 900, "2026-06-09", "Freizeit"),
-  entry("5", 700, "2026-06-08", "Mobilität"),
-  entry("6", 150, "2026-06-07", null)
+  entry("1", "EXPENSE", 1200, "2026-06-10", "Wohnen"),
+  entry("2", "EXPENSE", 300, "2026-06-12", "Mobilität"),
+  entry("3", "INCOME", 4500, "2026-06-11", "Wohnen"),
+  entry("4", "EXPENSE", 900, "2026-06-09", "Freizeit"),
+  entry("5", "INCOME", 700, "2026-06-08", "Mobilität"),
+  entry("6", "EXPENSE", 150, "2026-06-07", null)
 ];
 
 describe("expense sorting", () => {
-  test("sorts by amount in both directions", () => {
-    expect(sortExpenseEntries(entries, "amount-desc").map((item) => item.id)).toEqual(["3", "1", "4", "5", "2", "6"]);
-    expect(sortExpenseEntries(entries, "amount-asc").map((item) => item.id)).toEqual(["6", "2", "5", "4", "1", "3"]);
+  test("sorts by visible signed amount in both directions", () => {
+    expect(sortExpenseEntries(entries, "amount-desc").map((item) => item.id)).toEqual(["3", "5", "6", "2", "4", "1"]);
+    expect(sortExpenseEntries(entries, "amount-asc").map((item) => item.id)).toEqual(["1", "4", "2", "6", "5", "3"]);
   });
 
   test("sorts by date in both directions", () => {
@@ -28,9 +28,10 @@ describe("expense sorting", () => {
   });
 });
 
-function entry(id: string, amountCents: number, date: string, categoryName: string | null) {
+function entry(id: string, kind: "EXPENSE" | "INCOME", amountCents: number, date: string, categoryName: string | null) {
   return {
     id,
+    kind,
     amountCents,
     date: new Date(`${date}T12:00:00.000Z`),
     createdAt: new Date(`${date}T13:00:00.000Z`),

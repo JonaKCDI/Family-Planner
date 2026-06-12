@@ -143,7 +143,7 @@ function ExpenseEntryRow({
           <span className="expense-overview-tags">
             {overviewMeta.map((item, index) => <span className="overview-tag meta-overview-tag" key={`${item}-${index}`}>{item}</span>)}
             {expense.label ? <span className="overview-tag label-overview-tag" style={{ background: expense.label.color }}>{expense.label.name}</span> : null}
-            {expense.contract ? <span className="overview-tag">{expense.contract.provider}</span> : null}
+            {expense.contract ? <span className="overview-tag">{expense.contract.contractType}</span> : null}
             {expense.generatedByContract ? <span className="overview-tag source-tag">Auto-Vertrag</span> : null}
             {expense.recurringTransaction ? <span className="overview-tag source-tag">Serie: {expense.recurringTransaction.title}</span> : null}
             {expense.fuelEntry ? <FuelEntryTag expense={expense} variant="overview" /> : null}
@@ -164,7 +164,7 @@ function ExpenseEntryRow({
           </span>
           {overviewMeta.map((item, index) => <span className="overview-tag meta-overview-tag" key={`mobile-${item}-${index}`}>{item}</span>)}
           {expense.label ? <span className="overview-tag label-overview-tag" style={{ background: expense.label.color }}>{expense.label.name}</span> : null}
-          {expense.contract ? <span className="overview-tag">{expense.contract.provider}</span> : null}
+          {expense.contract ? <span className="overview-tag">{expense.contract.contractType}</span> : null}
           {expense.generatedByContract ? <span className="overview-tag source-tag">Auto-Vertrag</span> : null}
           {expense.recurringTransaction ? <span className="overview-tag source-tag">Serie: {expense.recurringTransaction.title}</span> : null}
           {expense.fuelEntry ? <FuelEntryTag expense={expense} variant="overview" /> : null}
