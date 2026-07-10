@@ -9,11 +9,21 @@ export type ExpenseFilterParams = {
   category?: string | null;
   q?: string | null;
   sort?: ExpenseSortKey | string | null;
+  view?: "entries" | "overview" | "categories" | "labels" | "periods" | "analysis" | string | null;
   compareA?: string | null;
   compareB?: string | null;
+  chartDimension?: "category" | "label" | string | null;
+  chartMetric?: "spending" | "income" | "saldo" | "net" | string | null;
+  chartTop?: string | null;
+  chartMonths?: string | null;
+  trendCategory?: string | null;
+  trendMonths?: string | null;
 };
 
-const orderedKeys = ["from", "to", "year", "month", "label", "category", "q", "sort", "compareA", "compareB"] as const;
+const orderedKeys = ["from", "to", "year", "month", "label", "category", "q", "sort", "view", "compareA", "compareB", "chartDimension", "chartMetric", "chartTop", "chartMonths", "trendCategory", "trendMonths"] as const;
+const expenseViewKeys = ["entries", "overview", "categories", "labels", "periods", "analysis"] as const;
+const chartDimensionKeys = ["category", "label"] as const;
+const chartMetricKeys = ["spending", "income", "saldo", "net"] as const;
 
 export function getMonthKey(date = new Date()) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
@@ -100,6 +110,21 @@ function normalizeExpenseParams(params: ExpenseFilterParams) {
   }
 
   if (next.sort && !isExpenseSortKey(next.sort)) delete next.sort;
+  if (next.view && !expenseViewKeys.includes(next.view as typeof expenseViewKeys[number])) delete next.view;
+  if (next.chartDimension && !chartDimensionKeys.includes(next.chartDimension as typeof chartDimensionKeys[number])) delete next.chartDimension;
+  if (next.chartMetric && !chartMetricKeys.includes(next.chartMetric as typeof chartMetricKeys[number])) delete next.chartMetric;
+  if (next.chartTop) {
+    const top = Number(next.chartTop);
+    if (!Number.isInteger(top) || top < 3 || top > 8) delete next.chartTop;
+  }
+  if (next.chartMonths) {
+    const months = Number(next.chartMonths);
+    if (months !== 6 && months !== 12) delete next.chartMonths;
+  }
+  if (next.trendMonths) {
+    const months = Number(next.trendMonths);
+    if (months !== 3 && months !== 6 && months !== 12) delete next.trendMonths;
+  }
 
   return next;
 }

@@ -4,9 +4,17 @@ import { requireSession } from "@/lib/auth";
 import { ensureDueContractExpenses } from "@/lib/contract-auto-expenses";
 import { getContractNextCancellationDate } from "@/lib/contracts";
 import { formatDate, formatMoney } from "@/lib/format";
-import { ensureDueRecurringTasks } from "@/lib/recurring-tasks";
-import { isImportantTask, taskRank } from "@/lib/tasks";
 import {
+  addFuelDerivedFields,
+  calculateFuelStatsFromDerived,
+  formatDecimal,
+  formatKilometers
+} from "@/lib/mileage";
+import { ensureDueRecurringTasks } from "@/lib/recurring-tasks";
+import { daysUntil, isImportantTask, taskRank, taskUrgency } from "@/lib/tasks";
+import {
+  getFuelEntriesForCar,
+  getVisibleCars,
   getVisibleCategories,
   getVisibleContracts,
   getVisibleDocuments,
@@ -14,6 +22,7 @@ import {
   getRecurringTransactions,
   getVisibleTasks
 } from "@/lib/queries";
+import { Chip, MetricCard, SectionCard, StatusBadge } from "@/components/ui-system";
 
 export default async function DashboardPage() {
   const session = await requireSession();
@@ -21,13 +30,14 @@ export default async function DashboardPage() {
     ensureDueContractExpenses(session.family.id, session.user.id),
     ensureDueRecurringTasks(session.family.id, session.user.id)
   ]);
-  const [expenses, tasks, contracts, documents, categories, recurringTransactions] = await Promise.all([
+  const [expenses, tasks, contracts, documents, categories, recurringTransactions, cars] = await Promise.all([
     getVisibleExpenses(session.family.id, session.user.id),
     getVisibleTasks(session.family.id, session.user.id),
     getVisibleContracts(session.family.id, session.user.id),
     getVisibleDocuments(session.family.id, session.user.id),
     getVisibleCategories(session.family.id, session.user.id, "EXPENSE"),
-    getRecurringTransactions(session.family.id, session.user.id)
+    getRecurringTransactions(session.family.id, session.user.id),
+    getVisibleCars(session.family.id)
   ]);
 
   const today = new Date();
@@ -38,205 +48,192 @@ export default async function DashboardPage() {
   const saldo = income - spending;
   const recurringIntervals = buildRecurringIntervalMap(recurringTransactions);
   const finance = buildFinanceInsight(expenses, categories, today, recurringIntervals);
+  const monthBudget = categories.reduce((sum, category) => sum + category.monthlyBudgetCents, 0);
+  const netConsumption = Math.max(0, spending - income);
+  const remainingBudget = Math.max(0, monthBudget - netConsumption);
+  const latestEntries = expenses.slice(0, 5);
   const openTasks = tasks
     .filter((task) => task.status === "OPEN" || task.status === "IN_PROGRESS")
     .sort((a, b) => taskRank(b) - taskRank(a));
   const importantTasks = openTasks.filter(isImportantTask);
+  const dueTasks = openTasks.filter((task) => daysUntil(task.dueDate) <= 0);
   const nextContracts = contracts
     .filter((contract) => contract.status === "ACTIVE")
     .map((contract) => ({ ...contract, nextCancellationDate: getContractNextCancellationDate(contract) }))
     .filter((contract) => contract.nextCancellationDate)
     .sort((a, b) => new Date(a.nextCancellationDate ?? 0).getTime() - new Date(b.nextCancellationDate ?? 0).getTime())
     .slice(0, 3);
+  const vehicleSummaries = await buildVehicleSummaries(session.family.id, cars.slice(0, 2));
 
   return (
-    <div className="dashboard">
-      <header className="dashboard-hero compact-hero">
-        <div>
-          <span className="eyebrow">{longDateFormatter.format(today)}</span>
-          <h1>{greeting}, {session.user.name}</h1>
-          <p>Alles Wichtige für {session.family.name}: Aufgaben, Finanzen, Verträge und Dokumente an einem Ort.</p>
-        </div>
+    <div className="cockpit-page">
+      <header className="cockpit-greeting">
+        <span className="eyebrow">{longDateFormatter.format(today)}</span>
+        <h1>{greeting}, {session.user.name}</h1>
+        <p>Ein ruhiger Überblick für {session.family.name}: was fällig ist, was läuft und wo du kurz hinschauen solltest.</p>
       </header>
 
-      <section className="dashboard-stats" aria-label="Haushaltsübersicht">
-        <DashboardStat label="Einnahmen" value={formatMoney(income)} detail="Dieser Monat" tone="green" />
-        <DashboardStat label="Ausgaben" value={formatMoney(spending)} detail={`${monthEntries.length} Einträge`} tone="red" />
-        <DashboardStat label="Saldo" value={formatMoney(saldo)} detail={saldo < 0 ? "Monat prüfen" : "Aktueller Stand"} tone={saldo < 0 ? "red" : "green"} />
-        <DashboardStat label="Monatsende" value={formatMoney(finance.projectedMonth)} detail={finance.hasHistory ? "Wenn es so weitergeht" : "Verlauf baut sich auf"} tone={finance.projectionTone} />
-        <DashboardStat label="Aufgaben" value={`${openTasks.length} offen`} detail={`${importantTasks.length} wichtig`} tone={importantTasks.length > 0 ? "amber" : "blue"} />
+      <section className="cockpit-metrics" aria-label="Statusübersicht">
+        <MetricCard label="Ausgaben" value={formatMoney(spending)} detail={monthBudget > 0 ? `${formatMoney(remainingBudget)} Budget frei` : `${monthEntries.length} Einträge`} tone={monthBudget > 0 && remainingBudget <= 0 ? "negative" : "warning"} />
+        <MetricCard label="Monatsende" value={formatMoney(finance.projectedMonth)} detail={finance.hasHistory ? "Prognose aus Verlauf" : "Verlauf baut sich auf"} tone={finance.projectionTone === "red" ? "negative" : finance.projectionTone === "amber" ? "warning" : "neutral"} />
+        <MetricCard label="Aufgaben" value={openTasks.length} detail={`${dueTasks.length} fällig · ${importantTasks.length} wichtig`} tone={dueTasks.length > 0 ? "negative" : importantTasks.length > 0 ? "warning" : "positive"} />
+        <MetricCard label="Kündigung" value={nextContracts[0]?.nextCancellationDate ? formatDate(nextContracts[0].nextCancellationDate) : "-"} detail={nextContracts.length > 0 ? `${nextContracts.length} Fristen im Blick` : "Keine Frist hinterlegt"} tone={nextContracts.length > 0 ? "neutral" : "positive"} />
       </section>
 
-      <div className="dashboard-grid">
-        <section className="dashboard-card dashboard-card-large">
-          <div className="card-head">
-            <div>
-              <span className="eyebrow">Finanzen</span>
-              <h2>Dein Monat</h2>
-            </div>
-            <Link className="text-link" href={finance.monthHref}>Details</Link>
+      <section className="cockpit-grid">
+        <SectionCard className="cockpit-section cockpit-next-tasks">
+          <SectionHead eyebrow="Aufgaben" title="Als Nächstes" href="/aufgaben" />
+          <div className="cockpit-list">
+            {openTasks.length === 0 ? <p className="empty-inline">Alles erledigt.</p> : null}
+            {openTasks.slice(0, 4).map((task) => {
+              const urgency = taskUrgency(task);
+              return (
+                <article className={`cockpit-task ${urgency.className}`} key={task.id}>
+                  <span className="cockpit-task-accent" aria-hidden="true" />
+                  <div>
+                    <strong>{task.title}</strong>
+                    <span className="item-meta">{task.assignee?.name ?? "Nicht zugewiesen"} · {formatDate(task.dueDate)}</span>
+                  </div>
+                  <form action={updateTaskStatus} className="cockpit-task-status">
+                    <input type="hidden" name="id" value={task.id} />
+                    <input type="hidden" name="status" value="DONE" />
+                    <button className="task-check" type="submit" aria-label={`${task.title} als erledigt markieren`} title="Erledigt markieren">
+                      <span aria-hidden="true">✓</span>
+                    </button>
+                  </form>
+                  <StatusBadge tone={isImportantTask(task) ? "negative" : "warning"}>{urgency.label}</StatusBadge>
+                </article>
+              );
+            })}
           </div>
-          <div className="dashboard-mini-grid">
-            <MiniMetric label="Bisher" value={formatMoney(finance.spendingToDate)} tone="red" />
-            <MiniMetric label="Sonst bis heute" value={finance.hasHistory ? formatMoney(finance.usualByToday) : "-"} tone="green" />
-            <MiniMetric label="Unterschied" value={finance.hasHistory ? formatSignedMoney(finance.deltaToNormal) : "Noch kein Vergleich"} tone={finance.deltaToNormal > 0 ? "red" : "green"} />
-            <MiniMetric label="Monatsende" value={formatMoney(finance.projectedMonth)} tone={finance.projectionTone === "red" ? "red" : "green"} />
+        </SectionCard>
+
+        <SectionCard className="cockpit-section cockpit-finance">
+          <SectionHead eyebrow="Finanzen" title="Dein Monat" href={finance.monthHref} />
+          <div className="cockpit-mini-grid">
+            <MiniMetric label="Ausgaben" value={formatMoney(spending)} tone="red" />
+            <MiniMetric label="Einnahmen" value={formatMoney(income)} tone="green" />
+            <MiniMetric label="Saldo" value={formatMoney(saldo)} tone={saldo < 0 ? "red" : "green"} />
+            <MiniMetric label="Budget frei" value={monthBudget > 0 ? formatMoney(remainingBudget) : "-"} tone={remainingBudget <= 0 && monthBudget > 0 ? "red" : "green"} />
           </div>
-          <div className="dashboard-list" aria-label="Ausgaben im Vergleich">
+          <div className="cockpit-comparison" aria-label="Ausgaben im Vergleich">
             {finance.comparisonRows.map((row) => (
-              <div className="analysis-row" key={row.label}>
+              <div className="cockpit-bar-row" key={row.label}>
                 <div>
                   <strong>{row.label}</strong>
                   <span className="muted">{row.detail}</span>
                 </div>
-                <div className="bar-wrap" aria-hidden="true">
-                  <span style={{ width: `${row.width}%`, background: row.color }} />
-                </div>
-                <div className="amount-column compact-amount">
-                  <strong>{formatMoney(row.amount)}</strong>
-                </div>
+                <span className="cockpit-bar" aria-hidden="true"><span style={{ width: `${row.width}%`, background: row.color }} /></span>
+                <strong>{formatMoney(row.amount)}</strong>
               </div>
             ))}
           </div>
-          <div>
-            <h3 className="section-title">Achtung</h3>
-            <div className="dashboard-list">
-              {finance.attentionSignals.length === 0 ? <p className="empty-inline">Kein Handlungsbedarf im steuerbaren Verlauf.</p> : null}
-              {finance.attentionSignals.map((signal) => (
-                <div className="analysis-row" key={signal.name}>
-                  <div>
-                    {signal.href ? <Link className="text-link" href={signal.href}>{signal.name}</Link> : <strong>{signal.name}</strong>}
-                    <span className="muted">{signal.detail}</span>
-                  </div>
-                  <div className="bar-wrap" aria-hidden="true">
-                    <span style={{ width: `${signal.width}%`, background: signal.color }} />
-                  </div>
-                  <div className="amount-column compact-amount">
-                    <strong className={signal.delta > 0 ? "negative" : "positive"}>{formatSignedMoney(signal.delta)}</strong>
-                    <small>{formatMoney(signal.amount)}</small>
-                  </div>
-                </div>
+          <div className="cockpit-subsection">
+            <h3 className="section-title">Letzte Buchungen</h3>
+            <div className="cockpit-list">
+              {latestEntries.length === 0 ? <p className="empty-inline">Noch keine Buchungen.</p> : null}
+              {latestEntries.map((entry) => (
+                <Link className="cockpit-booking" href={finance.monthHref} key={entry.id}>
+                  <span>
+                    <strong>{entry.description || entry.category?.name || "Buchung"}</strong>
+                    <small>{formatDate(entry.date)} · {entry.category?.name ?? "Ohne Kategorie"}</small>
+                  </span>
+                  <strong className={entry.kind === "INCOME" ? "positive" : "negative"}>
+                    {entry.kind === "INCOME" ? "+" : "-"}{formatMoney(entry.amountCents)}
+                  </strong>
+                </Link>
               ))}
             </div>
           </div>
-          <div>
-            <h3 className="section-title">Entlastend</h3>
-            <div className="dashboard-list">
-              {finance.reliefSignals.length === 0 ? <p className="empty-inline">Keine deutliche Entlastung gegenüber normal.</p> : null}
-              {finance.reliefSignals.map((signal) => (
-                <div className="analysis-row signal-relief-row" key={signal.name}>
-                  <div>
-                    {signal.href ? <Link className="text-link" href={signal.href}>{signal.name}</Link> : <strong>{signal.name}</strong>}
-                    <span className="muted">{signal.detail}</span>
-                  </div>
-                  <div className="bar-wrap" aria-hidden="true">
-                    <span style={{ width: `${signal.width}%`, background: signal.color }} />
-                  </div>
-                  <div className="amount-column compact-amount">
-                    <strong className="positive">{formatSignedMoney(signal.delta)}</strong>
-                    <small>{formatMoney(signal.amount)}</small>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
+        </SectionCard>
 
-        <section className="dashboard-card">
-          <div className="card-head">
-            <div>
-              <span className="eyebrow">Aufgaben</span>
-              <h2>Als Nächstes</h2>
-            </div>
-            <Link className="text-link" href="/aufgaben">Alle</Link>
-          </div>
-          <div className="dashboard-list">
-            {openTasks.length === 0 ? <p className="empty-inline">Alles erledigt.</p> : null}
-            {openTasks.slice(0, 4).map((task) => (
-              <article className="task-item" key={task.id}>
-                <form action={updateTaskStatus} className="dashboard-task-complete">
-                  <input type="hidden" name="id" value={task.id} />
-                  <input type="hidden" name="status" value="DONE" />
-                  <button className={`task-check ${isImportantTask(task) ? "urgent" : ""}`} type="submit" aria-label={`${task.title} als erledigt markieren`} title="Erledigt markieren">
-                    <span aria-hidden="true">✓</span>
-                  </button>
-                </form>
-                <div>
-                  <strong>{task.title}</strong>
-                  <span className="item-meta">{task.assignee?.name ?? "Nicht zugewiesen"} · Fällig: {formatDate(task.dueDate)}</span>
-                </div>
-                <span className={`status-chip ${isImportantTask(task) ? "danger-chip" : "warning-chip"}`}>
-                  {priorityLabels[task.priority]}
-                </span>
-              </article>
-            ))}
-          </div>
-        </section>
-
-        <section className="dashboard-card">
-          <div className="card-head">
-            <div>
-              <span className="eyebrow">Verträge</span>
-              <h2>Fristen</h2>
-            </div>
-            <Link className="text-link" href="/vertraege">Alle</Link>
-          </div>
-          <div className="dashboard-list">
+        <SectionCard className="cockpit-section">
+          <SectionHead eyebrow="Verträge" title="Kündigungsfristen" href="/vertraege" />
+          <div className="cockpit-list">
             {nextContracts.length === 0 ? <p className="empty-inline">Keine Fristen hinterlegt.</p> : null}
             {nextContracts.map((contract) => (
-              <article className="agenda-item" key={contract.id}>
-                <span className="agenda-accent amber-accent" />
-                <div>
-                  <span className="item-meta">{formatDate(contract.nextCancellationDate)}</span>
-                  <strong>{contract.provider}</strong>
-                  <span className="item-meta">{contract.contractType} · {formatMoney(contract.costCents, contract.currency)}</span>
-                </div>
-              </article>
-            ))}
-          </div>
-        </section>
-
-        <section className="dashboard-card">
-          <div className="card-head">
-            <div>
-              <span className="eyebrow">Dokumente</span>
-              <h2>Zuletzt</h2>
-            </div>
-            <Link className="text-link" href="/dokumente">Alle</Link>
-          </div>
-          <div className="dashboard-list">
-            {documents.length === 0 ? <p className="empty-inline">Noch keine Dokumente.</p> : null}
-            {documents.slice(0, 3).map((document) => (
-              <a className="document-item" href={document.url} key={document.id} target="_blank" rel="noreferrer">
-                <span className="doc-icon">{document.referenceType === "EXTERNAL_URL" ? "URL" : "PDF"}</span>
+              <Link className={`cockpit-contract ${contractUrgencyClass(contract.nextCancellationDate)}`} href="/vertraege" key={contract.id}>
+                <span className="cockpit-contract-accent" aria-hidden="true" />
                 <span>
-                  <strong>{document.title}</strong>
-                  <span className="item-meta">{document.owner.name} · {formatDate(document.createdAt)}</span>
+                  <strong>{contract.provider}</strong>
+                  <small>{contract.contractType} · {formatMoney(contract.costCents, contract.currency)}</small>
                 </span>
-              </a>
+                <StatusBadge tone={contractUrgencyTone(contract.nextCancellationDate)}>{formatDate(contract.nextCancellationDate)}</StatusBadge>
+              </Link>
             ))}
           </div>
-        </section>
-      </div>
+        </SectionCard>
 
-      {importantTasks.length > 0 ? (
-        <section className="priority-strip">
-          <strong>{importantTasks.length} wichtige Aufgaben</strong>
-          <span>Wichtig bedeutet: überfällig, heute fällig, dringend markiert, bald fällig oder hoch priorisiert mit naher Deadline.</span>
-          <Link className="button secondary" href="/aufgaben">Aufgaben prüfen</Link>
+        <SectionCard className="cockpit-section">
+          <SectionHead eyebrow="Auto" title="Verbrauch" href="/kilometer" />
+          <div className="cockpit-list">
+            {vehicleSummaries.length === 0 ? <p className="empty-inline">Noch kein aktives Auto mit Tankdaten.</p> : null}
+            {vehicleSummaries.map((vehicle) => (
+              <Link className="cockpit-vehicle" href={`/kilometer?car=${vehicle.id}`} key={vehicle.id}>
+                <span>
+                  <strong>{vehicle.name}</strong>
+                  <small>{vehicle.licensePlate || "Ohne Kennzeichen"}</small>
+                </span>
+                <span className="cockpit-vehicle-values">
+                  <strong>{formatDecimal(vehicle.latestConsumption)} l/100 km</strong>
+                  <small>{vehicle.latestDate ? `Letzter Tankstopp ${formatDate(vehicle.latestDate)}` : "Noch kein Tankstopp"}</small>
+                  <small>Ø {formatDecimal(vehicle.averageConsumption)} l · {formatKilometers(vehicle.lastOdometerKm)} km</small>
+                </span>
+              </Link>
+            ))}
+          </div>
+        </SectionCard>
+      </section>
+
+      {finance.attentionSignals.length > 0 || importantTasks.length > 0 ? (
+        <section className="cockpit-priority-strip">
+          <strong>Kurzer Fokus</strong>
+          <span>
+            {importantTasks.length > 0 ? `${importantTasks.length} wichtige Aufgaben` : null}
+            {importantTasks.length > 0 && finance.attentionSignals.length > 0 ? " · " : null}
+            {finance.attentionSignals.length > 0 ? `${finance.attentionSignals.length} Finanzsignale` : null}
+          </span>
+          <div className="badge-row">
+            {finance.attentionSignals.slice(0, 2).map((signal) => (
+              <Chip tone="warning" key={signal.name}>{signal.name}</Chip>
+            ))}
+          </div>
         </section>
       ) : null}
+
+      <section className="cockpit-documents">
+        <SectionHead eyebrow="Dokumente" title="Zuletzt" href="/dokumente" />
+        <div className="cockpit-document-row">
+          {documents.length === 0 ? <p className="empty-inline">Noch keine Dokumente.</p> : null}
+          {documents.slice(0, 3).map((document) => (
+            <a className="document-item" href={dashboardDocumentHref(document)} key={document.id} target={document.referenceType === "LOCAL_FILE" ? undefined : "_blank"} rel={document.referenceType === "LOCAL_FILE" ? undefined : "noreferrer"}>
+              <span className="doc-icon">{document.referenceType === "EXTERNAL_URL" ? "URL" : "PDF"}</span>
+              <span>
+                <strong>{document.title}</strong>
+                <span className="item-meta">{document.owner.name} · {formatDate(document.createdAt)}</span>
+              </span>
+            </a>
+          ))}
+        </div>
+      </section>
     </div>
   );
 }
 
-function DashboardStat({ label, value, detail, tone }: { label: string; value: string; detail: string; tone: "green" | "red" | "blue" | "amber" }) {
+function dashboardDocumentHref(document: DocumentEntry) {
+  if (document.referenceType === "LOCAL_FILE") return `/api/documents/file?id=${encodeURIComponent(document.id)}`;
+  return document.url;
+}
+
+function SectionHead({ eyebrow, title, href }: { eyebrow: string; title: string; href: string }) {
   return (
-    <article className={`dashboard-stat ${tone}-stat`}>
-      <span>{label}</span>
-      <strong>{value}</strong>
-      <small>{detail}</small>
-    </article>
+    <div className="card-head cockpit-section-head">
+      <div>
+        <span className="eyebrow">{eyebrow}</span>
+        <h2>{title}</h2>
+      </div>
+      <Link className="text-link" href={href}>Alle</Link>
+    </div>
   );
 }
 
@@ -247,6 +244,39 @@ function MiniMetric({ label, value, tone }: { label: string; value: string; tone
       <strong>{value}</strong>
     </div>
   );
+}
+
+async function buildVehicleSummaries(familyId: string, cars: CarEntry[]) {
+  const rows = await Promise.all(cars.map(async (car) => {
+    const entries = await getFuelEntriesForCar(familyId, car.id);
+    const derived = addFuelDerivedFields(entries);
+    const latest = [...derived].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime() || b.odometerKm - a.odometerKm)[0] ?? null;
+    const stats = calculateFuelStatsFromDerived(derived);
+    return {
+      id: car.id,
+      name: car.name,
+      licensePlate: car.licensePlate,
+      latestDate: latest?.date ?? null,
+      latestConsumption: latest?.litersPer100Km ?? null,
+      averageConsumption: stats.averageLitersPer100Km,
+      lastOdometerKm: stats.lastOdometerKm
+    };
+  }));
+  return rows.filter((row) => row.latestDate || row.lastOdometerKm);
+}
+
+function contractUrgencyTone(date: Date | string | null | undefined): "negative" | "warning" | "neutral" {
+  const days = daysUntil(date);
+  if (days <= 30) return "negative";
+  if (days <= 90) return "warning";
+  return "neutral";
+}
+
+function contractUrgencyClass(date: Date | string | null | undefined) {
+  const tone = contractUrgencyTone(date);
+  if (tone === "negative") return "contract-critical";
+  if (tone === "warning") return "contract-warning";
+  return "contract-calm";
 }
 
 function isSameMonth(date: Date, compare: Date) {
@@ -270,7 +300,9 @@ const longDateFormatter = new Intl.DateTimeFormat("de-DE", { weekday: "long", da
 
 type ExpenseEntry = Awaited<ReturnType<typeof getVisibleExpenses>>[number];
 type CategoryEntry = Awaited<ReturnType<typeof getVisibleCategories>>[number];
+type DocumentEntry = Awaited<ReturnType<typeof getVisibleDocuments>>[number];
 type RecurringTransactionEntry = Awaited<ReturnType<typeof getRecurringTransactions>>[number];
+type CarEntry = Awaited<ReturnType<typeof getVisibleCars>>[number];
 
 function buildFinanceInsight(expenses: ExpenseEntry[], categories: CategoryEntry[], today: Date, recurringIntervals: RecurringIntervalMap) {
   const currentMonthKey = getMonthKey(today);

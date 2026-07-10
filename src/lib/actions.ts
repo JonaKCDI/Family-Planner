@@ -9,12 +9,14 @@ import { cleanupExpiredSessions, createSession, destroySession, hashPassword, re
 import { resolveContractCancellationSchedule } from "@/lib/contracts";
 import { db } from "@/lib/db";
 import { ensureDueContractExpenses } from "@/lib/contract-auto-expenses";
+import { isLocalDocumentsFallback } from "@/lib/document-root-default";
 import { ensureDueRecurringTasks } from "@/lib/recurring-tasks";
 import { buildExpenseWorkbook, parseExpenseWorkbook, type ExpenseFormatRow } from "@/lib/expense-formats";
 import { buildFuelWorkbook, inferCarNameFromFuelFileName, parseFuelWorkbook, type FuelFormatRow } from "@/lib/mileage-formats";
 import { safeFilePart } from "@/lib/file-names";
+import { resolveDocumentFile, resolveDocumentPath } from "@/lib/document-files";
 import { isFamilyAdmin, ownedExpenseWhere } from "@/lib/permissions";
-import { resolveDocumentLinkedEntityId, resolveExpenseCategoryId, resolveExpenseLabelId, resolveTaskAssigneeId, resolveVisibleContractId } from "@/lib/relations";
+import { resolveDocumentLinkedEntityId, resolveExpenseCategoryId, resolveExpenseLabelId, resolveReadableDocumentRoot, resolveTaskAssigneeId, resolveVisibleContractId } from "@/lib/relations";
 import { defaultRecurringTaskLeadTimeDays } from "@/lib/tasks";
 import { parseDecimalInputToMilli, parseEuroInputToCents, parseOptionalDateInput, parseOptionalEuroInputToCents, parseOptionalIntegerInput, parseRequiredDateInput, parseRequiredIntegerInput } from "@/lib/validation";
 
@@ -109,6 +111,7 @@ export async function createExpense(formData: FormData) {
   await createLinkedDocumentIfPresent(formData, {
     familyId: session.family.id,
     ownerUserId: session.user.id,
+    role: session.role,
     linkedEntityType: "EXPENSE",
     linkedEntityId: expense.id,
     scope: expense.scope
@@ -582,6 +585,7 @@ export async function createFuelEntry(formData: FormData) {
     await createLinkedDocumentIfPresent(formData, {
       familyId: session.family.id,
       ownerUserId: session.user.id,
+      role: session.role,
       linkedEntityType: "EXPENSE",
       linkedEntityId: expense.id,
       scope: expense.scope
@@ -939,7 +943,7 @@ export async function createTask(formData: FormData) {
   const assignedToUserId = await resolveTaskAssigneeId(session.family.id, optionalText(formData, "assignedToUserId"));
   const dueDate = optionalText(formData, "dueDate");
 
-  await db.task.create({
+  const task = await db.task.create({
     data: {
       familyId: session.family.id,
       ownerUserId: session.user.id,
@@ -951,6 +955,15 @@ export async function createTask(formData: FormData) {
       dueDate: parseOptionalDateInput(dueDate),
       scope: scopeValue(formData)
     }
+  });
+
+  await createLinkedDocumentIfPresent(formData, {
+    familyId: session.family.id,
+    ownerUserId: session.user.id,
+    role: session.role,
+    linkedEntityType: "TASK",
+    linkedEntityId: task.id,
+    scope: task.scope
   });
 
   revalidatePath("/aufgaben");
@@ -1289,6 +1302,7 @@ export async function createContract(formData: FormData) {
   await createLinkedDocumentIfPresent(formData, {
     familyId: session.family.id,
     ownerUserId: session.user.id,
+    role: session.role,
     linkedEntityType: "CONTRACT",
     linkedEntityId: contract.id,
     scope: contract.scope
@@ -1428,18 +1442,58 @@ export async function createDocumentReference(formData: FormData) {
   revalidatePath("/dokumente");
 }
 
-export async function updateDocumentReference(formData: FormData) {
+export async function createLocalDocumentReference(formData: FormData) {
   const session = await requireSession();
-  const url = requiredText(formData, "url");
-  if (!url.startsWith("https://")) {
-    throw new Error("Dokumentverweise müssen als HTTPS-Link gespeichert werden.");
-  }
+  const documentRoot = await resolveReadableDocumentRoot(session.family.id, session.user.id, session.role, requiredText(formData, "documentRootId"));
+  const file = await resolveDocumentFile(documentRoot.basePath, requiredText(formData, "relativePath", "documentRelativePath"));
   const linkedEntityType = enumValue(formData, "linkedEntityType", ["EXPENSE", "TASK", "CONTRACT", "GENERAL"] as const, "GENERAL");
   const linkedEntityId = await resolveDocumentLinkedEntityId(session.family.id, session.user.id, linkedEntityType, optionalText(formData, "linkedEntityId"));
+  const title = optionalText(formData, "title") ?? file.fileName;
+
+  await db.documentReference.create({
+    data: {
+      familyId: session.family.id,
+      ownerUserId: session.user.id,
+      documentRootId: documentRoot.id,
+      linkedEntityType,
+      linkedEntityId,
+      title,
+      referenceType: "LOCAL_FILE",
+      url: "",
+      relativePath: file.relativePath,
+      fileName: file.fileName,
+      mimeType: file.mimeType,
+      fileSize: file.fileSize,
+      lastSeenAt: new Date(),
+      description: optionalText(formData, "description"),
+      scope: scopeValue(formData)
+    }
+  });
+
+  revalidatePath("/dokumente");
+}
+
+export async function updateDocumentReference(formData: FormData) {
+  const session = await requireSession();
+  const linkedEntityType = enumValue(formData, "linkedEntityType", ["EXPENSE", "TASK", "CONTRACT", "GENERAL"] as const, "GENERAL");
+  const linkedEntityId = await resolveDocumentLinkedEntityId(session.family.id, session.user.id, linkedEntityType, optionalText(formData, "linkedEntityId"));
+  const id = requiredText(formData, "id");
+  const existing = await db.documentReference.findFirst({
+    where: {
+      id,
+      familyId: session.family.id,
+      ...(session.role === "ADMIN" ? {} : { ownerUserId: session.user.id })
+    }
+  });
+  if (!existing) throw new Error("Der Dokumentverweis ist nicht verfügbar.");
+  const url = existing.referenceType === "LOCAL_FILE" ? existing.url : requiredText(formData, "url");
+  if (existing.referenceType !== "LOCAL_FILE" && !url.startsWith("https://")) {
+    throw new Error("Dokumentverweise müssen als HTTPS-Link gespeichert werden.");
+  }
 
   await db.documentReference.updateMany({
     where: {
-      id: requiredText(formData, "id"),
+      id,
       familyId: session.family.id,
       ...(session.role === "ADMIN" ? {} : { ownerUserId: session.user.id })
     },
@@ -1447,7 +1501,7 @@ export async function updateDocumentReference(formData: FormData) {
       linkedEntityType,
       linkedEntityId,
       title: requiredText(formData, "title"),
-      referenceType: "EXTERNAL_URL",
+      referenceType: existing.referenceType,
       url,
       description: optionalText(formData, "description"),
       scope: scopeValue(formData)
@@ -1456,6 +1510,75 @@ export async function updateDocumentReference(formData: FormData) {
 
   revalidatePath("/dokumente");
   revalidatePath("/dashboard");
+}
+
+export async function createDocumentRoot(formData: FormData) {
+  const session = await requireSession();
+  requireFamilyAdmin(session.role);
+  const basePath = requiredText(formData, "basePath");
+  if (isLocalDocumentsFallback(basePath)) {
+    await mkdir(basePath, { recursive: true });
+  }
+  await resolveDocumentPath(basePath, "", "directory");
+  const accessMode = enumValue(formData, "accessMode", ["FAMILY", "ADMIN", "USERS"] as const, "FAMILY");
+  const selectedUserIds = formData.getAll("userId").map(String).filter(Boolean);
+  const members = accessMode === "USERS"
+    ? await db.familyMember.findMany({
+        where: { familyId: session.family.id, userId: { in: selectedUserIds }, status: "ACTIVE" },
+        select: { userId: true }
+      })
+    : [];
+
+  if (accessMode === "USERS") {
+    if (members.length === 0) throw new Error("Bitte mindestens ein aktives Familienmitglied auswählen.");
+  }
+
+  await db.$transaction(async (tx) => {
+    const root = await tx.documentRoot.create({
+      data: {
+        familyId: session.family.id,
+        createdByUserId: session.user.id,
+        name: requiredText(formData, "name"),
+        basePath,
+        scope: accessMode === "FAMILY" ? "FAMILY" : "PRIVATE"
+      }
+    });
+
+    if (accessMode === "ADMIN") {
+      await tx.documentRootAccess.create({ data: { documentRootId: root.id, role: "ADMIN" } });
+    } else if (accessMode === "USERS") {
+      await tx.documentRootAccess.createMany({
+        data: members.map((member) => ({ documentRootId: root.id, userId: member.userId }))
+      });
+    }
+  });
+
+  revalidatePath("/dokumente");
+  revalidatePath("/einstellungen");
+  revalidatePath("/einstellungen/dokumentbereiche");
+}
+
+export async function archiveDocumentRoot(formData: FormData) {
+  const session = await requireSession();
+  requireFamilyAdmin(session.role);
+  await db.documentRoot.updateMany({
+    where: { id: requiredText(formData, "id"), familyId: session.family.id },
+    data: { archivedAt: new Date() }
+  });
+  revalidatePath("/dokumente");
+  revalidatePath("/einstellungen/dokumentbereiche");
+}
+
+export async function restoreDocumentRoot(formData: FormData) {
+  const session = await requireSession();
+  requireFamilyAdmin(session.role);
+  await db.documentRoot.updateMany({
+    where: { id: requiredText(formData, "id"), familyId: session.family.id },
+    data: { archivedAt: null }
+  });
+  revalidatePath("/dokumente");
+  revalidatePath("/einstellungen");
+  revalidatePath("/einstellungen/dokumentbereiche");
 }
 
 export async function deleteDocumentReference(formData: FormData) {
@@ -1497,6 +1620,7 @@ export async function createUser(formData: FormData) {
   });
 
   revalidatePath("/einstellungen");
+  revalidatePath("/einstellungen/mitglieder");
 }
 
 export async function changeOwnPassword(formData: FormData) {
@@ -1524,7 +1648,8 @@ export async function changeOwnPassword(formData: FormData) {
 
   await createSession(user.id);
   revalidatePath("/einstellungen");
-  redirect("/einstellungen?password=changed");
+  revalidatePath("/einstellungen/konto");
+  redirect("/einstellungen/konto?password=changed");
 }
 
 export async function resetMemberPassword(formData: FormData) {
@@ -1558,6 +1683,7 @@ export async function resetMemberPassword(formData: FormData) {
   ]);
 
   revalidatePath("/einstellungen");
+  revalidatePath("/einstellungen/mitglieder");
 }
 
 export async function setAdminRecoveryKey(formData: FormData) {
@@ -1583,7 +1709,8 @@ export async function setAdminRecoveryKey(formData: FormData) {
   });
 
   revalidatePath("/einstellungen");
-  redirect("/einstellungen?recovery=changed");
+  revalidatePath("/einstellungen/wiederherstellung");
+  redirect("/einstellungen/wiederherstellung?recovery=changed");
 }
 
 export async function recoverAdminPassword(formData: FormData) {
@@ -1655,20 +1782,54 @@ async function createLinkedDocumentIfPresent(
   data: {
     familyId: string;
     ownerUserId: string;
-    linkedEntityType: "EXPENSE" | "CONTRACT";
+    role: "ADMIN" | "MEMBER";
+    linkedEntityType: "EXPENSE" | "TASK" | "CONTRACT";
     linkedEntityId: string;
     scope: "PRIVATE" | "FAMILY";
   }
 ) {
   const title = optionalText(formData, "documentTitle");
   const url = optionalText(formData, "documentUrl");
+  const documentRootId = optionalText(formData, "documentRootId");
+  const relativePath = optionalText(formData, "documentRelativePath");
+
+  if (documentRootId || relativePath) {
+    if (!documentRootId || !relativePath) throw new Error("Bitte eine vollständige NAS-Datei auswählen.");
+    const documentRoot = await resolveReadableDocumentRoot(data.familyId, data.ownerUserId, data.role, documentRootId);
+    const file = await resolveDocumentFile(documentRoot.basePath, relativePath);
+    await db.documentReference.create({
+      data: {
+        familyId: data.familyId,
+        ownerUserId: data.ownerUserId,
+        linkedEntityType: data.linkedEntityType,
+        linkedEntityId: data.linkedEntityId,
+        scope: data.scope,
+        title: title ?? file.fileName,
+        url: "",
+        referenceType: "LOCAL_FILE",
+        documentRootId: documentRoot.id,
+        relativePath: file.relativePath,
+        fileName: file.fileName,
+        mimeType: file.mimeType,
+        fileSize: file.fileSize,
+        lastSeenAt: new Date(),
+        description: optionalText(formData, "documentDescription")
+      }
+    });
+    return;
+  }
+
   if (!title && !url) return;
   if (!title || !url) throw new Error("Dokumenttitel und HTTPS-Link müssen gemeinsam angegeben werden.");
   if (!url.startsWith("https://")) throw new Error("Dokumentverweise müssen als HTTPS-Link gespeichert werden.");
 
   await db.documentReference.create({
     data: {
-      ...data,
+      familyId: data.familyId,
+      ownerUserId: data.ownerUserId,
+      linkedEntityType: data.linkedEntityType,
+      linkedEntityId: data.linkedEntityId,
+      scope: data.scope,
       title,
       url,
       referenceType: enumValue(formData, "documentReferenceType", ["SYNOLOGY_HTTPS", "WEBDAV_HTTPS", "EXTERNAL_URL"] as const, "EXTERNAL_URL"),
@@ -1752,7 +1913,12 @@ async function setRecurringTaskStatus(formData: FormData, status: "PAUSED" | "AR
   revalidatePath("/dashboard");
 }
 
-function requiredText(formData: FormData, key: string) {
+function requiredText(formData: FormData, key: string, ...alternateKeys: string[]) {
+  for (const candidateKey of [key, ...alternateKeys]) {
+    const value = String(formData.get(candidateKey) ?? "").trim();
+    if (value) return value;
+  }
+  if (alternateKeys.length > 0) throw new Error(`${key} ist erforderlich.`);
   const value = String(formData.get(key) ?? "").trim();
   if (!value) throw new Error(`${key} ist erforderlich.`);
   return value;

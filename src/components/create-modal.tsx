@@ -1,20 +1,22 @@
 ﻿"use client";
 
 import type { FormEvent } from "react";
-import { useMemo, useRef, useState } from "react";
-import { ClipboardCheck, Euro, FileText, Fuel, Plus, ScrollText, X } from "lucide-react";
+import { useMemo, useState } from "react";
+import { ArrowLeft, ChevronRight, ClipboardCheck, Euro, FileText, Fuel, Plus, ScrollText } from "lucide-react";
 import { usePathname } from "next/navigation";
 import {
   createContract,
   createDocumentReference,
+  createLocalDocumentReference,
   createExpense,
   createFuelEntry,
   createRecurringTask,
   createTask
 } from "@/lib/actions";
 import { enqueueOfflineExpenseCreate, enqueueOfflineTaskCreate } from "@/lib/offline-sync";
-import { ModalPortal } from "@/components/modal-portal";
+import { DocumentFilePicker } from "@/components/document-file-picker";
 import { SearchableSelect } from "@/components/searchable-select";
+import { BottomSheet, FloatingActionButton, IconButton } from "@/components/ui-system";
 
 type CreateModalProps = {
   categories: { id: string; name: string }[];
@@ -22,6 +24,7 @@ type CreateModalProps = {
   contracts: { id: string; provider: string; contractType: string; status: string }[];
   members: { id: string; userId: string; user: { name: string } }[];
   cars: { id: string; name: string; licensePlate: string }[];
+  documentRoots: { id: string; name: string }[];
   fuelExpenseSettings: {
     autoCreateExpense: boolean;
     defaultCategoryId: string | null;
@@ -35,12 +38,12 @@ type CreateModalProps = {
 type CreateType = "expense" | "fuel" | "task" | "contract" | "document";
 
 const createTypes = [
-  { id: "expense", label: "Ausgabe", detail: "Ausgabe oder Einnahme erfassen", icon: Euro },
-  { id: "fuel", label: "Tankstopp", detail: "Kilometerstand und Verbrauch erfassen", icon: Fuel },
-  { id: "task", label: "Aufgabe", detail: "To-do mit Priorität und Deadline", icon: ClipboardCheck },
-  { id: "contract", label: "Vertrag", detail: "Abo, Versicherung oder Frist", icon: ScrollText },
-  { id: "document", label: "Dokument", detail: "HTTPS-Verweis speichern", icon: FileText }
-] satisfies { id: CreateType; label: string; detail: string; icon: typeof Euro }[];
+  { id: "expense", label: "Ausgabe", detail: "Geld ausgegeben oder erhalten", icon: Euro, tone: "rose" },
+  { id: "fuel", label: "Tankstopp", detail: "Kilometerstand, Kosten und Verbrauch", icon: Fuel, tone: "mint" },
+  { id: "task", label: "Aufgabe", detail: "To-do mit Priorität und Deadline", icon: ClipboardCheck, tone: "blue" },
+  { id: "contract", label: "Vertrag", detail: "Abo, Versicherung oder Frist", icon: ScrollText, tone: "amber" },
+  { id: "document", label: "Dokument", detail: "Link oder NAS-Datei speichern", icon: FileText, tone: "violet" }
+] satisfies { id: CreateType; label: string; detail: string; icon: typeof Euro; tone: string }[];
 
 const typeByPath: Record<string, CreateType> = {
   "/ausgaben": "expense",
@@ -50,7 +53,7 @@ const typeByPath: Record<string, CreateType> = {
   "/dokumente": "document"
 };
 
-export function CreateModal({ categories, labels, contracts, members, cars, fuelExpenseSettings }: CreateModalProps) {
+export function CreateModal({ categories, labels, contracts, members, cars, documentRoots, fuelExpenseSettings }: CreateModalProps) {
   const pathname = usePathname();
   const pageType = typeByPath[pathname];
   const shouldShow = pathname === "/dashboard" || Boolean(pageType);
@@ -58,12 +61,13 @@ export function CreateModal({ categories, labels, contracts, members, cars, fuel
   const defaultType = allowedTypes[0]?.id ?? "expense";
   const [open, setOpen] = useState(false);
   const [type, setType] = useState<CreateType>(defaultType);
+  const [formStarted, setFormStarted] = useState(allowedTypes.length <= 1);
   const [returnTo, setReturnTo] = useState(pathname);
-  const panelRef = useRef<HTMLElement>(null);
   const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
   const selectedType = allowedTypes.some((item) => item.id === type) ? type : defaultType;
   function openCreateModal() {
     setType(defaultType);
+    setFormStarted(allowedTypes.length <= 1);
     setReturnTo(`${window.location.pathname}${window.location.search}`);
     setOpen(true);
   }
@@ -72,62 +76,65 @@ export function CreateModal({ categories, labels, contracts, members, cars, fuel
 
   return (
     <>
-      <button
-        className="fab-button"
+      <FloatingActionButton
         type="button"
         aria-label="Neu erstellen"
         title="Neu erstellen"
         onClick={openCreateModal}
       >
         <Plus aria-hidden="true" size={28} strokeWidth={2.4} />
-      </button>
-      {open ? (
-        <ModalPortal>
-          <div className="modal-backdrop" role="presentation">
-            <section ref={panelRef} className="modal-panel create-dialog" role="dialog" aria-modal="true" aria-labelledby="create-modal-title">
-              <button className="icon-button modal-close-button" type="button" aria-label="Schließen" title="Schließen" onClick={() => setOpen(false)}>
-                <X size={20} />
-              </button>
-              <div className="modal-head">
-                <div>
-                  <span className="eyebrow">Neu erstellen</span>
-                  <h2 id="create-modal-title">{createTypes.find((item) => item.id === selectedType)?.label}</h2>
-                </div>
+      </FloatingActionButton>
+      <BottomSheet
+        open={open}
+        onOpenChange={setOpen}
+        title={formStarted ? createTypes.find((item) => item.id === selectedType)?.label ?? "Neu erstellen" : "Neuen Eintrag erstellen"}
+        description={!formStarted ? "Was möchtest du erfassen?" : undefined}
+        leadingAction={allowedTypes.length > 1 && formStarted ? (
+          <IconButton className="modal-back-button" type="button" label="Zur Auswahl" onClick={() => setFormStarted(false)}>
+            <ArrowLeft size={19} aria-hidden="true" />
+          </IconButton>
+        ) : null}
+        wide={formStarted}
+        labelledById="create-modal-title"
+      >
+              <div className="create-dialog-body">
+                {allowedTypes.length > 1 && !formStarted ? (
+                  <div className="create-type-grid">
+                    {allowedTypes.map((item) => (
+                      <button
+                        className={`create-type create-type-${item.tone}`}
+                        type="button"
+                        onClick={() => { setType(item.id); setFormStarted(true); }}
+                        key={item.id}
+                      >
+                        <span className="create-type-icon" aria-hidden="true"><item.icon size={18} /></span>
+                        <span className="create-type-copy">
+                          <strong>{item.label}</strong>
+                          <span>{item.detail}</span>
+                        </span>
+                        <ChevronRight className="create-type-chevron" size={18} aria-hidden="true" />
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+                {formStarted && selectedType === "expense" ? <ExpenseForm categories={categories} labels={labels} contracts={contracts} documentRoots={documentRoots} today={today} returnTo={returnTo} onSubmit={() => setOpen(false)} /> : null}
+                {formStarted && selectedType === "fuel" ? (
+                  <FuelForm
+                    cars={cars}
+                    categories={categories}
+                    labels={labels}
+                    documentRoots={documentRoots}
+                    settings={fuelExpenseSettings}
+                    today={today}
+                    returnTo={returnTo}
+                    onSubmit={() => setOpen(false)}
+                  />
+                ) : null}
+                {formStarted && selectedType === "task" ? <TaskForm members={members} documentRoots={documentRoots} today={today} onSubmit={() => setOpen(false)} /> : null}
+                {formStarted && selectedType === "contract" ? <ContractForm categories={categories} labels={labels} documentRoots={documentRoots} today={today} onSubmit={() => setOpen(false)} /> : null}
+                {formStarted && selectedType === "document" ? <DocumentForm documentRoots={documentRoots} onSubmit={() => setOpen(false)} /> : null}
               </div>
-              {allowedTypes.length > 1 ? (
-                <div className="create-type-grid">
-                  {allowedTypes.map((item) => (
-                    <button
-                      className={selectedType === item.id ? "create-type active" : "create-type"}
-                      type="button"
-                      onClick={() => setType(item.id)}
-                      key={item.id}
-                    >
-                      <strong><item.icon size={17} />{item.label}</strong>
-                      <span>{item.detail}</span>
-                    </button>
-                  ))}
-                </div>
-              ) : null}
-              {selectedType === "expense" ? <ExpenseForm categories={categories} labels={labels} contracts={contracts} today={today} returnTo={returnTo} onSubmit={() => setOpen(false)} /> : null}
-              {selectedType === "fuel" ? (
-                <FuelForm
-                  cars={cars}
-                  categories={categories}
-                  labels={labels}
-                  settings={fuelExpenseSettings}
-                  today={today}
-                  returnTo={returnTo}
-                  onSubmit={() => setOpen(false)}
-                />
-              ) : null}
-              {selectedType === "task" ? <TaskForm members={members} today={today} onSubmit={() => setOpen(false)} /> : null}
-              {selectedType === "contract" ? <ContractForm categories={categories} labels={labels} today={today} onSubmit={() => setOpen(false)} /> : null}
-              {selectedType === "document" ? <DocumentForm onSubmit={() => setOpen(false)} /> : null}
-            </section>
-          </div>
-        </ModalPortal>
-      ) : null}
+      </BottomSheet>
     </>
   );
 }
@@ -136,6 +143,7 @@ function ExpenseForm({
   categories,
   labels,
   contracts,
+  documentRoots,
   today,
   returnTo,
   onSubmit
@@ -143,6 +151,7 @@ function ExpenseForm({
   categories: CreateModalProps["categories"];
   labels: CreateModalProps["labels"];
   contracts: CreateModalProps["contracts"];
+  documentRoots: CreateModalProps["documentRoots"];
   today: string;
   returnTo: string;
   onSubmit: () => void;
@@ -161,7 +170,12 @@ function ExpenseForm({
   return (
     <form action={createExpense} className="form form-grid modal-form" onSubmit={handleSubmit}>
       <input type="hidden" name="returnTo" value={returnTo} />
-      <fieldset className="fieldset modal-form-section full-span">
+      <nav className="modal-section-tabs full-span" aria-label="Formularbereiche">
+        <a href="#create-expense-core">Details</a>
+        <a href="#create-expense-assignment">Zuordnung</a>
+        <a href="#create-expense-document">Dokument</a>
+      </nav>
+      <fieldset className="fieldset modal-form-section full-span" id="create-expense-core">
         <legend>Kernangaben</legend>
         <div className="form-grid">
           <label>Art<select name="kind" defaultValue="EXPENSE"><option value="EXPENSE">Ausgabe</option><option value="INCOME">Einnahme</option></select></label>
@@ -177,7 +191,7 @@ function ExpenseForm({
           <label>Laden<input name="store" placeholder="Rewe, Lidl, Amazon ..." /></label>
         </div>
       </fieldset>
-      <fieldset className="fieldset modal-form-section full-span">
+      <fieldset className="fieldset modal-form-section full-span" id="create-expense-assignment">
         <legend>Zuordnung</legend>
         <div className="form-grid">
           <SearchableSelect name="categoryId" label="Kategorie" options={categories} emptyLabel="Keine Kategorie" placeholder="Kategorie suchen oder auswählen" />
@@ -186,14 +200,15 @@ function ExpenseForm({
         </div>
       </fieldset>
       <PaymentMethods />
-      <details className="optional-section full-span">
-        <summary>Beleg / Drive-Link hinzufügen</summary>
+      <details className="optional-section full-span" id="create-expense-document">
+        <summary>Beleg / Dokument verknüpfen</summary>
         <div className="form-grid">
           <label>Dokumenttitel<input name="documentTitle" placeholder="Rechnung, Beleg, Nachweis ..." /></label>
-          <label>Drive-Link<input name="documentUrl" type="url" placeholder="https://drive.google.com/..." /></label>
+          <label>HTTPS-Link<input name="documentUrl" type="url" placeholder="https://drive.google.com/..." /></label>
+          <DocumentFilePicker roots={documentRoots} />
         </div>
       </details>
-      <div className="modal-submit-row">
+      <div className="modal-submit-row modal-footer">
         <button className="button full-span" type="submit">Speichern</button>
       </div>
     </form>
@@ -204,6 +219,7 @@ function FuelForm({
   cars,
   categories,
   labels,
+  documentRoots,
   settings,
   today,
   returnTo,
@@ -212,6 +228,7 @@ function FuelForm({
   cars: CreateModalProps["cars"];
   categories: CreateModalProps["categories"];
   labels: CreateModalProps["labels"];
+  documentRoots: CreateModalProps["documentRoots"];
   settings: CreateModalProps["fuelExpenseSettings"];
   today: string;
   returnTo: string;
@@ -225,7 +242,12 @@ function FuelForm({
   return (
     <form action={createFuelEntry} className="form form-grid modal-form" onSubmit={onSubmit}>
       <input type="hidden" name="returnTo" value={returnTo} />
-      <fieldset className="fieldset modal-form-section full-span">
+      <nav className="modal-section-tabs full-span" aria-label="Formularbereiche">
+        <a href="#create-fuel-stop">Tankstopp</a>
+        <a href="#create-fuel-cost">Kosten</a>
+        <a href="#create-fuel-expense">Ausgabe</a>
+      </nav>
+      <fieldset className="fieldset modal-form-section full-span" id="create-fuel-stop">
         <legend>Tankstopp</legend>
         <div className="form-grid">
           <label>
@@ -238,7 +260,7 @@ function FuelForm({
           <label>Kilometerstand<input name="odometerKm" type="number" inputMode="numeric" min="0" required /></label>
         </div>
       </fieldset>
-      <fieldset className="fieldset modal-form-section full-span">
+      <fieldset className="fieldset modal-form-section full-span" id="create-fuel-cost">
         <legend>Verbrauch & Kosten</legend>
         <div className="form-grid">
           <label>Liter<input name="liters" inputMode="decimal" placeholder="45,34" required /></label>
@@ -246,7 +268,7 @@ function FuelForm({
           <label>Bemerkung<input name="note" placeholder="Urlaub, bezahlt von ..., Werkstatt ..." /></label>
         </div>
       </fieldset>
-      <fieldset className="fieldset modal-form-section full-span">
+      <fieldset className="fieldset modal-form-section full-span" id="create-fuel-expense">
         <legend>Ausgabe</legend>
         <label className="checkbox-field full-span">
           <input name="createExpenseFromFuel" type="checkbox" checked={bookExpense} onChange={(event) => setBookExpense(event.currentTarget.checked)} />
@@ -264,23 +286,34 @@ function FuelForm({
             <label className="full-span">Beschreibung<input name="expenseDescription" defaultValue={settings?.defaultDescription ?? ""} /></label>
           </div>
           <details className="optional-section full-span">
-            <summary>Beleg / Drive-Link hinzufügen</summary>
+            <summary>Beleg / Dokument verknüpfen</summary>
             <div className="form-grid">
               <label>Dokumenttitel<input name="documentTitle" placeholder="Rechnung, Beleg, Nachweis ..." /></label>
-              <label>Drive-Link<input name="documentUrl" type="url" placeholder="https://drive.google.com/..." /></label>
+              <label>HTTPS-Link<input name="documentUrl" type="url" placeholder="https://drive.google.com/..." /></label>
+              <DocumentFilePicker roots={documentRoots} />
             </div>
           </details>
           <PaymentMethods />
         </fieldset>
       ) : null}
-      <div className="modal-submit-row">
+      <div className="modal-submit-row modal-footer">
         <button className="button full-span" type="submit">Speichern</button>
       </div>
     </form>
   );
 }
 
-function TaskForm({ members, today, onSubmit }: { members: CreateModalProps["members"]; today: string; onSubmit: () => void }) {
+function TaskForm({
+  members,
+  documentRoots,
+  today,
+  onSubmit
+}: {
+  members: CreateModalProps["members"];
+  documentRoots: CreateModalProps["documentRoots"];
+  today: string;
+  onSubmit: () => void;
+}) {
   const [recurrencePreset, setRecurrencePreset] = useState("NONE");
   const [customIntervalUnit, setCustomIntervalUnit] = useState("DAY");
   const isRecurring = recurrencePreset !== "NONE";
@@ -304,7 +337,13 @@ function TaskForm({ members, today, onSubmit }: { members: CreateModalProps["mem
 
   return (
     <form action={isRecurring ? createRecurringTask : createTask} className="form form-grid modal-form" onSubmit={handleSubmit}>
-      <fieldset className="fieldset modal-form-section full-span">
+      <nav className="modal-section-tabs full-span" aria-label="Formularbereiche">
+        <a href="#create-task-core">Aufgabe</a>
+        <a href="#create-task-plan">Planung</a>
+        <a href="#create-task-repeat">Rhythmus</a>
+        <a href="#create-task-details">Details</a>
+      </nav>
+      <fieldset className="fieldset modal-form-section full-span" id="create-task-core">
         <legend>Aufgabe</legend>
         <div className="form-grid">
           <label>Titel<input name="title" required /></label>
@@ -312,14 +351,14 @@ function TaskForm({ members, today, onSubmit }: { members: CreateModalProps["mem
           <label>Priorität<select name="priority" defaultValue="MEDIUM"><option value="LOW">Niedrig</option><option value="MEDIUM">Mittel</option><option value="HIGH">Hoch</option><option value="URGENT">Dringend</option></select></label>
         </div>
       </fieldset>
-      <fieldset className="fieldset modal-form-section full-span">
+      <fieldset className="fieldset modal-form-section full-span" id="create-task-plan">
         <legend>Planung</legend>
         <div className="form-grid">
           <label>{isRecurring ? "Startdatum" : "Deadline"}<input key={isRecurring ? "recurring-date" : "single-date"} name="dueDate" type="date" defaultValue={isRecurring ? today : ""} required={isRecurring} /></label>
           <label>Sichtbarkeit<select name="scope" defaultValue="FAMILY"><option value="FAMILY">Familie</option><option value="PRIVATE">Privat</option></select></label>
         </div>
       </fieldset>
-      <fieldset className="fieldset modal-form-section full-span">
+      <fieldset className="fieldset modal-form-section full-span" id="create-task-repeat">
         <legend>Wiederholen</legend>
         <div className="form-grid">
           <label>
@@ -354,11 +393,19 @@ function TaskForm({ members, today, onSubmit }: { members: CreateModalProps["mem
           {isRecurring ? <label>Enddatum optional<input name="endDate" type="date" /></label> : null}
         </div>
       </fieldset>
-      <fieldset className="fieldset modal-form-section full-span">
+      <fieldset className="fieldset modal-form-section full-span" id="create-task-details">
         <legend>Details</legend>
         <label>Beschreibung<textarea name="description" /></label>
       </fieldset>
-      <div className="modal-submit-row">
+      <details className="optional-section full-span">
+        <summary>Dokument verknüpfen</summary>
+        <div className="form-grid">
+          <label>Dokumenttitel<input name="documentTitle" placeholder="Anleitung, Foto, Nachweis ..." /></label>
+          <label>HTTPS-Link<input name="documentUrl" type="url" placeholder="https://..." /></label>
+          <DocumentFilePicker roots={documentRoots} />
+        </div>
+      </details>
+      <div className="modal-submit-row modal-footer">
         <button className="button full-span" type="submit">Speichern</button>
       </div>
     </form>
@@ -368,11 +415,13 @@ function TaskForm({ members, today, onSubmit }: { members: CreateModalProps["mem
 function ContractForm({
   categories,
   labels,
+  documentRoots,
   today,
   onSubmit
 }: {
   categories: CreateModalProps["categories"];
   labels: CreateModalProps["labels"];
+  documentRoots: CreateModalProps["documentRoots"];
   today: string;
   onSubmit: () => void;
 }) {
@@ -380,7 +429,14 @@ function ContractForm({
     <form action={createContract} className="form form-grid modal-form" onSubmit={onSubmit}>
       <input type="hidden" name="priceValidFrom" value={today} />
       <input type="hidden" name="priceChangeMode" value="NEW_PHASE" />
-      <fieldset className="fieldset modal-form-section full-span">
+      <nav className="modal-section-tabs full-span" aria-label="Formularbereiche">
+        <a href="#create-contract-core">Vertrag</a>
+        <a href="#create-contract-cost">Kosten</a>
+        <a href="#create-contract-auto">Automatik</a>
+        <a href="#create-contract-term">Laufzeit</a>
+        <a href="#create-contract-document">Dokument</a>
+      </nav>
+      <fieldset className="fieldset modal-form-section full-span" id="create-contract-core">
         <legend>Vertrag</legend>
         <div className="form-grid">
           <label>Anbieter<input name="provider" required /></label>
@@ -390,7 +446,7 @@ function ContractForm({
           <label>Sichtbarkeit<select name="scope" defaultValue="FAMILY"><option value="FAMILY">Familie</option><option value="PRIVATE">Privat</option></select></label>
         </div>
       </fieldset>
-      <fieldset className="fieldset modal-form-section full-span">
+      <fieldset className="fieldset modal-form-section full-span" id="create-contract-cost">
         <legend>Kosten & Abbuchung</legend>
         <div className="form-grid">
           <label>Kosten in EUR<input name="cost" inputMode="decimal" placeholder="29,99" required /></label>
@@ -400,7 +456,7 @@ function ContractForm({
           </label>
         </div>
       </fieldset>
-      <fieldset className="fieldset modal-form-section full-span">
+      <fieldset className="fieldset modal-form-section full-span" id="create-contract-auto">
         <legend>Automatische Ausgabe</legend>
         <div className="form-grid">
           <label className="checkbox-field full-span"><input name="autoCreateExpenses" type="checkbox" /> Automatisch als Ausgabe eintragen</label>
@@ -409,7 +465,7 @@ function ContractForm({
           <SearchableSelect name="expenseLabelId" label="Label / Projekt" options={labels} emptyLabel="Kein Label" placeholder="Label suchen oder auswählen" />
         </div>
       </fieldset>
-      <fieldset className="fieldset modal-form-section full-span">
+      <fieldset className="fieldset modal-form-section full-span" id="create-contract-term">
         <legend>Laufzeit & Kündigung</legend>
         <div className="form-grid">
           <label>Ende/Laufzeit bis<input name="endDate" type="date" /></label>
@@ -428,46 +484,95 @@ function ContractForm({
         <p className="muted">Bei automatischer Verlängerung ist &quot;Ende/Laufzeit bis&quot; der nächste Vertrags- oder Verlängerungstermin. Die App rollt die Kündigungsfrist danach automatisch weiter.</p>
       </fieldset>
       <label className="full-span">Notizen<textarea name="description" /></label>
-      <details className="optional-section full-span">
-        <summary>Beleg / Drive-Link hinzufügen</summary>
+      <details className="optional-section full-span" id="create-contract-document">
+        <summary>Beleg / Dokument verknüpfen</summary>
         <div className="form-grid">
           <label>Dokumenttitel<input name="documentTitle" placeholder="Vertrag, Rechnung, Nachweis ..." /></label>
-          <label>Drive-Link<input name="documentUrl" type="url" placeholder="https://drive.google.com/..." /></label>
+          <label>HTTPS-Link<input name="documentUrl" type="url" placeholder="https://drive.google.com/..." /></label>
+          <DocumentFilePicker roots={documentRoots} />
         </div>
       </details>
-      <div className="modal-submit-row">
+      <div className="modal-submit-row modal-footer">
         <button className="button full-span" type="submit">Speichern</button>
       </div>
     </form>
   );
 }
 
-function DocumentForm({ onSubmit }: { onSubmit: () => void }) {
+function DocumentForm({ documentRoots, onSubmit }: { documentRoots: CreateModalProps["documentRoots"]; onSubmit: () => void }) {
+  const [source, setSource] = useState<"link" | "file">("link");
+  const linkSelected = source === "link";
+
   return (
-    <form action={createDocumentReference} className="form form-grid modal-form" onSubmit={onSubmit}>
-      <fieldset className="fieldset modal-form-section full-span">
-        <legend>Dokument</legend>
-        <div className="form-grid">
-          <label>Titel<input name="title" required /></label>
-          <label>Drive-Link<input name="url" type="url" placeholder="https://drive.google.com/..." required /></label>
+    <div className="form form-grid modal-form">
+      <section className="fieldset modal-form-section full-span">
+        <h3>Quelle</h3>
+        <div className="document-source-choice" role="group" aria-label="Dokumentquelle wählen">
+          <button className={linkSelected ? "document-source-card active" : "document-source-card"} type="button" onClick={() => setSource("link")}>
+            HTTPS-Link speichern
+            <span>Für Drive, Synology-HTTPS, WebDAV oder andere sichere Links.</span>
+          </button>
+          <button className={!linkSelected ? "document-source-card active" : "document-source-card"} type="button" onClick={() => setSource("file")}>
+            Datei aus NAS auswählen
+            <span>Öffnet den read-only Explorer für konfigurierte Dokumentordner.</span>
+          </button>
         </div>
-      </fieldset>
-      <fieldset className="fieldset modal-form-section full-span">
-        <legend>Zuordnung</legend>
-        <div className="form-grid">
-          <label>Bezug<select name="linkedEntityType" defaultValue="GENERAL"><option value="GENERAL">Allgemein</option><option value="EXPENSE">Ausgabe</option><option value="TASK">Aufgabe</option><option value="CONTRACT">Vertrag</option></select></label>
-          <label>Sichtbarkeit<select name="scope" defaultValue="FAMILY"><option value="FAMILY">Familie</option><option value="PRIVATE">Privat</option></select></label>
-          <label>Bezugs-ID optional<input name="linkedEntityId" /></label>
-        </div>
-      </fieldset>
-      <fieldset className="fieldset modal-form-section full-span">
-        <legend>Details</legend>
-        <label>Beschreibung<textarea name="description" /></label>
-      </fieldset>
-      <div className="modal-submit-row">
-        <button className="button full-span" type="submit">Speichern</button>
-      </div>
-    </form>
+      </section>
+      {!linkSelected ? (
+        <form action={createLocalDocumentReference} className="form form-grid modal-form full-span" onSubmit={onSubmit}>
+          <fieldset className="fieldset modal-form-section full-span">
+            <legend>Datei</legend>
+            <DocumentFilePicker roots={documentRoots} />
+            {documentRoots.length === 0 ? (
+              <p className="muted">Ein Admin muss zuerst in den Einstellungen einen Dokumentbereich freigeben.</p>
+            ) : null}
+          </fieldset>
+          <fieldset className="fieldset modal-form-section full-span">
+            <legend>Zuordnung</legend>
+            <div className="form-grid">
+              <label>Titel optional<input name="title" placeholder="Leer lassen, um den Dateinamen zu verwenden" /></label>
+              <label>Bezug<select name="linkedEntityType" defaultValue="GENERAL"><option value="GENERAL">Allgemein</option><option value="EXPENSE">Ausgabe</option><option value="TASK">Aufgabe</option><option value="CONTRACT">Vertrag</option></select></label>
+              <label>Sichtbarkeit<select name="scope" defaultValue="FAMILY"><option value="FAMILY">Familie</option><option value="PRIVATE">Privat</option></select></label>
+              <label className="document-advanced-link-id">Bezugs-ID optional<input name="linkedEntityId" /></label>
+            </div>
+          </fieldset>
+          <fieldset className="fieldset modal-form-section full-span">
+            <legend>Details</legend>
+            <label>Beschreibung<textarea name="description" /></label>
+          </fieldset>
+          <div className="modal-submit-row modal-footer">
+            <button className="button full-span" type="submit" disabled={documentRoots.length === 0}>Speichern</button>
+          </div>
+        </form>
+      ) : null}
+      {linkSelected ? (
+        <form action={createDocumentReference} className="form form-grid modal-form full-span" onSubmit={onSubmit}>
+          <fieldset className="fieldset modal-form-section full-span">
+            <legend>Dokument</legend>
+            <div className="form-grid">
+              <input type="hidden" name="referenceType" value="EXTERNAL_URL" />
+              <label>Titel<input name="title" required /></label>
+              <label>HTTPS-Link<input name="url" type="url" placeholder="https://drive.google.com/..." required /></label>
+            </div>
+          </fieldset>
+          <fieldset className="fieldset modal-form-section full-span">
+            <legend>Zuordnung</legend>
+            <div className="form-grid">
+              <label>Bezug<select name="linkedEntityType" defaultValue="GENERAL"><option value="GENERAL">Allgemein</option><option value="EXPENSE">Ausgabe</option><option value="TASK">Aufgabe</option><option value="CONTRACT">Vertrag</option></select></label>
+              <label>Sichtbarkeit<select name="scope" defaultValue="FAMILY"><option value="FAMILY">Familie</option><option value="PRIVATE">Privat</option></select></label>
+              <label className="document-advanced-link-id">Bezugs-ID optional<input name="linkedEntityId" /></label>
+            </div>
+          </fieldset>
+          <fieldset className="fieldset modal-form-section full-span">
+            <legend>Details</legend>
+            <label>Beschreibung<textarea name="description" /></label>
+          </fieldset>
+          <div className="modal-submit-row modal-footer">
+            <button className="button full-span" type="submit">Speichern</button>
+          </div>
+        </form>
+      ) : null}
+    </div>
   );
 }
 

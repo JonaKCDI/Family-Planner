@@ -89,6 +89,7 @@ enum DocumentReferenceType {
   SYNOLOGY_HTTPS
   WEBDAV_HTTPS
   EXTERNAL_URL
+  LOCAL_FILE
 }
 
 enum LinkedEntityType {
@@ -120,6 +121,8 @@ model User {
   recurringTasks RecurringTask[] @relation("RecurringTaskOwner")
   assignedRecurringTasks RecurringTask[] @relation("RecurringTaskAssignee")
   documents     DocumentReference[]
+  createdDocumentRoots DocumentRoot[] @relation("DocumentRootCreator")
+  documentRootAccesses DocumentRootAccess[]
   createdRecoveryKeys AdminRecoveryKey[] @relation("AdminRecoveryKeyCreator")
 }
 
@@ -159,6 +162,7 @@ model Family {
   recurringTransactions RecurringTransaction[]
   recurringTasks RecurringTask[]
   documents  DocumentReference[]
+  documentRoots DocumentRoot[]
   adminRecoveryKey AdminRecoveryKey?
 }
 
@@ -492,17 +496,60 @@ model DocumentReference {
   id               String                @id @default(cuid())
   familyId         String
   ownerUserId      String
+  documentRootId   String?
   linkedEntityType LinkedEntityType      @default(GENERAL)
   linkedEntityId   String?
   title            String
   referenceType    DocumentReferenceType
   url              String
+  relativePath     String?
+  fileName         String?
+  mimeType         String?
+  fileSize         Int?
+  lastSeenAt       DateTime?
   description      String?
   scope            Scope                 @default(FAMILY)
   createdAt        DateTime              @default(now())
   updatedAt        DateTime              @updatedAt
   family           Family                @relation(fields: [familyId], references: [id], onDelete: Cascade)
   owner            User                  @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
+  documentRoot     DocumentRoot?         @relation(fields: [documentRootId], references: [id], onDelete: SetNull)
 
   @@index([familyId, linkedEntityType, linkedEntityId])
+  @@index([documentRootId])
+}
+
+model DocumentRoot {
+  id              String               @id @default(cuid())
+  familyId        String
+  name            String
+  basePath        String
+  scope           Scope                @default(FAMILY)
+  createdByUserId String?
+  archivedAt      DateTime?
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+  family          Family               @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  createdBy       User?                @relation("DocumentRootCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  accesses        DocumentRootAccess[]
+  documents       DocumentReference[]
+
+  @@index([familyId, archivedAt])
+  @@index([createdByUserId])
+}
+
+model DocumentRootAccess {
+  id             String      @id @default(cuid())
+  documentRootId String
+  userId         String?
+  role           FamilyRole?
+  canRead        Boolean     @default(true)
+  createdAt      DateTime    @default(now())
+  documentRoot   DocumentRoot @relation(fields: [documentRootId], references: [id], onDelete: Cascade)
+  user           User?       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([documentRootId])
+  @@index([userId])
+  @@unique([documentRootId, userId])
+  @@unique([documentRootId, role])
 }

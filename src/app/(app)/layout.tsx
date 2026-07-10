@@ -1,56 +1,39 @@
-import Link from "next/link";
-import Image from "next/image";
-import { Settings } from "lucide-react";
 import { logout } from "@/lib/actions";
 import { requireSession } from "@/lib/auth";
-import { getExpenseLabels, getFamilyMembers, getFuelExpenseSettings, getVisibleCars, getVisibleCategories, getVisibleContracts } from "@/lib/queries";
+import { getExpenseLabels, getFamilyMembers, getFuelExpenseSettings, getVisibleCars, getVisibleCategories, getVisibleContracts, getVisibleDocumentRoots } from "@/lib/queries";
 import { CreateModal } from "@/components/create-modal";
 import { GlobalSubmitIndicator } from "@/components/global-submit-indicator";
 import { Nav } from "@/components/nav";
 import { OfflineSyncStatus } from "@/components/offline-sync-status";
-import { LogoutForm } from "@/components/logout-form";
+import { AppHeader, AppMain, AppShell } from "@/components/ui-system";
 
 export const dynamic = "force-dynamic";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const session = await requireSession();
-  const [categories, labels, contracts, members, cars, fuelExpenseSettings] = await Promise.all([
+  const [categories, labels, contracts, members, cars, fuelExpenseSettings, documentRoots] = await Promise.all([
     getVisibleCategories(session.family.id, session.user.id, "EXPENSE"),
     getExpenseLabels(session.family.id, session.user.id),
     getVisibleContracts(session.family.id, session.user.id),
     getFamilyMembers(session.family.id),
     getVisibleCars(session.family.id),
-    getFuelExpenseSettings(session.family.id, session.user.id)
+    getFuelExpenseSettings(session.family.id, session.user.id),
+    getVisibleDocumentRoots(session.family.id, session.user.id, session.role)
   ]);
 
   return (
-    <div className="shell">
-      <header className="topbar">
-        <Link className="brand" href="/dashboard">
-          <span className="brand-mark" aria-hidden="true">
-            <Image src="/icon.svg" alt="" width={34} height={34} priority />
-          </span>
-          <span className="brand-copy">
-            <strong>Familien-App</strong>
-            <span>{session.family.name} · {session.user.name}</span>
-          </span>
-        </Link>
-        <div className="topbar-actions">
-          <Link className="topbar-icon-link" href="/einstellungen" aria-label="Einstellungen" title="Einstellungen">
-            <Settings size={19} strokeWidth={2.2} />
-          </Link>
-          <LogoutForm action={logout} />
-        </div>
-      </header>
+    <AppShell
+      navigation={<Nav />}
+      createAction={<CreateModal categories={categories} labels={labels} contracts={contracts} members={members} cars={cars} fuelExpenseSettings={fuelExpenseSettings} documentRoots={documentRoots} />}
+    >
+      <AppHeader appName="Familien-App" familyName={session.family.name} userName={session.user.name} logoutAction={logout} />
       <div className="app-frame">
-        <Nav />
-        <main className="content">
+        <AppMain>
           <GlobalSubmitIndicator />
           <OfflineSyncStatus />
           {children}
-        </main>
+        </AppMain>
       </div>
-      <CreateModal categories={categories} labels={labels} contracts={contracts} members={members} cars={cars} fuelExpenseSettings={fuelExpenseSettings} />
-    </div>
+    </AppShell>
   );
 }

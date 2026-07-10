@@ -1,14 +1,14 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { useEffect, useSyncExternalStore } from "react";
+import { useEffect } from "react";
 import { createPortal } from "react-dom";
 
 let openModalCount = 0;
 let lockedScrollY = 0;
 
 export function ModalPortal({ children }: { children: ReactNode }) {
-  const target = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+  const target = typeof document === "undefined" ? null : document.body;
 
   useEffect(() => {
     if (!target) return;
@@ -41,16 +41,4 @@ export function ModalPortal({ children }: { children: ReactNode }) {
 
   if (!target) return null;
   return createPortal(children, target);
-}
-
-function subscribe() {
-  return () => undefined;
-}
-
-function getSnapshot() {
-  return document.body;
-}
-
-function getServerSnapshot() {
-  return null;
 }

@@ -77,7 +77,7 @@ describe("password actions", () => {
       confirmPassword: "new-password-123"
     });
 
-    await expect(changeOwnPassword(formData)).rejects.toThrow("REDIRECT:/einstellungen?password=changed");
+    await expect(changeOwnPassword(formData)).rejects.toThrow("REDIRECT:/einstellungen/konto?password=changed");
 
     expect(authMock.verifyPassword).toHaveBeenCalledWith("old-password", "old-hash");
     expect(dbMock.user.update).toHaveBeenCalledWith({
@@ -147,7 +147,7 @@ describe("password actions", () => {
     await expect(setAdminRecoveryKey(passwordForm({
       recoveryKey: "family-recovery-key-12345",
       confirmRecoveryKey: "family-recovery-key-12345"
-    }))).rejects.toThrow("REDIRECT:/einstellungen?recovery=changed");
+    }))).rejects.toThrow("REDIRECT:/einstellungen/wiederherstellung?recovery=changed");
 
     expect(dbMock.adminRecoveryKey.upsert).toHaveBeenCalledWith({
       where: { familyId: "family_1" },

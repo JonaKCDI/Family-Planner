@@ -1,6 +1,9 @@
 ﻿import type { Metadata, Viewport } from "next";
 import { PwaRegister } from "@/components/pwa-register";
 import "./globals.css";
+import "@/components/ui-system/foundation.css";
+import "@/components/ui-system/interactions.css";
+import "@/components/ui-system/page-patterns.css";
 
 export const metadata: Metadata = {
   title: "Familien-App",

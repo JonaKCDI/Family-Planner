@@ -11,7 +11,7 @@ import { SearchableSelect } from "@/components/searchable-select";
 import { EmptyState, PageHeader, ScopeSelect } from "@/components/ui";
 
 type ContractsPageProps = {
-  searchParams: Promise<{ q?: string }>;
+  searchParams: Promise<{ q?: string; status?: string }>;
 };
 
 export default async function ContractsPage({ searchParams }: ContractsPageProps) {
@@ -19,12 +19,14 @@ export default async function ContractsPage({ searchParams }: ContractsPageProps
   const params = await searchParams;
   await ensureDueContractExpenses(session.family.id, session.user.id);
   const query = normalizeSearch(params.q);
+  const statusFilter = getContractStatusFilter(params.status);
   const [contracts, categories, labels] = await Promise.all([
     getVisibleContractsWithExpenseDetails(session.family.id, session.user.id),
     getVisibleCategories(session.family.id, session.user.id, "EXPENSE"),
     getExpenseLabels(session.family.id, session.user.id)
   ]);
-  const visibleContracts = query ? contracts.filter((contract) => matchesContract(contract, query)) : contracts;
+  const statusFilteredContracts = statusFilter ? contracts.filter((contract) => contract.status === statusFilter) : contracts;
+  const visibleContracts = query ? statusFilteredContracts.filter((contract) => matchesContract(contract, query)) : statusFilteredContracts;
   const documents = await getDocumentsForLinkedEntities(
     session.family.id,
     session.user.id,
@@ -61,12 +63,13 @@ export default async function ContractsPage({ searchParams }: ContractsPageProps
     <>
       <PageHeader title="Verträge" />
       <form className="search-bar">
+        {statusFilter ? <input type="hidden" name="status" value={statusFilter} /> : null}
         <label>
           <span>Verträge durchsuchen</span>
           <input name="q" type="search" defaultValue={params.q ?? ""} placeholder="Anbieter, Art, Notiz, Status ..." />
         </label>
         <button className="button secondary" type="submit">Suchen</button>
-        {query ? <a className="button secondary" href="/vertraege">Zurücksetzen</a> : null}
+        {query ? <a className="button secondary" href={buildContractsHref({ status: statusFilter })}>Zurücksetzen</a> : null}
       </form>
       <section className="stats">
         <div className="stat"><span>Aktive Kosten</span><strong>{formatMoney(activeCosts)}</strong></div>
@@ -74,6 +77,13 @@ export default async function ContractsPage({ searchParams }: ContractsPageProps
         <div className="stat"><span>Aktiv</span><strong>{visibleContracts.filter((contract) => contract.status === "ACTIVE").length}</strong></div>
         <div className="stat"><span>Nächste Kündigung</span><strong>{formatDate(nextCancellationDate)}</strong></div>
       </section>
+      <nav className="section-switcher status-filter-strip" aria-label="Vertragsstatus">
+        <a className={!statusFilter ? "active" : ""} href={buildContractsHref({ q: params.q })}>Alle</a>
+        <a className={statusFilter === "ACTIVE" ? "active" : ""} href={buildContractsHref({ q: params.q, status: "ACTIVE" })}>Aktiv</a>
+        <a className={statusFilter === "DRAFT" ? "active" : ""} href={buildContractsHref({ q: params.q, status: "DRAFT" })}>Entwurf</a>
+        <a className={statusFilter === "CANCELLED" ? "active" : ""} href={buildContractsHref({ q: params.q, status: "CANCELLED" })}>Gekündigt</a>
+        <a className={statusFilter === "EXPIRED" ? "active" : ""} href={buildContractsHref({ q: params.q, status: "EXPIRED" })}>Ausgelaufen</a>
+      </nav>
       <section className="panel">
         <h2 className="section-title">Vertragsübersicht</h2>
         <div className="list">
@@ -86,7 +96,7 @@ export default async function ContractsPage({ searchParams }: ContractsPageProps
             const nextCancellation = nextCancellationByContract[contract.id];
             const currentPricePhase = contract.pricePhases.at(-1);
             return (
-              <details className="card contract-card" key={contract.id} open>
+              <details className="card contract-card" key={contract.id}>
                 <summary className="contract-summary">
                   <div>
                     <div className="contract-title-row">
@@ -112,7 +122,13 @@ export default async function ContractsPage({ searchParams }: ContractsPageProps
                   <ActionModal title="Vertrag bearbeiten" trigger="Bearbeiten" modalId={`contract-${contract.id}`}>
                     <AutosaveForm action={updateContract} className="form form-grid modal-form">
                       <input type="hidden" name="id" value={contract.id} />
-                      <fieldset className="fieldset modal-form-section full-span">
+                      <nav className="modal-section-tabs full-span" aria-label="Formularbereiche">
+                        <a href={`#contract-${contract.id}-vertrag`}>Vertrag</a>
+                        <a href={`#contract-${contract.id}-kosten`}>Kosten</a>
+                        <a href={`#contract-${contract.id}-automatik`}>Automatik</a>
+                        <a href={`#contract-${contract.id}-dokumente`}>Dokumente</a>
+                      </nav>
+                      <fieldset className="fieldset modal-form-section full-span" id={`contract-${contract.id}-vertrag`}>
                         <legend>Vertrag</legend>
                         <div className="form-grid">
                           <label>Anbieter<input name="provider" defaultValue={contract.provider} required /></label>
@@ -130,7 +146,7 @@ export default async function ContractsPage({ searchParams }: ContractsPageProps
                           <ScopeSelect defaultValue={contract.scope} />
                         </div>
                       </fieldset>
-                      <fieldset className="fieldset modal-form-section full-span">
+                      <fieldset className="fieldset modal-form-section full-span" id={`contract-${contract.id}-kosten`}>
                         <legend>Kosten & Abbuchung</legend>
                         <div className="form-grid">
                           <label>Kosten in EUR<input name="cost" inputMode="decimal" defaultValue={formatEuroInput(contract.costCents)} required /></label>
@@ -150,7 +166,7 @@ export default async function ContractsPage({ searchParams }: ContractsPageProps
                         <p className="muted">Die App legt daraus automatisch eine Preisphase an. Liegt das Datum in der Vergangenheit, bleiben bereits erzeugte Auto-Ausgaben unverändert, solange die Option nicht aktiv ist.</p>
                         <label className="checkbox-field contract-price-sync-toggle"><input name="updateGeneratedExpenses" type="checkbox" /> Bereits erzeugte Auto-Ausgaben ab &quot;Preis gilt ab&quot; anpassen</label>
                       </fieldset>
-                      <fieldset className="fieldset modal-form-section full-span">
+                      <fieldset className="fieldset modal-form-section full-span" id={`contract-${contract.id}-automatik`}>
                         <legend>Automatische Ausgabe</legend>
                         <div className="form-grid">
                           <label className="checkbox-field full-span"><input name="autoCreateExpenses" type="checkbox" defaultChecked={contract.autoCreateExpenses} /> Automatisch als Ausgabe eintragen</label>
@@ -187,7 +203,7 @@ export default async function ContractsPage({ searchParams }: ContractsPageProps
                           </span>
                         ))}
                       </div>
-                      <details className="optional-section full-span" open={Boolean(primaryDocument)}>
+                      <details className="optional-section full-span" id={`contract-${contract.id}-dokumente`} open={Boolean(primaryDocument)}>
                         <summary>Beleg / Drive-Link hinzufügen</summary>
                         <input type="hidden" name="documentId" value={primaryDocument?.id ?? ""} />
                         <div className="form-grid">
@@ -239,6 +255,19 @@ function formatEuroInput(amountCents: number) {
   return (amountCents / 100).toFixed(2).replace(".", ",");
 }
 
+function getContractStatusFilter(value: unknown): ContractStatusFilter | null {
+  if (value === "ACTIVE" || value === "DRAFT" || value === "CANCELLED" || value === "EXPIRED") return value;
+  return null;
+}
+
+function buildContractsHref(params: { q?: string | null; status?: ContractStatusFilter | null }) {
+  const search = new URLSearchParams();
+  if (params.q?.trim()) search.set("q", params.q.trim());
+  if (params.status) search.set("status", params.status);
+  const query = search.toString();
+  return query ? `/vertraege?${query}` : "/vertraege";
+}
+
 const billingLabels = {
   MONTHLY: "Monatlich",
   YEARLY: "Jährlich",
@@ -263,3 +292,4 @@ const statusLabels = {
 };
 
 type ContractLike = Awaited<ReturnType<typeof getVisibleContractsWithExpenseDetails>>[number];
+type ContractStatusFilter = ContractLike["status"];

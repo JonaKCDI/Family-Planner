@@ -10,6 +10,10 @@ export function GlobalSubmitIndicator() {
     let timeoutId: number | null = null;
     const clear = () => {
       setProcessing(false);
+      document.querySelectorAll<HTMLFormElement>("form[data-submitting='true']").forEach((form) => {
+        delete form.dataset.submitting;
+        form.removeAttribute("aria-busy");
+      });
       if (timeoutId) {
         window.clearTimeout(timeoutId);
         timeoutId = null;
@@ -22,6 +26,8 @@ export function GlobalSubmitIndicator() {
       if (!form.checkValidity() || isReadOnlyForm(form)) return;
 
       setProcessing(true);
+      form.dataset.submitting = "true";
+      form.setAttribute("aria-busy", "true");
       if (timeoutId) window.clearTimeout(timeoutId);
       timeoutId = window.setTimeout(clear, 30000);
     }

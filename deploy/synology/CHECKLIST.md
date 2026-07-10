@@ -5,6 +5,7 @@
 - [ ] Copy the full project to `/volume1/docker/family-app`.
 - [ ] Create `/volume1/docker/family-app/expenses`.
 - [ ] Create `/volume1/docker/family-app/mileage`.
+- [ ] Create `/volume1/docker/family-app/documents` or set `DOCUMENTS_HOST_DIR` to a narrow existing read-only document folder.
 - [ ] Create `/volume1/docker/family-app/backups`.
 - [ ] Copy `deploy/synology/.env.example` to `deploy/synology/.env`.
 - [ ] Set a long random `POSTGRES_PASSWORD`.
@@ -34,6 +35,7 @@
 - [ ] Create one contract and link an expense to it.
 - [ ] Confirm contract payments show in **Verträge**.
 - [ ] Add one HTTPS document reference.
+- [ ] If documents are mounted: create one document root, browse a folder, preview a PDF/image/text file, and download one file.
 - [ ] Confirm a `.sql.gz` backup appears in `backups`.
 
 ## HTTPS / iPhone PWA

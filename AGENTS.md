@@ -27,9 +27,111 @@
 - Keep layouts dense but calm: compact cards, clear tables/lists, and controls hidden behind intentional actions where appropriate.
 - Avoid decorative clutter. Prioritize readable overviews, especially for many expenses, categories, and tasks.
 - The floating plus button is the only entry point for creating new expenses, tasks, contracts, and document references.
+- Follow the concise app UI/UX guideline in `docs/UI_GUIDELINES.md` for future interface changes.
 
 ## Agent Coordination
 
+- 2026-07-09 Codex: Fixing UI modernization pass after analytics feedback.
+  - Scope: concise UI guideline update, broad but reviewable CSS cleanup in `src/app/globals.css`, and narrow markup cleanup for analytics controls that looked like non-working buttons.
+  - Goal: calmer/lighter private productivity UI; reduce boxed/admin/form visual weight while preserving all workflows.
+  - Avoid Prisma/schema/migrations/server actions/auth/import-export/document-security/deployment changes.
+  - High-conflict files: `src/app/globals.css`, `src/app/(app)/ausgaben/page.tsx`, `docs/UI_GUIDELINES.md`, and this file.
+- 2026-07-09 Codex: Applying mock-up aligned UI pass.
+  - Use the provided 2026-07-09 mobile mock-up as a structural/visual reference: recognizable pop-up sheets, playful but light pastel accents, compact app-shell, colored icon circles, small KPI cards, and list-first screens.
+  - Scope remains UI only: `src/app/globals.css`, `src/components/create-modal.tsx`, shared modal styling, and only narrow page markup where needed.
+  - Do not change Prisma/schema/server actions/auth/import-export/document security/deployment behavior.
+- 2026-07-09 Codex: Starting concise UI guideline plus structural UI modernization pass.
+  - Added `docs/UI_GUIDELINES.md` as the practical UI/UX reference and linked it from this file.
+  - Intended broad UI files: `src/app/globals.css`, overview pages, and light shared component/page markup only.
+  - Scope is UI/information architecture only: no Prisma/schema/server action/auth/import-export/document-security/deployment changes.
+  - Preserve the global floating plus as the create entry point and keep all existing routes/workflows reachable.
+- 2026-07-09 Codex: Completed broad shared UI/UX modernization layer.
+  - Added an app-wide CSS polish layer in `src/app/globals.css`: modern tokens, calmer raised surfaces, stronger focus states, hover/pressed feedback, improved forms, chips, stats, empty states, tables/lists, modal polish, mobile touch sizing, and reduced-motion support.
+  - Added submit-busy form marking in `src/components/global-submit-indicator.tsx` so submitting forms show a processing/disabled-feeling state without changing server actions or submitted data.
+  - Preserved existing routes, data model, server actions, global floating plus creation flow, document/NAS behavior, imports/exports, filters, recurring behavior, and settings/document-root management.
+  - Browser smoke used a temporary local `Codex UI Smoke` admin user, then removed that user and its sessions from the development database.
+  - Desktop and 390x844 mobile smoke passed for dashboard, expenses, tasks, contracts, documents, mileage, and settings: no horizontal overflow; global create modal opened with all five create types; expense filter modal opened and submit was reachable after scrolling; document page exposed preview/download/save controls.
+  - Verification passed: `npm.cmd run lint`, `npm.cmd test` (12 files, 93 tests), and `npm.cmd run build` after stopping the local dev server to release the known Prisma Windows DLL lock. Build still reports the known Turbopack filesystem tracing warning from document API routes.
+- 2026-07-09 Codex: Aligning with parallel UI/UX modernization agent.
+  - The other active brief is a broad modern UI/UX refresh across the existing app while preserving all workflows and data behavior.
+  - Treat `src/app/globals.css`, shared modal/create components, overview pages, and document UI files as high-conflict while that work is active.
+  - Keep any concurrent edits narrow, avoid business/schema changes for styling-only work, and preserve the global floating plus as the creation entry point.
+  - Use the existing feature inventory/regression checklist from the UI brief: cockpit, expenses/search/filter/sort/export/import/recurring, tasks/planned tasks, contracts/auto expenses, documents/NAS picker/preview/download, mileage, settings, and document root/access management.
+- 2026-07-09 Codex: Applied the document-integration UX correction pass requested after local testing.
+  - Removed local dev test document roots `local-ui-fixture-root` and `local-ui-private-root` from the development database and deleted ignored `.next/document-fixtures`.
+  - The global "Dokument" create flow now keeps NAS file selection inside the create modal using the shared `DocumentFilePicker`; it no longer redirects users into `/dokumente` just to save a local file reference.
+  - The `/dokumente` explorer now keeps per-file actions collapsed until the user selects/opens a file row, so preview/download/save controls no longer take permanent space below every file.
+  - Added `src/components/document-file-preview.tsx` for in-app previews. Images render in a modal with `<img>`; PDF/text/CSV use an iframe. This avoids PWA/new-tab session confusion and keeps mobile users in the app.
+  - Added image magic-byte validation in `src/lib/document-files.ts`; files with image extensions but invalid image bytes are no longer treated as inline-previewable.
+  - Document root setup in settings is now guided by `DOCUMENTS_DIR` (default `/mnt/documents`) plus an optional subfolder, validates the resulting directory at save time, and documents the Synology read-only `DOCUMENTS_HOST_DIR` mount in the settings checklist.
+  - Verification passed: `npm.cmd run lint`, `npm.cmd test` (12 files, 93 tests), and `npm.cmd run build` with the known Turbopack filesystem tracing warning.
+  - Follow-up UX correction: settings now use a single `Dokumentenpfad` input again instead of the confusing "mount plus optional subfolder" split. Local Windows dev falls back to ignored `.local-documents`; Synology should still set `DOCUMENTS_DIR` to the container mount such as `/mnt/documents`.
+  - Added clearer empty-state copy for `/dokumente` when a configured folder is reachable but empty. Local ignored sample files may be placed in `.local-documents` for manual testing only.
+- 2026-07-08 Codex: Implemented local NAS document references and mobile modal/document UI rework on branch `codex/category-income-sums-db-audit-ideas`.
+  - Completed changes in this pass:
+    - Added Prisma support for local document roots: `DocumentRoot`, `DocumentRootAccess`, `DocumentReferenceType.LOCAL_FILE`, and local metadata on `DocumentReference`.
+    - Added migration `prisma/migrations/20260708110000_local_document_roots/migration.sql`.
+    - Added secure file access library `src/lib/document-files.ts` with root-relative path normalization, repeated URL-decoding, absolute path/traversal rejection, symlink blocking, `realpath` root-boundary checks, MIME/preview policy, and safe download filenames.
+    - Added API routes `src/app/api/documents/list/route.ts` and `src/app/api/documents/file/route.ts` for listing, preview, and download. Inline preview is limited to PDF, images, text, and CSV; other files download only.
+    - Reworked `/dokumente` into document overview plus local explorer with root tabs, breadcrumbs, compact mobile rows, preview/download, local reference creation, and admin root management.
+    - Updated global plus flow to choose between HTTPS link and NAS file; local file creation routes to the document explorer.
+    - Reworked modal CSS around header + scrollable body + sticky submit zone, with 44px inputs and 48px submit targets for mobile keyboard safety.
+    - Added optional read-only Synology mount config: `DOCUMENTS_HOST_DIR:/mnt/documents:ro`, documented in compose env, README, and checklist. Container `user:` remains unchanged.
+  - Verification passed:
+    - `npm.cmd test` (12 files, 93 tests).
+    - `npm.cmd run build`.
+    - Build emits one Turbopack tracing warning for dynamic filesystem access from the document API; production build still succeeds.
+  - 2026-07-08 follow-up UI smoke:
+    - Created temporary ignored fixtures under `.next/document-fixtures` with PDF, JPG, PNG, TXT, CSV, DOCX, XLSX, and nested folders; removed them after the smoke.
+    - Created temporary local DB roots and a `Codex UI Test` user; removed them after the smoke. The local dev DB migration was applied directly because Prisma CLI wanted to download an engine binary while network was restricted.
+    - Verified `/dokumente` desktop and 390x844 mobile layout with Playwright: no horizontal overflow, document actions are 48px tall/full-width on mobile, explorer lists folders first, and Office files expose download only.
+    - Verified file API headers with authenticated curl: PDF/JPG/PNG/TXT/CSV return inline with correct `Content-Type`; DOCX/XLSX inline returns 415 and download returns attachment; traversal returns 400.
+    - Fixed `src/components/modal-portal.tsx`: the old `useSyncExternalStore` portal target could remain `null`, so client modals did not render in the smoke. The portal now resolves `document.body` directly on the client.
+    - Added missing `modal-footer` classes to document action modals and a final CSS override so submit rows are sticky.
+    - Important test note: use `http://localhost:3000` for dev browser smokes. `http://127.0.0.1:3000` caused HMR websocket failures and client handlers did not run reliably in dev mode.
+    - Follow-up verification passed: `npm.cmd run lint`, `npm.cmd test` (12 files, 93 tests), and `npm.cmd run build` after stopping local Node dev/smoke processes to release the Prisma Windows DLL lock.
+  - 2026-07-08 UX follow-up:
+    - Moved document root/access management out of `/dokumente` and into `/einstellungen#dokumentbereiche`.
+    - `/dokumente` now focuses on searching/opening saved document references and browsing available document files.
+    - Added `src/components/document-file-picker.tsx`, a reusable NAS file picker modal for forms.
+    - Global create flows for expenses, fuel-generated expenses, tasks, and contracts can now attach a NAS file directly; the server creates the linked `DocumentReference` without requiring the user to pre-create it in `/dokumente`.
+    - Verification passed again: `npm.cmd run lint`, `npm.cmd test` (12 files, 93 tests), and `npm.cmd run build` with the known Turbopack filesystem tracing warning.
+  - Security/behavior notes:
+    - App starts without configured document roots. The compose default mount points at `/volume1/docker/family-app/documents`, but admins still need to create app roots such as `/mnt/documents/Familie`.
+    - Mount only narrow document folders. Do not mount `/volume1`.
+    - Symlinks are blocked completely in V1.
+    - App-level document permissions are root-based; Synology/Container permissions only limit what the app process can read.
+    - Existing HTTPS document links remain supported and `updateDocumentReference` now preserves the existing reference type.
+- 2026-07-07 Codex: Working on branch `codex/category-income-sums-db-audit-ideas`.
+  - Completed changes in this pass:
+    - Category/label analysis in the expense overview now includes incomes as `income`, `spending`, and `saldo`; UI shows saldo plus income/spending details when a category or label has income.
+    - Removed the duplicated expense analytics helpers from `src/app/(app)/ausgaben/page.tsx`; the page now imports `buildCategoryRows`, `buildLabelRows`, `buildPeriodRows`, `sumByKind`, and `PeriodRow` from `src/lib/expense-analytics.ts`.
+    - Added migration `prisma/migrations/20260707221000_drop_calendar_archives/migration.sql` to drop the old calendar archive tables with `DROP TABLE IF EXISTS`. This is intentionally defensive for existing Synology deployments where the tables may or may not exist.
+    - Verification passed: `npm.cmd test` (11 files, 85 tests) and `npm.cmd run build`.
+  - Current touched files: `src/app/(app)/ausgaben/page.tsx`, `src/lib/expense-analytics.ts`, `tests/expense-formats.test.ts`, `prisma/migrations/20260707221000_drop_calendar_archives/migration.sql`, and this `AGENTS.md`.
+  - Database audit notes:
+    - `CategoryType.TASK` / `CategoryType.CONTRACT` and `MemberStatus.INVITED` appear unused or future-facing, but do not remove without first counting existing production rows.
+    - `DocumentReference.referenceType` should later be preserved on update instead of being forced back to `EXTERNAL_URL`.
+    - `fuelEntryId` is present in Excel export/parser data but is not currently restored by import; define a restore policy before relying on mileage link round-trips.
+  - Synology Excel import/export facts:
+    - Synology import reads from the same folder that Synology export writes to.
+    - Expenses: host folder `EXPENSE_EXCEL_HOST_DIR`, default `/volume1/docker/family-app/expenses`, mounted as `EXPENSE_EXCEL_DIR` (`/data/expenses`). Expected filename: `Ausgaben-<safe app user name>-<year>.xlsx`, e.g. `Ausgaben-Jona-2026.xlsx`.
+    - Mileage: host folder `MILEAGE_EXCEL_HOST_DIR`, default `/volume1/docker/family-app/mileage`, mounted as `MILEAGE_EXCEL_DIR` (`/data/mileage`). Expected filename: `Verbrauch-<safe car name>.xlsx`, e.g. `Verbrauch-Seat-Leon.xlsx`.
+    - Safest user workflow: export once from the app to create the exact filename, edit/replace that file on the NAS, then run Synology import.
+  - Document explorer decision notes for future work:
+    - User wants a highly secure internal document explorer with read-only access and an in-app document viewer usable on phone and laptop.
+    - Preferred technical direction for private VPN deployment is a narrowly scoped read-only Docker mount, e.g. `/volume1/Familie/Dokumente:/mnt/documents:ro`, plus strict app-side checks. `:ro` is a strong write-protection layer but not a complete access-control model.
+    - Do not mount broad roots like `/volume1`; mount only specific document folders.
+    - The app must treat every file/path request as hostile: no free-form filesystem paths, only configured document roots; resolve with `realpath`; ensure resolved paths stay under the allowed root; block symlink escapes; enforce allowed file types; check session, family membership, and app-level document-root permission on every list, preview, and download request.
+    - Do not try to mirror Synology ACLs in the app. Use Synology/Container only to limit what the app process can read, then implement app-level permissions for family users.
+    - Suggested app permission model: add `DocumentRoot` and `DocumentRootAccess` (or equivalent) so admins can define roots such as `Familie`, `Finanzen`, `Versicherungen`, and private user areas; file permissions inherit from the root rather than being managed per file.
+    - `DocumentReference` should later be extended to point at a configured root plus a verified relative path, not an arbitrary NAS path.
+    - In-app viewer direction: inline previews for PDFs and images; simple text/CSV display; Office files should initially download/open externally unless an explicit converter/viewer integration is added.
+    - Running the whole app container with a dedicated UID/GID is desirable but currently complicated because existing Excel/mileage export directories may live in user homes and need write access. Pragmatic next step: keep the existing runtime user, add read-only document mount plus strict app checks; later move app data out of user homes and consider `user: "${APP_RUN_AS_UID_GID}"` in `deploy/synology/compose.yaml`.
+  - Security notes:
+    - Current private VPN-only posture has no obvious imminent issue from the quick review; keep the app private and avoid public DSM/app exposure unless explicitly revisiting hardening.
+    - `APP_URL` must be the final HTTPS URL so session cookies are `secure` and PWA/auth origin behavior is correct.
+    - Before any public hosting, do a dedicated security pass: CSRF/origin protections for mutating actions, broader rate limits, security headers/CSP, audit logs for login/recovery/document/export access, and stricter document route design by IDs rather than path parameters.
 - 2026-06-11 Codex: Prepared the app for deployment readiness after expense sorting/search, modal cleanup, and contract automation UI work.
   - User goal: make the current app deployment-ready, verify search coverage, automated behavior, bug risk, and Synology deployment safety.
   - User preferences locked in:

@@ -19,6 +19,7 @@ Create:
 ```text
 /volume1/docker/family-app/expenses
 /volume1/docker/family-app/mileage
+/volume1/docker/family-app/documents
 /volume1/docker/family-app/backups
 ```
 
@@ -46,6 +47,8 @@ EXPENSE_EXCEL_HOST_DIR="/volume1/docker/family-app/expenses"
 EXPENSE_EXCEL_DIR="/data/expenses"
 MILEAGE_EXCEL_HOST_DIR="/volume1/docker/family-app/mileage"
 MILEAGE_EXCEL_DIR="/data/mileage"
+DOCUMENTS_HOST_DIR="/volume1/docker/family-app/documents"
+DOCUMENTS_DIR="/mnt/documents"
 BACKUP_DIR="/volume1/docker/family-app/backups"
 BACKUP_RETENTION_DAYS="30"
 BACKUP_TIME="01:00"
@@ -67,6 +70,8 @@ After the first admin is created, open **Einstellungen > Notfall-Wiederherstellu
 
 The app container waits for PostgreSQL, runs `prisma migrate deploy`, then starts Next.js.
 
+The document mount is read-only inside the app container (`DOCUMENTS_HOST_DIR:/mnt/documents:ro`). Mount only the narrow folder tree you want the app to read, never a broad root like `/volume1`. After startup, create document roots in the app with paths below `DOCUMENTS_DIR`, for example `/mnt/documents/Familie` or `/mnt/documents/Versicherungen`.
+
 ## 4. First App Check
 
 Open:
@@ -85,6 +90,7 @@ Create the first admin. Then check:
 - Task create and status change.
 - Contract payment overview.
 - Document HTTPS reference.
+- Local document root, explorer listing, preview, and download if `DOCUMENTS_HOST_DIR` is mounted.
 - Backup file in `/volume1/docker/family-app/backups`.
 
 ## 5. HTTPS For iPhone PWA

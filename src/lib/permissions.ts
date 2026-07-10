@@ -25,3 +25,13 @@ export function ownedExpenseWhere(familyId: string, userId: string, id: string) 
     ownerUserId: userId
   };
 }
+
+export function documentRootAccessWhere(userId: string, role: FamilyRole) {
+  return {
+    OR: [
+      { scope: "FAMILY" as const },
+      { accesses: { some: { canRead: true, userId } } },
+      { accesses: { some: { canRead: true, role } } }
+    ]
+  };
+}

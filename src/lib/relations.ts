@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { visibleScopeWhere } from "@/lib/permissions";
+import { documentRootAccessWhere, visibleScopeWhere } from "@/lib/permissions";
 
 type LinkedEntityType = "EXPENSE" | "TASK" | "CONTRACT" | "GENERAL";
 
@@ -85,4 +85,18 @@ export async function resolveDocumentLinkedEntityId(
   });
   if (!contract) throw new Error("Der verknüpfte Vertrag ist nicht verfügbar.");
   return contract.id;
+}
+
+export async function resolveReadableDocumentRoot(familyId: string, userId: string, role: "ADMIN" | "MEMBER", documentRootId: string) {
+  const documentRoot = await db.documentRoot.findFirst({
+    where: {
+      id: documentRootId,
+      familyId,
+      archivedAt: null,
+      ...(role === "ADMIN" ? {} : documentRootAccessWhere(userId, role))
+    },
+    include: { accesses: true }
+  });
+  if (!documentRoot) throw new Error("Der ausgewählte Dokumentbereich ist nicht verfügbar.");
+  return documentRoot;
 }

@@ -2,7 +2,7 @@ import { describe, expect, test } from "vitest";
 import ExcelJS from "exceljs";
 import { buildExpenseWorkbook, parseExpenseWorkbook } from "../src/lib/expense-formats";
 import { parseEuroToCents } from "../src/lib/format";
-import { buildCategoryRows, buildLabelRows, buildPeriodRows, sumByKind } from "../src/lib/expense-analytics";
+import { buildCategoryRows, buildDonutSegments, buildExpenseTrendChart, buildLabelRows, buildPeriodRows, sumByKind } from "../src/lib/expense-analytics";
 
 describe("money parsing", () => {
   test("parses German euro input into cents", () => {
@@ -31,8 +31,37 @@ describe("expense analytics", () => {
   });
 
   test("builds category and label budget rows", () => {
-    expect(buildCategoryRows(entries, categories, 5580, true).map((row) => [row.name, row.amount])).toEqual([["Urlaub", 3209], ["Nahrung", 2371]]);
-    expect(buildLabelRows(entries, labels)[0]).toMatchObject({ name: "Lappland", amount: 5580, remaining: 64420 });
+    expect(buildCategoryRows(entries, categories, 5580, true).map((row) => [row.name, row.amount])).toEqual([["Nahrung", 2371], ["Urlaub", 3209]]);
+    expect(buildLabelRows(entries, labels)[0]).toMatchObject({ name: "Lappland", amount: 5580, netConsumption: 5580, remaining: 64420 });
+  });
+
+  test("includes income in category and label saldo rows and uses net consumption for budgets", () => {
+    const mixedEntries = [
+      ...entries,
+      { kind: "INCOME" as const, amountCents: 2000, date: new Date(2026, 1, 3), category: categories[1], label: labels[0] },
+      { kind: "INCOME" as const, amountCents: 5000, date: new Date(2026, 1, 4), category: null, label: { name: "Bonus", color: "#b08020", budgetCents: 0 } }
+    ];
+
+    expect(buildCategoryRows(mixedEntries, categories, 5580, true)).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: "Urlaub", amount: 3209, spending: 3209, income: 2000, saldo: -1209, netConsumption: 1209, remaining: 98791 }),
+      expect.objectContaining({ name: "Ohne Kategorie", amount: 0, spending: 0, income: 5000, saldo: 5000, netConsumption: 0 })
+    ]));
+    expect(buildLabelRows(mixedEntries, [...labels, { name: "Bonus", color: "#b08020", budgetCents: 0 }])).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: "Lappland", amount: 5580, spending: 5580, income: 2000, saldo: -3580, netConsumption: 3580, remaining: 66420 }),
+      expect.objectContaining({ name: "Bonus", amount: 0, spending: 0, income: 5000, saldo: 5000, netConsumption: 0 })
+    ]));
+  });
+
+  test("caps budget consumption at zero when income is higher than spending", () => {
+    const mixedEntries = [
+      { kind: "EXPENSE" as const, amountCents: 10000, date: new Date(2026, 1, 1), category: categories[1], label: labels[0] },
+      { kind: "INCOME" as const, amountCents: 15000, date: new Date(2026, 1, 2), category: categories[1], label: labels[0] }
+    ];
+
+    expect(buildCategoryRows(mixedEntries, categories, 10000, true)).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: "Urlaub", saldo: 5000, netConsumption: 0, remaining: 100000, budgetUsage: 0 })
+    ]));
+    expect(buildLabelRows(mixedEntries, labels)[0]).toMatchObject({ name: "Lappland", saldo: 5000, netConsumption: 0, remaining: 70000, budgetUsage: 0 });
   });
 
   test("hides labels used outside the selected period", () => {
@@ -48,6 +77,63 @@ describe("expense analytics", () => {
     ];
 
     expect(buildLabelRows(entries, [...labels, ...neverUsedLabels]).map((row) => row.name)).toEqual(["Lappland", "Sommerurlaub", "Kinderzimmer"]);
+  });
+
+  test("builds robust donut segments with fallback colors and no zero divisions", () => {
+    expect(buildDonutSegments([])).toEqual([]);
+    expect(buildDonutSegments([{ name: "Leer", color: "#bad", spending: 0 }])).toEqual([]);
+
+    const segments = buildDonutSegments([
+      { name: "A", color: "#123456", spending: 900 },
+      { name: "B", color: "not-a-color", spending: 100 }
+    ]);
+
+    expect(segments).toHaveLength(2);
+    expect(segments[0]).toMatchObject({ name: "A", color: "#123456", percent: 90 });
+    expect(segments[1].color).toMatch(/^#/);
+    expect(segments[0].strokeDasharray).toContain("90");
+  });
+
+  test("groups small donut segments into Weitere deterministically", () => {
+    const segments = buildDonutSegments([
+      { name: "A", color: "#111111", spending: 800 },
+      { name: "B", color: "#222222", spending: 700 },
+      { name: "C", color: "#333333", spending: 600 },
+      { name: "D", color: "#444444", spending: 500 },
+      { name: "E", color: "#555555", spending: 400 }
+    ], { maxSegments: 3 });
+
+    expect(segments.map((segment) => segment.name)).toEqual(["A", "B", "C", "Weitere"]);
+    expect(segments.at(-1)).toMatchObject({ value: 900 });
+  });
+
+  test("builds category and label time series for all chart metrics", () => {
+    const chartEntries = [
+      ...entries,
+      { kind: "EXPENSE" as const, amountCents: 2000, date: new Date(2026, 0, 15), category: categories[0], label: labels[0] },
+      { kind: "INCOME" as const, amountCents: 500, date: new Date(2026, 0, 20), category: categories[0], label: labels[0] }
+    ];
+
+    const categoryChart = buildExpenseTrendChart(chartEntries, {
+      dimension: "category",
+      metric: "net",
+      months: 6,
+      topN: 3,
+      endDate: new Date(2026, 1, 28)
+    });
+    expect(categoryChart.periods).toEqual(["2025-09", "2025-10", "2025-11", "2025-12", "2026-01", "2026-02"]);
+    const foodSeries = categoryChart.series.find((series) => series.name === "Nahrung");
+    expect(foodSeries?.points.at(-2)).toMatchObject({ period: "2026-01", value: 1500 });
+
+    const labelSaldoChart = buildExpenseTrendChart(chartEntries, {
+      dimension: "label",
+      metric: "saldo",
+      months: 6,
+      topN: 8,
+      endDate: new Date(2026, 1, 28)
+    });
+    expect(labelSaldoChart.series[0]).toMatchObject({ name: "Lappland" });
+    expect(labelSaldoChart.series[0].points.at(-2)).toMatchObject({ value: -1500 });
   });
 });
 

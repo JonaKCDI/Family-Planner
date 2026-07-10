@@ -148,4 +148,40 @@ describe("expense filter URLs", () => {
       sort: "pricey"
     })).toBe("/ausgaben?month=2026-06");
   });
+
+  test("finance view is stable in URLs and invalid views are removed", () => {
+    expect(buildExpensesHref({
+      month: "2026-07",
+      view: "overview",
+      label: "label_1"
+    }, {
+      view: "overview"
+    })).toBe("/ausgaben?month=2026-07&label=label_1&view=overview");
+
+    expect(getCanonicalExpensesHref({
+      month: "2026-07",
+      view: "compare"
+    })).toBe("/ausgaben?month=2026-07");
+  });
+
+  test("finance chart controls are stable and invalid values are removed", () => {
+    expect(buildExpensesHref({
+      month: "2026-07",
+      view: "overview"
+    }, {
+      chartDimension: "label",
+      chartMetric: "net",
+      chartTop: "6",
+      chartMonths: "12"
+    })).toBe("/ausgaben?month=2026-07&view=overview&chartDimension=label&chartMetric=net&chartTop=6&chartMonths=12");
+
+    expect(getCanonicalExpensesHref({
+      month: "2026-07",
+      view: "overview",
+      chartDimension: "store",
+      chartMetric: "profit",
+      chartTop: "99",
+      chartMonths: "3"
+    })).toBe("/ausgaben?month=2026-07&view=overview");
+  });
 });

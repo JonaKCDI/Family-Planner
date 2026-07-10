@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { visibleScopeWhere } from "@/lib/permissions";
+import { documentRootAccessWhere, visibleScopeWhere } from "@/lib/permissions";
 
 export async function getFamilyMembers(familyId: string) {
   return db.familyMember.findMany({
@@ -218,7 +218,22 @@ export async function getVisibleDocuments(familyId: string, userId: string) {
       familyId,
       ...visibleScopeWhere(userId)
     },
-    include: { owner: true },
+    include: { owner: true, documentRoot: true },
     orderBy: { createdAt: "desc" }
+  });
+}
+
+export async function getVisibleDocumentRoots(familyId: string, userId: string, role: "ADMIN" | "MEMBER") {
+  return db.documentRoot.findMany({
+    where: {
+      familyId,
+      archivedAt: null,
+      ...(role === "ADMIN" ? {} : documentRootAccessWhere(userId, role))
+    },
+    include: {
+      accesses: { include: { user: { select: { id: true, name: true } } } },
+      createdBy: { select: { id: true, name: true } }
+    },
+    orderBy: { name: "asc" }
   });
 }
