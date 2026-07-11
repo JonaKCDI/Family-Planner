@@ -8,8 +8,7 @@ import { ActionModal } from "@/components/action-modal";
 import { AutosaveForm } from "@/components/autosave-form";
 import { TaskStatusControl } from "@/components/task-status-control";
 import { TaskToolbar } from "@/components/task-toolbar";
-import { EmptyState, PageHeader, ScopeSelect } from "@/components/ui";
-import { Chip, ExpandableListItem, StatusBadge } from "@/components/ui-system";
+import { Chip, EmptyState, ExpandableListItem, PageHeader, ScopeSelect, StatusBadge } from "@/components/ui";
 
 type TasksPageProps = {
   searchParams: Promise<TaskPageParams>;

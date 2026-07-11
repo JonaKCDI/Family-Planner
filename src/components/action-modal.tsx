@@ -2,8 +2,9 @@
 
 import type React from "react";
 import { useId, useState } from "react";
+import { X } from "lucide-react";
 import { useSearchParams } from "next/navigation";
-import { BottomSheet } from "@/components/ui-system";
+import { ModalPortal } from "@/components/modal-portal";
 
 type ActionModalProps = {
   title: string;
@@ -50,19 +51,32 @@ export function ActionModal({ title, trigger, triggerLabel, modalId, triggerClas
       <button className={triggerClassName} type="button" aria-label={triggerLabel} title={triggerLabel} onClick={(event) => { event.stopPropagation(); openModal(); }}>
         {trigger}
       </button>
-      <BottomSheet
-        open={open}
-        onOpenChange={(nextOpen) => { if (nextOpen) openModal(); else closeModal(); }}
-        title={title}
-        wide={wide}
-        labelledById={`action-modal-${resolvedModalId}`}
-        onSubmit={(event) => {
-          const form = event.target instanceof HTMLFormElement ? event.target : null;
-          if (!event.defaultPrevented && form) window.setTimeout(() => closeModal(false), 0);
-        }}
-      >
-        {children}
-      </BottomSheet>
+      {open ? (
+        <ModalPortal>
+          <div className="modal-backdrop action-modal-backdrop" role="presentation">
+            <section
+              className={wide ? "modal-panel action-modal action-modal-wide" : "modal-panel action-modal"}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby={`action-modal-${resolvedModalId}`}
+              onSubmit={(event) => {
+                const form = event.target instanceof HTMLFormElement ? event.target : null;
+                if (!event.defaultPrevented && form) window.setTimeout(() => closeModal(false), 0);
+              }}
+            >
+              <button className="icon-button modal-close-button" type="button" aria-label="Schließen" title="Schließen" onClick={() => closeModal()}>
+                <X size={20} />
+              </button>
+              <div className="modal-head">
+                <h2 className="section-title" id={`action-modal-${resolvedModalId}`}>{title}</h2>
+              </div>
+              <div className="modal-body">
+                {children}
+              </div>
+            </section>
+          </div>
+        </ModalPortal>
+      ) : null}
     </>
   );
 }

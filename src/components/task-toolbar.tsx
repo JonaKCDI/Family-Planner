@@ -1,14 +1,9 @@
 "use client";
 
+import type { ButtonHTMLAttributes, ReactNode } from "react";
 import { useState } from "react";
 import { ListFilter, Search, X } from "lucide-react";
-import {
-  BottomSheet,
-  FilterGroup,
-  FilterSheetLayout,
-  IconButton,
-  SearchDisclosure
-} from "@/components/ui-system";
+import { ModalPortal } from "@/components/modal-portal";
 
 type TaskToolbarProps = {
   params: {
@@ -151,4 +146,95 @@ function buildClearHref(params: TaskToolbarProps["params"], keys: string[]) {
   }
   const query = search.toString();
   return query ? `/aufgaben?${query}` : "/aufgaben";
+}
+
+function IconButton({
+  className,
+  children,
+  label,
+  title,
+  ...props
+}: ButtonHTMLAttributes<HTMLButtonElement> & { children: ReactNode; label: string }) {
+  return (
+    <button className={["icon-button", className].filter(Boolean).join(" ")} type="button" aria-label={label} title={title ?? label} {...props}>
+      {children}
+    </button>
+  );
+}
+
+function SearchDisclosure({
+  label,
+  expanded,
+  onExpandedChange,
+  children,
+  className
+}: {
+  label: string;
+  expanded: boolean;
+  onExpandedChange: (expanded: boolean) => void;
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={[className, expanded ? "is-open" : ""].filter(Boolean).join(" ")}>
+      <button className="button secondary" type="button" aria-expanded={expanded} onClick={() => onExpandedChange(!expanded)}>
+        {expanded ? <X size={17} aria-hidden="true" /> : <Search size={17} aria-hidden="true" />}
+        <span>{label}</span>
+      </button>
+      {expanded ? children : null}
+    </div>
+  );
+}
+
+function BottomSheet({
+  open,
+  onOpenChange,
+  title,
+  description,
+  footer,
+  children
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  title: string;
+  description?: string;
+  footer?: ReactNode;
+  children: ReactNode;
+}) {
+  if (!open) return null;
+
+  return (
+    <ModalPortal>
+      <div className="modal-backdrop action-modal-backdrop" role="presentation">
+        <section className="modal-panel action-modal" role="dialog" aria-modal="true" aria-labelledby="task-filter-title">
+          <button className="icon-button modal-close-button" type="button" aria-label="Schließen" title="Schließen" onClick={() => onOpenChange(false)}>
+            <X size={20} />
+          </button>
+          <div className="modal-head">
+            <div>
+              <h2 className="section-title" id="task-filter-title">{title}</h2>
+              {description ? <p className="muted">{description}</p> : null}
+            </div>
+          </div>
+          <div className="modal-body">
+            {children}
+          </div>
+          {footer ? <div className="modal-submit-row modal-footer">{footer}</div> : null}
+        </section>
+      </div>
+    </ModalPortal>
+  );
+}
+
+function FilterSheetLayout({ children }: { children: ReactNode }) {
+  return <div className="form-grid">{children}</div>;
+}
+
+function FilterGroup({ title, children }: { title: string; children: ReactNode }) {
+  return (
+    <fieldset className="fieldset">
+      <legend>{title}</legend>
+      {children}
+    </fieldset>
+  );
 }

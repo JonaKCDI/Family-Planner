@@ -1,8 +1,8 @@
 ﻿"use client";
 
-import type { FormEvent } from "react";
+import type { ButtonHTMLAttributes, FormEvent, ReactNode } from "react";
 import { useMemo, useState } from "react";
-import { ArrowLeft, ChevronRight, ClipboardCheck, Euro, FileText, Fuel, Plus, ScrollText } from "lucide-react";
+import { ArrowLeft, ChevronRight, ClipboardCheck, Euro, FileText, Fuel, Plus, ScrollText, X } from "lucide-react";
 import { usePathname } from "next/navigation";
 import {
   createContract,
@@ -15,8 +15,8 @@ import {
 } from "@/lib/actions";
 import { enqueueOfflineExpenseCreate, enqueueOfflineTaskCreate } from "@/lib/offline-sync";
 import { DocumentFilePicker } from "@/components/document-file-picker";
+import { ModalPortal } from "@/components/modal-portal";
 import { SearchableSelect } from "@/components/searchable-select";
-import { BottomSheet, FloatingActionButton, IconButton } from "@/components/ui-system";
 
 type CreateModalProps = {
   categories: { id: string; name: string }[];
@@ -573,6 +573,71 @@ function DocumentForm({ documentRoots, onSubmit }: { documentRoots: CreateModalP
         </form>
       ) : null}
     </div>
+  );
+}
+
+function FloatingActionButton({ className, children, ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { children: ReactNode }) {
+  return (
+    <button className={["fab-button", className].filter(Boolean).join(" ")} {...props}>
+      {children}
+    </button>
+  );
+}
+
+function IconButton({
+  className,
+  children,
+  label,
+  title,
+  ...props
+}: ButtonHTMLAttributes<HTMLButtonElement> & { children: ReactNode; label: string }) {
+  return (
+    <button className={["icon-button", className].filter(Boolean).join(" ")} aria-label={label} title={title ?? label} {...props}>
+      {children}
+    </button>
+  );
+}
+
+function BottomSheet({
+  open,
+  onOpenChange,
+  title,
+  description,
+  leadingAction,
+  wide = false,
+  labelledById,
+  children
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  title: string;
+  description?: string;
+  leadingAction?: ReactNode;
+  wide?: boolean;
+  labelledById: string;
+  children: ReactNode;
+}) {
+  if (!open) return null;
+
+  return (
+    <ModalPortal>
+      <div className="modal-backdrop" role="presentation">
+        <section className={wide ? "modal-panel create-dialog action-modal-wide" : "modal-panel create-dialog"} role="dialog" aria-modal="true" aria-labelledby={labelledById}>
+          {leadingAction}
+          <button className="icon-button modal-close-button" type="button" aria-label="Schließen" title="Schließen" onClick={() => onOpenChange(false)}>
+            <X size={20} />
+          </button>
+          <div className="modal-head">
+            <div>
+              <span className="eyebrow">Neu erstellen</span>
+              <h2 id={labelledById}>{title}</h2>
+              {description ? <p className="muted">{description}</p> : null}
+            </div>
+          </div>
+          {children}
+        </section>
+      </div>
+    </ModalPortal>
   );
 }
 

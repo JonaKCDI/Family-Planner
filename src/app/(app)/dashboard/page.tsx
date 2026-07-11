@@ -22,7 +22,7 @@ import {
   getRecurringTransactions,
   getVisibleTasks
 } from "@/lib/queries";
-import { Chip, MetricCard, SectionCard, StatusBadge } from "@/components/ui-system";
+import { Chip, MetricCard, SectionCard, StatusBadge } from "@/components/ui";
 
 export default async function DashboardPage() {
   const session = await requireSession();

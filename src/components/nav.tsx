@@ -1,7 +1,8 @@
 "use client";
 
 import { Car, ClipboardCheck, Euro, FileText, Home, ScrollText } from "lucide-react";
-import { BottomNavigation } from "@/components/ui-system";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 
 const items = [
   { href: "/dashboard", label: "Cockpit", icon: Home },
@@ -13,5 +14,18 @@ const items = [
 ];
 
 export function Nav() {
-  return <BottomNavigation items={items} />;
+  const pathname = usePathname();
+
+  return (
+    <nav className="app-nav" aria-label="Hauptnavigation">
+      {items.map((item) => (
+        <Link className={pathname.startsWith(item.href) ? "active" : ""} href={item.href} key={item.href} title={item.label}>
+          <span className="app-nav-icon" aria-hidden="true">
+            <item.icon size={18} strokeWidth={2.2} />
+          </span>
+          <strong>{item.label}</strong>
+        </Link>
+      ))}
+    </nav>
+  );
 }
