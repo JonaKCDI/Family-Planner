@@ -4,6 +4,7 @@ node_modules
 data
 coverage
 test-results
+UI-Mock-up
 *.log
 .env
 .env*.local
