@@ -1034,7 +1034,7 @@ export async function createRecurringTask(formData: FormData) {
       endDate,
       intervalCount: interval.intervalCount,
       intervalUnit: interval.intervalUnit,
-      leadTimeDays: defaultRecurringTaskLeadTimeDays(interval.intervalCount, interval.intervalUnit),
+      leadTimeDays: parseOptionalIntegerInput(formData.get("leadTimeDays"), { min: 0, max: 365 }) ?? defaultRecurringTaskLeadTimeDays(interval.intervalCount, interval.intervalUnit),
       nextDueDate: startDate,
       status: "ACTIVE"
     }
@@ -1077,7 +1077,7 @@ export async function updateRecurringTask(formData: FormData) {
       endDate,
       intervalCount: interval.intervalCount,
       intervalUnit: interval.intervalUnit,
-      leadTimeDays: defaultRecurringTaskLeadTimeDays(interval.intervalCount, interval.intervalUnit),
+      leadTimeDays: parseOptionalIntegerInput(formData.get("leadTimeDays"), { min: 0, max: 365 }) ?? defaultRecurringTaskLeadTimeDays(interval.intervalCount, interval.intervalUnit),
       nextDueDate: startDate,
       status
     }

@@ -1,4 +1,4 @@
-import { archiveRecurringTask, pauseRecurringTask, resumeRecurringTask, updateRecurringTask, updateTask } from "@/lib/actions";
+﻿import { archiveRecurringTask, pauseRecurringTask, resumeRecurringTask, updateRecurringTask, updateTask, updateTaskStatus } from "@/lib/actions";
 import { requireSession } from "@/lib/auth";
 import { formatDate, toDateInputValue } from "@/lib/format";
 import { getFamilyMembers, getVisibleRecurringTasks, getVisibleTasks } from "@/lib/queries";
@@ -6,9 +6,10 @@ import { ensureDueRecurringTasks } from "@/lib/recurring-tasks";
 import { daysUntil, getRecurringTaskIntervalLabel, taskRank, taskUrgency } from "@/lib/tasks";
 import { ActionModal } from "@/components/action-modal";
 import { AutosaveForm } from "@/components/autosave-form";
+import { TaskInlineCheck } from "@/components/task-inline-check";
 import { TaskStatusControl } from "@/components/task-status-control";
-import { TaskToolbar } from "@/components/task-toolbar";
-import { Chip, EmptyState, ExpandableListItem, PageHeader, ScopeSelect, StatusBadge } from "@/components/ui";
+import { TaskSortControl, TaskToolbar } from "@/components/task-toolbar";
+import { Chip, EmptyState, PageHeader, ScopeSelect } from "@/components/ui";
 
 type TasksPageProps = {
   searchParams: Promise<TaskPageParams>;
@@ -49,6 +50,13 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
     sort
   );
   const activeFilterCount = countActiveTaskFilters(params);
+  const overdueTasks = activeTasks.filter((task) => daysUntil(task.dueDate) < 0);
+  const todayTasks = activeTasks.filter((task) => daysUntil(task.dueDate) === 0);
+  const visibleActiveTasks = view === "today"
+    ? todayTasks
+    : view === "overdue"
+      ? overdueTasks
+      : activeTasks;
 
   return (
     <>
@@ -68,40 +76,46 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
         </div>
       ) : null}
 
-      <section className="stats">
-        <div className="stat"><span>In Arbeit</span><strong>{activeTasks.filter((task) => task.status === "IN_PROGRESS").length}</strong></div>
-        <div className="stat"><span>Offen</span><strong>{activeTasks.filter((task) => task.status === "OPEN").length}</strong></div>
-        <div className="stat"><span>Heute / überfällig</span><strong>{activeTasks.filter((task) => daysUntil(task.dueDate) <= 0).length}</strong></div>
-        <div className="stat"><span>Geplant</span><strong>{plannedTasks.length}</strong></div>
+      <section className="task-summary-strip" aria-label="Aufgabenansicht">
+        <a className={view === "active" ? "active" : ""} href={buildTasksHref(params, { view: view === "active" ? "all" : "active" })}>
+          <strong>{activeTasks.length}</strong>
+          <span>offen</span>
+        </a>
+        <a className={view === "overdue" ? "active" : ""} href={buildTasksHref(params, { view: view === "overdue" ? "all" : "overdue" })}>
+          <strong>{overdueTasks.length}</strong>
+          <span>überfällig</span>
+        </a>
+        <a className={view === "today" ? "active" : ""} href={buildTasksHref(params, { view: view === "today" ? "all" : "today" })}>
+          <strong>{todayTasks.length}</strong>
+          <span>heute</span>
+        </a>
+        <a className={view === "planned" ? "active" : ""} href={buildTasksHref(params, { view: view === "planned" ? "all" : "planned" })}>
+          <strong>{plannedTasks.length}</strong>
+          <span>geplant</span>
+        </a>
       </section>
-
-      <nav className="section-switcher" aria-label="Aufgabenansicht">
-        <a className={view === "active" ? "active" : ""} href={buildTasksHref(params, { view: "active" })}>Aktiv</a>
-        <a className={view === "planned" ? "active" : ""} href={buildTasksHref(params, { view: "planned" })}>Geplant</a>
-        <a className={view === "done" ? "active" : ""} href={buildTasksHref(params, { view: "done" })}>Erledigt</a>
-        <a className={view === "all" ? "active" : ""} href={buildTasksHref(params, { view: "all" })}>Alle</a>
-      </nav>
-
-      {(view === "active" || view === "all") ? (
-      <section className="panel spacing-top">
+      {(view === "active" || view === "today" || view === "overdue" || view === "all") ? (
+      <section className="task-list-section spacing-top">
         <div className="section-head">
           <div>
-            <h2 className="section-title">Priorisierte Aufgaben</h2>
+            <h2 className="section-title">{view === "today" ? "Heute fällig" : view === "overdue" ? "Überfällig" : view === "all" ? "Alle Aufgaben" : "Priorisierte Aufgaben"}</h2>
           </div>
+          <TaskSortControl params={normalizeTaskParams(params)} />
         </div>
         <div className="task-priority-list">
-          {activeTasks.length === 0 ? <EmptyState>{query ? "Keine passenden offenen Aufgaben." : "Keine offenen Aufgaben."}</EmptyState> : null}
-          {activeTasks.map((task) => <TaskCard task={task} members={members} key={task.id} />)}
+          {visibleActiveTasks.length === 0 ? <EmptyState>{query ? "Keine passenden offenen Aufgaben." : "Keine offenen Aufgaben."}</EmptyState> : null}
+          {visibleActiveTasks.map((task) => <TaskCard task={task} members={members} key={task.id} />)}
         </div>
       </section>
       ) : null}
 
       {(view === "planned" || view === "all") ? (
-      <section className="panel spacing-top">
+      <section className="task-list-section spacing-top">
         <div className="section-head">
           <div>
             <h2 className="section-title">Geplante Aufgaben</h2>
           </div>
+          <TaskSortControl params={normalizeTaskParams(params)} />
         </div>
         <div className="task-priority-list">
           {plannedTasks.length === 0 ? <EmptyState>{query ? "Keine passenden geplanten Aufgaben." : "Keine geplanten Aufgaben."}</EmptyState> : null}
@@ -111,11 +125,12 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
       ) : null}
 
       {(view === "done" || view === "all") ? (
-      <section className="panel spacing-top">
+      <section className="task-list-section spacing-top task-done-section">
         <div className="section-head">
           <div>
             <h2 className="section-title">Erledigte Aufgaben</h2>
           </div>
+          <TaskSortControl params={normalizeTaskParams(params)} />
         </div>
         <div className="task-priority-list">
           {completedTasks.length === 0 ? <EmptyState>{query ? "Keine passenden erledigten Aufgaben." : "Noch keine erledigten Aufgaben."}</EmptyState> : null}
@@ -127,8 +142,8 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
   );
 }
 
-function getTaskView(value: unknown): "active" | "planned" | "done" | "all" {
-  if (value === "planned" || value === "done" || value === "all") return value;
+function getTaskView(value: unknown): "active" | "today" | "overdue" | "planned" | "done" | "all" {
+  if (value === "today" || value === "overdue" || value === "planned" || value === "done" || value === "all") return value;
   return "active";
 }
 
@@ -225,72 +240,140 @@ function isTaskPriority(value: unknown): value is keyof typeof priorityLabels {
   return value === "LOW" || value === "MEDIUM" || value === "HIGH" || value === "URGENT";
 }
 
+function TaskRow({ task, urgency }: { task: TaskLike; urgency?: ReturnType<typeof taskUrgency> }) {
+  const assignee = task.assignee?.name ?? "Nicht zugewiesen";
+  const dueDateLabel = task.dueDate ? formatDate(task.dueDate) : "Ohne Datum";
+  const sideLabel = urgency && urgency.className !== "task-calm" ? urgency.label : priorityLabels[task.priority];
+  const dotClassName = urgency ? `${urgency.className} priority-${task.priority.toLowerCase()}` : `priority-${task.priority.toLowerCase()}`;
+  return (
+    <span className="task-row">
+      <span className={`task-checkmark ${task.status === "DONE" || task.status === "ARCHIVED" ? "is-done" : ""}`} aria-hidden="true" />
+      <span className="task-row-main">
+        <strong>{task.title}</strong>
+        <span className="task-row-person">
+          <InitialAvatar name={assignee} />
+          <small>{assignee}</small>
+        </span>
+      </span>
+      <span className="task-row-side">
+        <time dateTime={task.dueDate?.toISOString()}>{dueDateLabel}</time>
+        <span>{sideLabel}</span>
+        <span className={`task-priority-dot ${dotClassName}`} aria-hidden="true" />
+      </span>
+    </span>
+  );
+}
+
+function PlannedTaskRow({ task }: { task: RecurringTaskLike }) {
+  const assignee = task.assignee?.name ?? "Nicht zugewiesen";
+  const nextDueDateLabel = task.nextDueDate ? formatDate(task.nextDueDate) : "Ohne Datum";
+  return (
+    <span className="task-row">
+      <span className="task-checkmark is-planned" aria-hidden="true" />
+      <span className="task-row-main">
+        <strong>{task.title}</strong>
+        <span className="task-row-person">
+          <InitialAvatar name={assignee} />
+          <small>{assignee}</small>
+        </span>
+      </span>
+      <span className="task-row-side">
+        <time dateTime={task.nextDueDate?.toISOString()}>{nextDueDateLabel}</time>
+        <span>Geplant</span>
+      </span>
+    </span>
+  );
+}
+
+function InitialAvatar({ name }: { name: string }) {
+  const initial = name.trim().charAt(0).toUpperCase() || "?";
+  return <span className="task-avatar" aria-label={name}>{initial}</span>;
+}
+
+function TaskDoneButton({ taskId, done }: { taskId: string; done: boolean }) {
+  return (
+    <form action={updateTaskStatus}>
+      <input type="hidden" name="id" value={taskId} />
+      <input type="hidden" name="status" value={done ? "OPEN" : "DONE"} />
+      <button className="button" type="submit">{done ? "Wieder öffnen" : "Als erledigt markieren"}</button>
+    </form>
+  );
+}
+
 function TaskCard({ task, members, completed = false }: { task: TaskLike; members: MemberLike[]; completed?: boolean }) {
   const urgency = taskUrgency(task);
+  const done = task.status === "DONE" || task.status === "ARCHIVED";
   return (
-    <ExpandableListItem
-      className={`task-expand-item ${completed ? "task-completed" : urgency.className}`}
-      summary={task.title}
-      meta={`${task.assignee?.name ?? "Nicht zugewiesen"} · ${formatDate(task.dueDate)} · ${priorityLabels[task.priority]}`}
-      value={<StatusBadge tone={completed ? "positive" : urgency.chipClass === "danger-chip" ? "negative" : urgency.chipClass === "warning-chip" ? "warning" : "neutral"}>{completed ? taskStatusTone(task.status).label : urgency.label}</StatusBadge>}
-    >
-      <div className="task-expanded-content">
-        <div className="task-expanded-copy">
-          <p>{task.description || "Keine Beschreibung hinterlegt."}</p>
-          <div className="badge-row">
-            <Chip>{task.scope === "FAMILY" ? "Familie" : "Privat"}</Chip>
-            <Chip>{taskStatusTone(task.status).label}</Chip>
-            {task.recurringTask ? <Chip tone="neutral">{task.recurringTask.title}</Chip> : null}
+    <div className="task-row-shell">
+      <ActionModal
+        title="Aufgabendetails"
+        trigger={<TaskRow task={task} urgency={urgency} />}
+        triggerClassName={`task-row-trigger ${completed ? "task-completed" : urgency.className}`}
+        modalId={`task-${task.id}`}
+      >
+        <div className="task-expanded-content">
+          <div className="task-expanded-copy">
+            <p>{task.description || "Keine Beschreibung hinterlegt."}</p>
+            <div className="badge-row">
+              <Chip>{task.scope === "FAMILY" ? "Familie" : "Privat"}</Chip>
+              <Chip>{taskStatusTone(task.status).label}</Chip>
+              {task.recurringTask ? <Chip tone="neutral">{task.recurringTask.title}</Chip> : null}
+            </div>
+          </div>
+          <div className="task-actions">
+            <TaskDoneButton taskId={task.id} done={done} />
+            <TaskStatusControl taskId={task.id} initialStatus={task.status} />
+            <details className="edit-drawer task-edit-drawer">
+              <summary>Bearbeiten</summary>
+              <AutosaveForm action={updateTask} className="form form-grid modal-form">
+                <input type="hidden" name="id" value={task.id} />
+                <nav className="modal-section-tabs full-span" aria-label="Formularbereiche">
+                  <a href={`#task-${task.id}-details`}>Details</a>
+                  <a href={`#task-${task.id}-options`}>Weitere Optionen</a>
+                </nav>
+                <fieldset className="fieldset modal-form-section full-span" id={`task-${task.id}-details`}>
+                  <legend>Details</legend>
+                  <div className="form-grid">
+                    <label>Titel<input name="title" defaultValue={task.title} required /></label>
+                    <label>
+                      Zuweisen an
+                      <select name="assignedToUserId" defaultValue={task.assignedToUserId ?? ""}>
+                        <option value="">Nicht zugewiesen</option>
+                        {members.map((member) => <option value={member.userId} key={member.id}>{member.user.name}</option>)}
+                      </select>
+                    </label>
+                    <label>Deadline<input name="dueDate" type="date" defaultValue={toDateInputValue(task.dueDate)} /></label>
+                    <label>
+                      Priorität
+                      <select name="priority" defaultValue={task.priority}>
+                        <option value="LOW">Niedrig</option>
+                        <option value="MEDIUM">Mittel</option>
+                        <option value="HIGH">Hoch</option>
+                        <option value="URGENT">Dringend</option>
+                      </select>
+                    </label>
+                    <label className="full-span">Beschreibung<textarea name="description" defaultValue={task.description ?? ""} /></label>
+                  </div>
+                </fieldset>
+                <fieldset className="fieldset modal-form-section full-span" id={`task-${task.id}-options`}>
+                  <legend>Weitere Optionen</legend>
+                  <div className="form-grid">
+                    <ScopeSelect defaultValue={task.scope} />
+                    <div className="form-note full-span">
+                      {task.recurringTask ? `Wiederholung: ${task.recurringTask.title}` : "Keine Wiederholung verknüpft."}
+                    </div>
+                  </div>
+                </fieldset>
+                <button className="button full-span autosave-submit" type="submit">Speichern</button>
+              </AutosaveForm>
+            </details>
           </div>
         </div>
-        <div className="task-actions">
-          <TaskStatusControl taskId={task.id} initialStatus={task.status} />
-          <ActionModal title="Aufgabe bearbeiten" trigger="Bearbeiten" modalId={`task-${task.id}`}>
-            <AutosaveForm action={updateTask} className="form form-grid modal-form">
-              <input type="hidden" name="id" value={task.id} />
-              <nav className="modal-section-tabs full-span" aria-label="Formularbereiche">
-                <a href={`#task-${task.id}-details`}>Details</a>
-                <a href={`#task-${task.id}-options`}>Weitere Optionen</a>
-              </nav>
-              <fieldset className="fieldset modal-form-section full-span" id={`task-${task.id}-details`}>
-                <legend>Details</legend>
-                <div className="form-grid">
-                  <label>Titel<input name="title" defaultValue={task.title} required /></label>
-                  <label>
-                    Zuweisen an
-                    <select name="assignedToUserId" defaultValue={task.assignedToUserId ?? ""}>
-                      <option value="">Nicht zugewiesen</option>
-                      {members.map((member) => <option value={member.userId} key={member.id}>{member.user.name}</option>)}
-                    </select>
-                  </label>
-                  <label>Deadline<input name="dueDate" type="date" defaultValue={toDateInputValue(task.dueDate)} /></label>
-                  <label>
-                    Priorität
-                    <select name="priority" defaultValue={task.priority}>
-                      <option value="LOW">Niedrig</option>
-                      <option value="MEDIUM">Mittel</option>
-                      <option value="HIGH">Hoch</option>
-                      <option value="URGENT">Dringend</option>
-                    </select>
-                  </label>
-                  <label className="full-span">Beschreibung<textarea name="description" defaultValue={task.description ?? ""} /></label>
-                </div>
-              </fieldset>
-              <fieldset className="fieldset modal-form-section full-span" id={`task-${task.id}-options`}>
-                <legend>Weitere Optionen</legend>
-                <div className="form-grid">
-                  <ScopeSelect defaultValue={task.scope} />
-                  <div className="form-note full-span">
-                    {task.recurringTask ? `Wiederholung: ${task.recurringTask.title}` : "Keine Wiederholung verknüpft."}
-                  </div>
-                </div>
-              </fieldset>
-              <button className="button full-span autosave-submit" type="submit">Speichern</button>
-            </AutosaveForm>
-          </ActionModal>
-        </div>
+      </ActionModal>
+      <div className="task-check-form">
+        <TaskInlineCheck taskId={task.id} done={done} />
       </div>
-    </ExpandableListItem>
+    </div>
   );
 }
 
@@ -298,11 +381,11 @@ function PlannedTaskCard({ task, members }: { task: RecurringTaskLike; members: 
   const editInterval = recurringTaskEditInterval(task);
 
   return (
-    <ExpandableListItem
-      className={`task-expand-item ${task.status === "PAUSED" ? "task-completed" : "task-calm"}`}
-      summary={task.title}
-      meta={`${task.assignee?.name ?? "Nicht zugewiesen"} · ${formatDate(task.nextDueDate)} · ${getRecurringTaskIntervalLabel(task)}`}
-      value={<StatusBadge tone={task.status === "PAUSED" ? "neutral" : "positive"}>{task.status === "PAUSED" ? "Pausiert" : "Geplant"}</StatusBadge>}
+    <ActionModal
+      title="Geplante Aufgabe"
+      trigger={<PlannedTaskRow task={task} />}
+      triggerClassName={`task-row-trigger ${task.status === "PAUSED" ? "task-completed" : "task-calm"}`}
+      modalId={`recurring-task-${task.id}`}
     >
       <div className="task-expanded-content">
         <div className="task-expanded-copy">
@@ -325,7 +408,8 @@ function PlannedTaskCard({ task, members }: { task: RecurringTaskLike; members: 
               <button className="button secondary" type="submit">Pausieren</button>
             </form>
           )}
-          <ActionModal title="Geplante Aufgabe bearbeiten" trigger="Bearbeiten" modalId={`recurring-task-${task.id}`}>
+          <details className="edit-drawer task-edit-drawer">
+            <summary>Bearbeiten</summary>
             <AutosaveForm action={updateRecurringTask} className="form form-grid modal-form">
               <input type="hidden" name="id" value={task.id} />
               <nav className="modal-section-tabs full-span" aria-label="Formularbereiche">
@@ -387,10 +471,10 @@ function PlannedTaskCard({ task, members }: { task: RecurringTaskLike; members: 
               <input type="hidden" name="id" value={task.id} />
               <button className="button secondary" type="submit">Archivieren</button>
             </form>
-          </ActionModal>
+          </details>
         </div>
       </div>
-    </ExpandableListItem>
+    </ActionModal>
   );
 }
 

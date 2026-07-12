@@ -1,14 +1,12 @@
 import Link from "next/link";
 import Image from "next/image";
 import { Settings } from "lucide-react";
-import { logout } from "@/lib/actions";
 import { requireSession } from "@/lib/auth";
 import { getExpenseLabels, getFamilyMembers, getFuelExpenseSettings, getVisibleCars, getVisibleCategories, getVisibleContracts, getVisibleDocumentRoots } from "@/lib/queries";
 import { CreateModal } from "@/components/create-modal";
 import { GlobalSubmitIndicator } from "@/components/global-submit-indicator";
 import { Nav } from "@/components/nav";
 import { OfflineSyncStatus } from "@/components/offline-sync-status";
-import { LogoutForm } from "@/components/logout-form";
 
 export const dynamic = "force-dynamic";
 
@@ -40,7 +38,6 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           <Link className="topbar-icon-link" href="/einstellungen" aria-label="Einstellungen" title="Einstellungen">
             <Settings size={19} strokeWidth={2.2} />
           </Link>
-          <LogoutForm action={logout} />
         </div>
       </header>
       <div className="app-frame">

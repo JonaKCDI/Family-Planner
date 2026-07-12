@@ -1,7 +1,7 @@
 "use client";
 
 import type React from "react";
-import { useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { X } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { ModalPortal } from "@/components/modal-portal";
@@ -24,6 +24,19 @@ export function ActionModal({ title, trigger, triggerLabel, modalId, triggerClas
   const searchParams = useSearchParams();
   const openFromUrl = modalId ? searchParams.get("modal") === resolvedModalId : false;
   const open = localOpen || (openFromUrl && !locallyClosed);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const closeRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const trigger = triggerRef.current;
+    document.documentElement.classList.add("modal-scroll-locked");
+    window.setTimeout(() => closeRef.current?.focus(), 0);
+    return () => {
+      document.documentElement.classList.remove("modal-scroll-locked");
+      trigger?.focus();
+    };
+  }, [open]);
 
   function setModalParam(nextOpen: boolean) {
     if (!modalId) return;
@@ -48,7 +61,7 @@ export function ActionModal({ title, trigger, triggerLabel, modalId, triggerClas
 
   return (
     <>
-      <button className={triggerClassName} type="button" aria-label={triggerLabel} title={triggerLabel} onClick={(event) => { event.stopPropagation(); openModal(); }}>
+      <button ref={triggerRef} className={triggerClassName} type="button" aria-label={triggerLabel} title={triggerLabel} onClick={(event) => { event.stopPropagation(); openModal(); }}>
         {trigger}
       </button>
       {open ? (
@@ -64,7 +77,7 @@ export function ActionModal({ title, trigger, triggerLabel, modalId, triggerClas
                 if (!event.defaultPrevented && form) window.setTimeout(() => closeModal(false), 0);
               }}
             >
-              <button className="icon-button modal-close-button" type="button" aria-label="Schließen" title="Schließen" onClick={() => closeModal()}>
+              <button ref={closeRef} className="icon-button modal-close-button" type="button" aria-label="Schließen" title="Schließen" onClick={() => closeModal()}>
                 <X size={20} />
               </button>
               <div className="modal-head">

@@ -9,6 +9,7 @@ import { AutosaveForm } from "@/components/autosave-form";
 import { ContractPayments } from "@/components/contract-payments";
 import { SearchableSelect } from "@/components/searchable-select";
 import { EmptyState, PageHeader, ScopeSelect } from "@/components/ui";
+import { Search } from "lucide-react";
 
 type ContractsPageProps = {
   searchParams: Promise<{ q?: string; status?: string }>;
@@ -19,13 +20,15 @@ export default async function ContractsPage({ searchParams }: ContractsPageProps
   const params = await searchParams;
   await ensureDueContractExpenses(session.family.id, session.user.id);
   const query = normalizeSearch(params.q);
-  const statusFilter = getContractStatusFilter(params.status);
+  const statusFilter = getContractStatusFilter(params.status) ?? "ACTIVE";
   const [contracts, categories, labels] = await Promise.all([
     getVisibleContractsWithExpenseDetails(session.family.id, session.user.id),
     getVisibleCategories(session.family.id, session.user.id, "EXPENSE"),
     getExpenseLabels(session.family.id, session.user.id)
   ]);
-  const statusFilteredContracts = statusFilter ? contracts.filter((contract) => contract.status === statusFilter) : contracts;
+  const statusFilteredContracts = statusFilter === "ENDED"
+    ? contracts.filter((contract) => contract.status === "CANCELLED" || contract.status === "EXPIRED")
+    : contracts.filter((contract) => contract.status === statusFilter);
   const visibleContracts = query ? statusFilteredContracts.filter((contract) => matchesContract(contract, query)) : statusFilteredContracts;
   const documents = await getDocumentsForLinkedEntities(
     session.family.id,
@@ -62,15 +65,18 @@ export default async function ContractsPage({ searchParams }: ContractsPageProps
   return (
     <>
       <PageHeader title="Verträge" />
-      <form className="search-bar">
-        {statusFilter ? <input type="hidden" name="status" value={statusFilter} /> : null}
-        <label>
-          <span>Verträge durchsuchen</span>
-          <input name="q" type="search" defaultValue={params.q ?? ""} placeholder="Anbieter, Art, Notiz, Status ..." />
-        </label>
-        <button className="button secondary" type="submit">Suchen</button>
-        {query ? <a className="button secondary" href={buildContractsHref({ status: statusFilter })}>Zurücksetzen</a> : null}
-      </form>
+      <details className="compact-search page-search" open={Boolean(query)}>
+        <summary aria-label="Verträge durchsuchen" title="Suchen"><Search aria-hidden="true" size={19} /></summary>
+        <form className="search-bar">
+          {statusFilter ? <input type="hidden" name="status" value={statusFilter} /> : null}
+          <label>
+            <span>Verträge durchsuchen</span>
+            <input name="q" type="search" defaultValue={params.q ?? ""} placeholder="Anbieter, Art, Notiz, Status ..." autoFocus={Boolean(query)} />
+          </label>
+          <button className="button secondary" type="submit">Suchen</button>
+          {query ? <a className="button secondary" href={buildContractsHref({ status: statusFilter })}>Suche schließen</a> : null}
+        </form>
+      </details>
       <section className="stats">
         <div className="stat"><span>Aktive Kosten</span><strong>{formatMoney(activeCosts)}</strong></div>
         <div className="stat"><span>Verträge</span><strong>{visibleContracts.length}</strong></div>
@@ -78,12 +84,18 @@ export default async function ContractsPage({ searchParams }: ContractsPageProps
         <div className="stat"><span>Nächste Kündigung</span><strong>{formatDate(nextCancellationDate)}</strong></div>
       </section>
       <nav className="section-switcher status-filter-strip" aria-label="Vertragsstatus">
-        <a className={!statusFilter ? "active" : ""} href={buildContractsHref({ q: params.q })}>Alle</a>
         <a className={statusFilter === "ACTIVE" ? "active" : ""} href={buildContractsHref({ q: params.q, status: "ACTIVE" })}>Aktiv</a>
-        <a className={statusFilter === "DRAFT" ? "active" : ""} href={buildContractsHref({ q: params.q, status: "DRAFT" })}>Entwurf</a>
-        <a className={statusFilter === "CANCELLED" ? "active" : ""} href={buildContractsHref({ q: params.q, status: "CANCELLED" })}>Gekündigt</a>
-        <a className={statusFilter === "EXPIRED" ? "active" : ""} href={buildContractsHref({ q: params.q, status: "EXPIRED" })}>Ausgelaufen</a>
+        <a className={statusFilter === "ENDED" ? "active" : ""} href={buildContractsHref({ q: params.q, status: "ENDED" })}>Beendet</a>
       </nav>
+      <details className="secondary-status-filter">
+        <summary>Weitere Filter</summary>
+        <div className="badge-row">
+          <a className="badge" href={buildContractsHref({ q: params.q, status: "DRAFT" })}>Entwürfe</a>
+          <a className="badge" href={buildContractsHref({ q: params.q, status: "CANCELLED" })}>Gekündigt</a>
+          <a className="badge" href={buildContractsHref({ q: params.q, status: "EXPIRED" })}>Ausgelaufen</a>
+          <a className="badge" href={buildContractsHref({ q: params.q, status: undefined })}>Alle Status</a>
+        </div>
+      </details>
       <section className="panel">
         <h2 className="section-title">Vertragsübersicht</h2>
         <div className="list">
@@ -256,7 +268,7 @@ function formatEuroInput(amountCents: number) {
 }
 
 function getContractStatusFilter(value: unknown): ContractStatusFilter | null {
-  if (value === "ACTIVE" || value === "DRAFT" || value === "CANCELLED" || value === "EXPIRED") return value;
+  if (value === "ACTIVE" || value === "DRAFT" || value === "CANCELLED" || value === "EXPIRED" || value === "ENDED") return value;
   return null;
 }
 
@@ -292,4 +304,4 @@ const statusLabels = {
 };
 
 type ContractLike = Awaited<ReturnType<typeof getVisibleContractsWithExpenseDetails>>[number];
-type ContractStatusFilter = ContractLike["status"];
+type ContractStatusFilter = ContractLike["status"] | "ENDED";

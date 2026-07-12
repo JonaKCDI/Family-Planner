@@ -28,7 +28,7 @@ import { ExpenseSetupPanel, RecurringTransactionsPanel } from "@/components/expe
 import { ExpenseEntryList } from "@/components/expense-entry-list";
 import { ExpenseFilterForm } from "@/components/expense-filter-form";
 import { PeriodNavLink } from "@/components/period-nav-link";
-import { EmptyState, PageHeader } from "@/components/ui";
+import { EmptyState } from "@/components/ui";
 
 type ExpensesPageProps = {
   searchParams: Promise<ExpenseFilterParams>;
@@ -120,28 +120,32 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
 
   return (
     <>
-      <PageHeader title="Ausgaben & Einnahmen" />
-
-      <form className="search-bar">
-        <FilterHiddenFields params={params} includePeriod />
-        <label>
-          <span>Ausgaben durchsuchen</span>
-          <input name="q" type="search" defaultValue={params.q ?? ""} placeholder="Beschreibung, Kategorie, Label, Vertrag ..." />
-        </label>
-        <button className="button secondary search-submit-button" type="submit" aria-label="Suchen" title="Suchen">
-          <Search aria-hidden="true" size={17} />
-        </button>
-        {query ? <a className="button secondary" href={buildExpensesHref(params, { q: undefined })}>Suche löschen</a> : null}
-      </form>
+      <div className="page-head app-page-header finance-page-header">
+        <h1>Finanzen</h1>
+        <details className="compact-search" open={Boolean(query)}>
+          <summary aria-label="Finanzen durchsuchen" title="Suchen"><Search aria-hidden="true" size={19} /></summary>
+          <form className="search-bar">
+            <FilterHiddenFields params={params} includePeriod />
+            <label>
+              <span>Ausgaben durchsuchen</span>
+              <input name="q" type="search" defaultValue={params.q ?? ""} placeholder="Beschreibung, Kategorie, Label, Vertrag ..." autoFocus={Boolean(query)} />
+            </label>
+            <button className="button secondary search-submit-button" type="submit" aria-label="Suchen" title="Suchen">
+              <Search aria-hidden="true" size={17} />
+            </button>
+            {query ? <a className="button secondary" href={buildExpensesHref(params, { q: undefined })}>Suche schließen</a> : null}
+          </form>
+        </details>
+        <ActionModal title="Finanzen filtern" trigger={<ListFilter size={19} aria-hidden="true" />} triggerLabel="Finanzen filtern" modalId="ausgaben-filter" triggerClassName="icon-button page-filter-button">
+          <ExpenseFilterForm params={params} categories={categories} labels={labels} years={years} currentMonthKey={currentMonthKey} />
+        </ActionModal>
+      </div>
 
       <section className="filter-system" aria-label="Ausgabenfilter">
         <div className="period-navigator">
           <PeriodNavigator params={params} range={range} currentMonthKey={currentMonthKey} />
           <div className="period-tools">
             <PeriodNavLink className="button period-primary-action" href={buildPeriodHref(params, { month: currentMonthKey })}>Aktuell</PeriodNavLink>
-            <ActionModal title="Ausgaben filtern" trigger="Filter" modalId="ausgaben-filter" triggerClassName="button period-primary-action">
-              <ExpenseFilterForm params={params} categories={categories} labels={labels} years={years} currentMonthKey={currentMonthKey} />
-            </ActionModal>
           </div>
         </div>
         <div className="overview-actions secondary-filter-actions expense-secondary-actions">

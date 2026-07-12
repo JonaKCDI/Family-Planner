@@ -1,7 +1,7 @@
 ﻿"use client";
 
 import type { ButtonHTMLAttributes, FormEvent, ReactNode } from "react";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { ArrowLeft, ChevronRight, ClipboardCheck, Euro, FileText, Fuel, Plus, ScrollText, X } from "lucide-react";
 import { usePathname } from "next/navigation";
 import {
@@ -10,6 +10,7 @@ import {
   createLocalDocumentReference,
   createExpense,
   createFuelEntry,
+  createRecurringTransaction,
   createRecurringTask,
   createTask
 } from "@/lib/actions";
@@ -156,6 +157,8 @@ function ExpenseForm({
   returnTo: string;
   onSubmit: () => void;
 }) {
+  const [planningRecurring, setPlanningRecurring] = useState(false);
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     if (navigator.onLine) {
       onSubmit();
@@ -168,7 +171,7 @@ function ExpenseForm({
   }
 
   return (
-    <form action={createExpense} className="form form-grid modal-form" onSubmit={handleSubmit}>
+    <form action={planningRecurring ? createRecurringTransaction : createExpense} className="form form-grid modal-form" onSubmit={handleSubmit}>
       <input type="hidden" name="returnTo" value={returnTo} />
       <nav className="modal-section-tabs full-span" aria-label="Formularbereiche">
         <a href="#create-expense-core">Details</a>
@@ -199,7 +202,24 @@ function ExpenseForm({
           <label>Vertrag<select name="contractId" defaultValue=""><option value="">Kein Vertrag</option>{contracts.filter((contract) => contract.status === "ACTIVE").map((contract) => <option value={contract.id} key={contract.id}>{contract.provider} · {contract.contractType}</option>)}</select></label>
         </div>
       </fieldset>
+      {planningRecurring ? (
+        <fieldset className="fieldset modal-form-section full-span" id="create-recurring-expense">
+          <legend>Wiederholung</legend>
+          <nav className="modal-section-tabs" aria-label="Schritte der wiederkehrenden Buchung">
+            <a href="#create-expense-core">Details</a>
+            <a className="active" href="#create-recurring-expense">Wiederholung</a>
+          </nav>
+          <div className="form-grid">
+            <label>Titel<input name="title" required placeholder="z. B. Fitnessstudio" /></label>
+            <label>Startdatum<input name="startDate" type="date" defaultValue={today} required /></label>
+            <label>Zahlungsrhythmus<select name="billingInterval" defaultValue="MONTHLY"><option value="MONTHLY">Monatlich</option><option value="QUARTERLY">Vierteljährlich</option><option value="YEARLY">Jährlich</option><option value="ONCE">Einmalig</option><option value="OTHER">Sonstiges</option></select></label>
+            <label>Enddatum optional<input name="endDate" type="date" /></label>
+            <input type="hidden" name="status" value="ACTIVE" />
+          </div>
+        </fieldset>
+      ) : null}
       <PaymentMethods />
+      {!planningRecurring ? <button className="flow-link full-span" type="button" onClick={() => setPlanningRecurring(true)}>Als wiederkehrende Buchung planen <ChevronRight size={18} aria-hidden="true" /></button> : null}
       <details className="optional-section full-span" id="create-expense-document">
         <summary>Beleg / Dokument verknüpfen</summary>
         <div className="form-grid">
@@ -209,7 +229,8 @@ function ExpenseForm({
         </div>
       </details>
       <div className="modal-submit-row modal-footer">
-        <button className="button full-span" type="submit">Speichern</button>
+        {planningRecurring ? <button className="button secondary" type="button" onClick={() => setPlanningRecurring(false)}>Zurück</button> : null}
+        <button className="button full-span" type="submit">{planningRecurring ? "Serie speichern" : "Buchung speichern"}</button>
       </div>
     </form>
   );
@@ -316,8 +337,19 @@ function TaskForm({
 }) {
   const [recurrencePreset, setRecurrencePreset] = useState("NONE");
   const [customIntervalUnit, setCustomIntervalUnit] = useState("DAY");
+  const [step, setStep] = useState<"details" | "repeat">("details");
+  const formRef = useRef<HTMLFormElement>(null);
   const isRecurring = recurrencePreset !== "NONE";
   const customIntervalMax = customIntervalUnit === "WEEK" ? 52 : 365;
+
+  function chooseTaskType(recurring: boolean) {
+    setRecurrencePreset(recurring ? "WEEKLY" : "NONE");
+    setStep("details");
+  }
+
+  function continueToRepeat() {
+    if (formRef.current?.reportValidity()) setStep("repeat");
+  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     if (isRecurring && !navigator.onLine) {
@@ -336,14 +368,16 @@ function TaskForm({
   }
 
   return (
-    <form action={isRecurring ? createRecurringTask : createTask} className="form form-grid modal-form" onSubmit={handleSubmit}>
-      <nav className="modal-section-tabs full-span" aria-label="Formularbereiche">
-        <a href="#create-task-core">Aufgabe</a>
-        <a href="#create-task-plan">Planung</a>
-        <a href="#create-task-repeat">Rhythmus</a>
-        <a href="#create-task-details">Details</a>
-      </nav>
-      <fieldset className="fieldset modal-form-section full-span" id="create-task-core">
+    <form ref={formRef} action={isRecurring ? createRecurringTask : createTask} className="form form-grid modal-form" onSubmit={handleSubmit}>
+      <div className="segmented task-kind-toggle full-span" role="group" aria-label="Aufgabenart">
+        <button className={!isRecurring ? "active" : ""} type="button" aria-pressed={!isRecurring} onClick={() => chooseTaskType(false)}>Einmalig</button>
+        <button className={isRecurring ? "active" : ""} type="button" aria-pressed={isRecurring} onClick={() => chooseTaskType(true)}>Wiederkehrend</button>
+      </div>
+      {isRecurring ? <nav className="modal-section-tabs full-span" aria-label="Schritte der wiederkehrenden Aufgabe">
+        <button className={step === "details" ? "active" : ""} type="button" onClick={() => setStep("details")}>Details</button>
+        <button className={step === "repeat" ? "active" : ""} type="button" onClick={() => setStep("repeat")}>Wiederholung</button>
+      </nav> : null}
+      <fieldset className="fieldset modal-form-section full-span" id="create-task-core" hidden={isRecurring && step !== "details"}>
         <legend>Aufgabe</legend>
         <div className="form-grid">
           <label>Titel<input name="title" required /></label>
@@ -351,14 +385,14 @@ function TaskForm({
           <label>Priorität<select name="priority" defaultValue="MEDIUM"><option value="LOW">Niedrig</option><option value="MEDIUM">Mittel</option><option value="HIGH">Hoch</option><option value="URGENT">Dringend</option></select></label>
         </div>
       </fieldset>
-      <fieldset className="fieldset modal-form-section full-span" id="create-task-plan">
+      <fieldset className="fieldset modal-form-section full-span" id="create-task-plan" hidden={isRecurring && step !== "details"}>
         <legend>Planung</legend>
         <div className="form-grid">
           <label>{isRecurring ? "Startdatum" : "Deadline"}<input key={isRecurring ? "recurring-date" : "single-date"} name="dueDate" type="date" defaultValue={isRecurring ? today : ""} required={isRecurring} /></label>
           <label>Sichtbarkeit<select name="scope" defaultValue="FAMILY"><option value="FAMILY">Familie</option><option value="PRIVATE">Privat</option></select></label>
         </div>
       </fieldset>
-      <fieldset className="fieldset modal-form-section full-span" id="create-task-repeat">
+      <fieldset className="fieldset modal-form-section full-span" id="create-task-repeat" hidden={!isRecurring || step !== "repeat"}>
         <legend>Wiederholen</legend>
         <div className="form-grid">
           <label>
@@ -391,13 +425,14 @@ function TaskForm({
             </>
           ) : null}
           {isRecurring ? <label>Enddatum optional<input name="endDate" type="date" /></label> : null}
+          {isRecurring ? <label>Aufgabe anzeigen<select name="leadTimeDays" defaultValue="2"><option value="0">Am Fälligkeitstag</option><option value="1">1 Tag vorher</option><option value="2">2 Tage vorher</option><option value="3">3 Tage vorher</option><option value="7">7 Tage vorher</option></select></label> : null}
         </div>
       </fieldset>
-      <fieldset className="fieldset modal-form-section full-span" id="create-task-details">
+      <fieldset className="fieldset modal-form-section full-span" id="create-task-details" hidden={isRecurring && step !== "details"}>
         <legend>Details</legend>
         <label>Beschreibung<textarea name="description" /></label>
       </fieldset>
-      <details className="optional-section full-span">
+      <details className="optional-section full-span" hidden={isRecurring && step !== "details"}>
         <summary>Dokument verknüpfen</summary>
         <div className="form-grid">
           <label>Dokumenttitel<input name="documentTitle" placeholder="Anleitung, Foto, Nachweis ..." /></label>
@@ -406,7 +441,8 @@ function TaskForm({
         </div>
       </details>
       <div className="modal-submit-row modal-footer">
-        <button className="button full-span" type="submit">Speichern</button>
+        {isRecurring && step === "repeat" ? <button className="button secondary" type="button" onClick={() => setStep("details")}>Zurück</button> : <button className="button secondary" type="button" onClick={onSubmit}>Abbrechen</button>}
+        {isRecurring && step === "details" ? <button className="button" type="button" onClick={continueToRepeat}>Weiter</button> : <button className="button" type="submit">{isRecurring ? "Serie speichern" : "Aufgabe erstellen"}</button>}
       </div>
     </form>
   );

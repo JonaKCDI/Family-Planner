@@ -26,6 +26,7 @@ import { buildMonthSelectOptions, formatMonthKeyLabel, splitMonthKey } from "@/l
 import { isFamilyAdmin } from "@/lib/permissions";
 import { getExpenseLabels, getFuelEntriesForCar, getFuelExpenseSettings, getVisibleCars, getVisibleCategories } from "@/lib/queries";
 import { ActionModal } from "@/components/action-modal";
+import { Search } from "lucide-react";
 import { AutosaveForm } from "@/components/autosave-form";
 import { ExcelProgressPanel } from "@/components/excel-progress-panel";
 import { PeriodNavLink } from "@/components/period-nav-link";
@@ -80,15 +81,18 @@ export default async function MileagePage({ searchParams }: MileagePageProps) {
     <>
       <PageHeader title="Auto" description="Tankstopps, Verbrauch und Kilometerstände pro Auto." />
 
-      <form className="search-bar">
-        <MileageHiddenFields params={params} includeCar includePeriod />
-        <label>
-          <span>Tankstopps durchsuchen</span>
-          <input name="q" type="search" defaultValue={params.q ?? ""} placeholder="Bemerkung oder Kilometerstand ..." />
-        </label>
-        <button className="button secondary" type="submit">Suchen</button>
-        {query ? <a className="button secondary" href={getMileageHref(params, { q: undefined })}>Zurücksetzen</a> : null}
-      </form>
+      <details className="compact-search page-search" open={Boolean(query)}>
+        <summary aria-label="Tankstopps durchsuchen" title="Suchen"><Search aria-hidden="true" size={19} /></summary>
+        <form className="search-bar">
+          <MileageHiddenFields params={params} includeCar includePeriod />
+          <label>
+            <span>Tankstopps durchsuchen</span>
+            <input name="q" type="search" defaultValue={params.q ?? ""} placeholder="Bemerkung oder Kilometerstand ..." autoFocus={Boolean(query)} />
+          </label>
+          <button className="button secondary" type="submit">Suchen</button>
+          {query ? <a className="button secondary" href={getMileageHref(params, { q: undefined })}>Suche schließen</a> : null}
+        </form>
+      </details>
 
       <section className="filter-system" aria-label="Kilometerfilter">
         {selectedCar ? (

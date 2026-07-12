@@ -7,6 +7,7 @@ import { ActionModal } from "@/components/action-modal";
 import { AutosaveForm } from "@/components/autosave-form";
 import { DocumentFilePreview } from "@/components/document-file-preview";
 import { EmptyState, PageHeader, ScopeSelect } from "@/components/ui";
+import { Search } from "lucide-react";
 
 type DocumentsPageProps = {
   searchParams: Promise<{ q?: string; tab?: string; root?: string; path?: string }>;
@@ -29,14 +30,17 @@ export default async function DocumentsPage({ searchParams }: DocumentsPageProps
   return (
     <>
       <PageHeader title="Dokumente" description="Links und lokale NAS-Dateien an einem Ort." />
-      <form className="search-bar document-search">
-        <label>
-          <span>Dokumente durchsuchen</span>
-          <input name="q" type="search" defaultValue={params.q ?? ""} placeholder="Titel, Datei, Beschreibung, Bezug ..." />
-        </label>
-        <button className="button secondary" type="submit">Suchen</button>
-        {query ? <a className="button secondary" href="/dokumente">Zurücksetzen</a> : null}
-      </form>
+      <details className="compact-search page-search" open={Boolean(query)}>
+        <summary aria-label="Dokumente durchsuchen" title="Suchen"><Search aria-hidden="true" size={19} /></summary>
+        <form className="search-bar document-search">
+          <label>
+            <span>Dokumente durchsuchen</span>
+            <input name="q" type="search" defaultValue={params.q ?? ""} placeholder="Titel, Datei, Beschreibung, Bezug ..." autoFocus={Boolean(query)} />
+          </label>
+          <button className="button secondary" type="submit">Suchen</button>
+          {query ? <a className="button secondary" href="/dokumente">Suche schließen</a> : null}
+        </form>
+      </details>
 
       <nav className="document-tabs" aria-label="Dokumentfilter">
         {documentTabs.map((item) => (
