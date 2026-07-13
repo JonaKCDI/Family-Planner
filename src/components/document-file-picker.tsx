@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { X } from "lucide-react";
+import { Check, X } from "lucide-react";
 import { DocumentFilePreview } from "@/components/document-file-preview";
 import { ModalPortal } from "@/components/modal-portal";
 
@@ -29,11 +29,11 @@ type SelectedFile = {
 
 export function DocumentFilePicker({ roots }: { roots: DocumentRootOption[] }) {
   const [open, setOpen] = useState(false);
+  const [closing, setClosing] = useState(false);
   const [rootId, setRootId] = useState(roots[0]?.id ?? "");
   const [path, setPath] = useState("");
   const [entries, setEntries] = useState<DocumentFileEntry[]>([]);
   const [selected, setSelected] = useState<SelectedFile | null>(null);
-  const [activeFilePath, setActiveFilePath] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -70,28 +70,30 @@ export function DocumentFilePicker({ roots }: { roots: DocumentRootOption[] }) {
 
   function chooseFile(entry: DocumentFileEntry) {
     if (!selectedRoot) return;
-    setSelected({
+    const alreadySelected = selected?.rootId === selectedRoot.id && selected.relativePath === entry.relativePath;
+    setSelected(alreadySelected ? null : {
       rootId: selectedRoot.id,
       rootName: selectedRoot.name,
       relativePath: entry.relativePath,
       name: entry.name
     });
-    setOpen(false);
+  }
+
+  function closePicker() {
+    setClosing(true);
+    window.setTimeout(() => {
+      setOpen(false);
+      setClosing(false);
+    }, 180);
   }
 
   function openDirectory(nextPath: string) {
-    setActiveFilePath(null);
     setPath(nextPath);
   }
 
   function changeRoot(nextRootId: string) {
     setRootId(nextRootId);
     setPath("");
-    setActiveFilePath(null);
-  }
-
-  function toggleFile(entry: DocumentFileEntry) {
-    setActiveFilePath((current) => current === entry.relativePath ? null : entry.relativePath);
   }
 
   return (
@@ -99,27 +101,25 @@ export function DocumentFilePicker({ roots }: { roots: DocumentRootOption[] }) {
       <input type="hidden" name="documentRootId" value={selected?.rootId ?? ""} />
       <input type="hidden" name="documentRelativePath" value={selected?.relativePath ?? ""} />
       <div className="document-picker-summary">
-        <div>
-          <strong>{selected ? selected.name : "Keine NAS-Datei ausgewählt"}</strong>
-          <span className="muted">
-            {selected ? `${selected.rootName} / ${selected.relativePath}` : "Optional direkt aus einem freigegebenen Dokumentbereich wählen."}
-          </span>
-        </div>
-        <div className="entry-actions">
-          {selected ? <button className="button secondary" type="button" onClick={() => setSelected(null)}>Entfernen</button> : null}
-          <button className="button secondary" type="button" onClick={() => setOpen(true)} disabled={roots.length === 0}>
-            Datei auswählen
-          </button>
+        <span>NAS-Datei</span>
+        <div className="document-picker-control">
+          <strong>{selected ? selected.name : "Keine ausgewählt"}</strong>
+          <div className="entry-actions">
+            {selected ? <button className="button secondary" type="button" onClick={() => setSelected(null)} aria-label="Ausgewählte NAS-Datei entfernen">Entfernen</button> : null}
+            <button className="button secondary" type="button" onClick={() => setOpen(true)} disabled={roots.length === 0}>
+              Datei auswählen
+            </button>
+          </div>
         </div>
       </div>
 
-      {roots.length === 0 ? <p className="muted">Noch kein Dokumentbereich freigegeben. Admins verwalten das in den Einstellungen.</p> : null}
+      {roots.length === 0 ? <p className="muted">Kein Dokumentbereich freigegeben.</p> : null}
 
-      {open ? (
+      {open || closing ? (
         <ModalPortal>
-          <div className="modal-backdrop action-modal-backdrop" role="presentation">
-            <section className="modal-panel action-modal action-modal-wide" role="dialog" aria-modal="true" aria-labelledby="document-picker-title">
-              <button className="icon-button modal-close-button" type="button" aria-label="Schließen" title="Schließen" onClick={() => setOpen(false)}>
+          <div className={closing ? "modal-backdrop action-modal-backdrop is-closing" : "modal-backdrop action-modal-backdrop"} role="presentation">
+            <section className="modal-panel action-modal action-modal-wide document-picker-dialog" role="dialog" aria-modal="true" aria-labelledby="document-picker-title">
+              <button className="icon-button modal-close-button" type="button" aria-label="Schließen" title="Schließen" onClick={closePicker}>
                 <X size={20} />
               </button>
               <div className="modal-head">
@@ -129,13 +129,21 @@ export function DocumentFilePicker({ roots }: { roots: DocumentRootOption[] }) {
                 <div className="document-explorer-toolbar document-picker-toolbar">
                   <div className="document-root-switcher" aria-label="Dokumentbereich">
                     <span>Bereich</span>
-                    <div>
-                      {roots.map((root) => (
-                        <button className={selectedRoot?.id === root.id ? "active" : ""} type="button" onClick={() => changeRoot(root.id)} key={root.id}>
-                          {root.name}
-                        </button>
-                      ))}
-                    </div>
+                    {roots.length > 3 ? (
+                      <select value={selectedRoot?.id ?? ""} onChange={(event) => changeRoot(event.currentTarget.value)} aria-label="Dokumentbereich auswählen">
+                        {roots.map((root) => (
+                          <option value={root.id} key={root.id}>{root.name}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <div>
+                        {roots.map((root) => (
+                          <button className={selectedRoot?.id === root.id ? "active" : ""} type="button" onClick={() => changeRoot(root.id)} key={root.id}>
+                            {root.name}
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
 
                   <nav className="document-path-bar" aria-label="Dateipfad">
@@ -166,23 +174,30 @@ export function DocumentFilePicker({ roots }: { roots: DocumentRootOption[] }) {
                         <span><strong>{entry.name}</strong><small>Ordner</small></span>
                       </button>
                     ) : (
-                      <article className="document-file-disclosure" key={entry.relativePath}>
-                        <button className="document-file-row document-file-button" type="button" onClick={() => toggleFile(entry)} aria-expanded={activeFilePath === entry.relativePath}>
+                      <article className="document-file-row document-file-entry" key={entry.relativePath}>
+                        <div className="document-file-main">
                           <span className="document-icon" aria-hidden="true">{fileIcon(entry.mimeType)}</span>
                           <span><strong>{entry.name}</strong><small>{formatFileSize(entry.fileSize)}</small></span>
-                        </button>
-                        {activeFilePath === entry.relativePath ? (
-                          <div className="document-file-options">
-                            <DocumentFilePreview
-                              href={`/api/documents/file?rootId=${encodeURIComponent(selectedRoot?.id ?? rootId)}&path=${encodeURIComponent(entry.relativePath)}`}
-                              downloadHref={`/api/documents/file?rootId=${encodeURIComponent(selectedRoot?.id ?? rootId)}&path=${encodeURIComponent(entry.relativePath)}&download=1`}
-                              fileName={entry.name}
-                              mimeType={entry.mimeType}
-                              disabled={!entry.previewable}
-                            />
-                            <button className="button" type="button" onClick={() => chooseFile(entry)}>Auswählen</button>
-                          </div>
-                        ) : null}
+                        </div>
+                        <div className="document-file-actions">
+                          <DocumentFilePreview
+                            href={`/api/documents/file?rootId=${encodeURIComponent(selectedRoot?.id ?? rootId)}&path=${encodeURIComponent(entry.relativePath)}`}
+                            downloadHref={`/api/documents/file?rootId=${encodeURIComponent(selectedRoot?.id ?? rootId)}&path=${encodeURIComponent(entry.relativePath)}&download=1`}
+                            fileName={entry.name}
+                            mimeType={entry.mimeType}
+                            disabled={!entry.previewable}
+                            compact
+                          />
+                          <button
+                            className={selected?.rootId === selectedRoot?.id && selected.relativePath === entry.relativePath ? "document-select-check is-selected" : "document-select-check"}
+                            type="button"
+                            onClick={() => chooseFile(entry)}
+                            aria-label={`${entry.name} ${selected?.rootId === selectedRoot?.id && selected.relativePath === entry.relativePath ? "abwählen" : "auswählen"}`}
+                            aria-pressed={selected?.rootId === selectedRoot?.id && selected.relativePath === entry.relativePath}
+                          >
+                            <Check size={16} aria-hidden="true" />
+                          </button>
+                        </div>
                       </article>
                     )
                   ))}

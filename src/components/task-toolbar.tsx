@@ -50,7 +50,7 @@ export function TaskToolbar({ params, members, activeFilterCount }: TaskToolbarP
         open={filterOpen}
         onOpenChange={setFilterOpen}
         title="Aufgaben filtern"
-        description="Priorität, Personen und Wiederholung eingrenzen."
+        size="medium"
         footer={(
           <>
             <a className="button secondary" href="/aufgaben">Zurücksetzen</a>
@@ -114,6 +114,7 @@ export function TaskSortControl({ params }: { params: TaskToolbarProps["params"]
         open={sortOpen}
         onOpenChange={setSortOpen}
         title="Aufgaben sortieren"
+        size="compact"
         footer={(
           <>
             <a className="button secondary" href={buildTaskHref(params, { sort: undefined })}>Zurücksetzen</a>
@@ -255,30 +256,39 @@ function BottomSheet({
   open,
   onOpenChange,
   title,
-  description,
+  size = "medium",
   footer,
   children
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   title: string;
-  description?: string;
+  size?: "compact" | "medium" | "large";
   footer?: ReactNode;
   children: ReactNode;
 }) {
-  if (!open) return null;
+  const [closing, setClosing] = useState(false);
+
+  function closeSheet() {
+    setClosing(true);
+    window.setTimeout(() => {
+      onOpenChange(false);
+      setClosing(false);
+    }, 180);
+  }
+
+  if (!open && !closing) return null;
 
   return (
     <ModalPortal>
-      <div className="modal-backdrop action-modal-backdrop" role="presentation">
-        <section className="modal-panel action-modal" role="dialog" aria-modal="true" aria-labelledby="task-filter-title">
-          <button className="icon-button modal-close-button" type="button" aria-label="Schließen" title="Schließen" onClick={() => onOpenChange(false)}>
+      <div className={closing ? "modal-backdrop action-modal-backdrop is-closing" : "modal-backdrop action-modal-backdrop"} role="presentation">
+        <section className={`modal-panel action-modal sheet-${size} task-sheet-modal`} role="dialog" aria-modal="true" aria-labelledby="task-filter-title">
+          <button className="icon-button modal-close-button" type="button" aria-label="Schließen" title="Schließen" onClick={closeSheet}>
             <X size={20} />
           </button>
           <div className="modal-head">
             <div>
               <h2 className="section-title" id="task-filter-title">{title}</h2>
-              {description ? <p className="muted">{description}</p> : null}
             </div>
           </div>
           <div className="modal-body">
@@ -292,7 +302,7 @@ function BottomSheet({
 }
 
 function FilterSheetLayout({ children }: { children: ReactNode }) {
-  return <div className="form-grid">{children}</div>;
+  return <div className="form-grid task-filter-layout">{children}</div>;
 }
 
 function FilterGroup({ title, children }: { title: string; children: ReactNode }) {

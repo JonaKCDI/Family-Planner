@@ -2,7 +2,7 @@
 
 import type { ButtonHTMLAttributes, FormEvent, ReactNode } from "react";
 import { useMemo, useRef, useState } from "react";
-import { ArrowLeft, ChevronRight, ClipboardCheck, Euro, FileText, Fuel, Plus, ScrollText, X } from "lucide-react";
+import { ArrowLeft, ChevronRight, ClipboardCheck, Euro, FileText, Fuel, Plus, Repeat2, ScrollText, X } from "lucide-react";
 import { usePathname } from "next/navigation";
 import {
   createContract,
@@ -64,11 +64,13 @@ export function CreateModal({ categories, labels, contracts, members, cars, docu
   const [type, setType] = useState<CreateType>(defaultType);
   const [formStarted, setFormStarted] = useState(allowedTypes.length <= 1);
   const [returnTo, setReturnTo] = useState(pathname);
+  const [taskSheetTitle, setTaskSheetTitle] = useState("Aufgabe erstellen");
   const today = useMemo(() => new Date().toISOString().slice(0, 10), []);
   const selectedType = allowedTypes.some((item) => item.id === type) ? type : defaultType;
   function openCreateModal() {
     setType(defaultType);
     setFormStarted(allowedTypes.length <= 1);
+    setTaskSheetTitle("Aufgabe erstellen");
     setReturnTo(`${window.location.pathname}${window.location.search}`);
     setOpen(true);
   }
@@ -88,7 +90,7 @@ export function CreateModal({ categories, labels, contracts, members, cars, docu
       <BottomSheet
         open={open}
         onOpenChange={setOpen}
-        title={formStarted ? createTypes.find((item) => item.id === selectedType)?.label ?? "Neu erstellen" : "Neuen Eintrag erstellen"}
+        title={formStarted && selectedType === "task" ? taskSheetTitle : formStarted ? createTypes.find((item) => item.id === selectedType)?.label ?? "Neu erstellen" : "Neuen Eintrag erstellen"}
         description={!formStarted ? "Was möchtest du erfassen?" : undefined}
         leadingAction={allowedTypes.length > 1 && formStarted ? (
           <IconButton className="modal-back-button" type="button" label="Zur Auswahl" onClick={() => setFormStarted(false)}>
@@ -105,7 +107,7 @@ export function CreateModal({ categories, labels, contracts, members, cars, docu
                       <button
                         className={`create-type create-type-${item.tone}`}
                         type="button"
-                        onClick={() => { setType(item.id); setFormStarted(true); }}
+                        onClick={() => { setType(item.id); setFormStarted(true); if (item.id === "task") setTaskSheetTitle("Aufgabe erstellen"); }}
                         key={item.id}
                       >
                         <span className="create-type-icon" aria-hidden="true"><item.icon size={18} /></span>
@@ -131,7 +133,7 @@ export function CreateModal({ categories, labels, contracts, members, cars, docu
                     onSubmit={() => setOpen(false)}
                   />
                 ) : null}
-                {formStarted && selectedType === "task" ? <TaskForm members={members} documentRoots={documentRoots} today={today} onSubmit={() => setOpen(false)} /> : null}
+                {formStarted && selectedType === "task" ? <TaskForm members={members} documentRoots={documentRoots} today={today} onSheetTitleChange={setTaskSheetTitle} onSubmit={() => setOpen(false)} /> : null}
                 {formStarted && selectedType === "contract" ? <ContractForm categories={categories} labels={labels} documentRoots={documentRoots} today={today} onSubmit={() => setOpen(false)} /> : null}
                 {formStarted && selectedType === "document" ? <DocumentForm documentRoots={documentRoots} onSubmit={() => setOpen(false)} /> : null}
               </div>
@@ -328,27 +330,34 @@ function TaskForm({
   members,
   documentRoots,
   today,
+  onSheetTitleChange,
   onSubmit
 }: {
   members: CreateModalProps["members"];
   documentRoots: CreateModalProps["documentRoots"];
   today: string;
+  onSheetTitleChange: (title: string) => void;
   onSubmit: () => void;
 }) {
   const [recurrencePreset, setRecurrencePreset] = useState("NONE");
   const [customIntervalUnit, setCustomIntervalUnit] = useState("DAY");
   const [step, setStep] = useState<"details" | "repeat">("details");
+  const [taskPanel, setTaskPanel] = useState<"main" | "options">("main");
+  const [taskTitle, setTaskTitle] = useState("");
+  const [taskDueDate, setTaskDueDate] = useState("");
+  const [taskStartDate, setTaskStartDate] = useState("");
   const formRef = useRef<HTMLFormElement>(null);
   const isRecurring = recurrencePreset !== "NONE";
   const customIntervalMax = customIntervalUnit === "WEEK" ? 52 : 365;
-
-  function chooseTaskType(recurring: boolean) {
-    setRecurrencePreset(recurring ? "WEEKLY" : "NONE");
-    setStep("details");
-  }
+  const selectedStartDate = taskStartDate || taskDueDate || (isRecurring ? today : "");
 
   function continueToRepeat() {
-    if (formRef.current?.reportValidity()) setStep("repeat");
+    if (!formRef.current?.reportValidity()) return;
+    if (recurrencePreset === "NONE") setRecurrencePreset("WEEKLY");
+    if (!taskStartDate) setTaskStartDate(today);
+    setStep("repeat");
+    setTaskPanel("main");
+    onSheetTitleChange("Wiederkehrende Aufgabe");
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -368,44 +377,35 @@ function TaskForm({
   }
 
   return (
-    <form ref={formRef} action={isRecurring ? createRecurringTask : createTask} className="form form-grid modal-form" onSubmit={handleSubmit}>
-      <div className="segmented task-kind-toggle full-span" role="group" aria-label="Aufgabenart">
-        <button className={!isRecurring ? "active" : ""} type="button" aria-pressed={!isRecurring} onClick={() => chooseTaskType(false)}>Einmalig</button>
-        <button className={isRecurring ? "active" : ""} type="button" aria-pressed={isRecurring} onClick={() => chooseTaskType(true)}>Wiederkehrend</button>
-      </div>
-      {isRecurring ? <nav className="modal-section-tabs full-span" aria-label="Schritte der wiederkehrenden Aufgabe">
-        <button className={step === "details" ? "active" : ""} type="button" onClick={() => setStep("details")}>Details</button>
-        <button className={step === "repeat" ? "active" : ""} type="button" onClick={() => setStep("repeat")}>Wiederholung</button>
-      </nav> : null}
-      <fieldset className="fieldset modal-form-section full-span" id="create-task-core" hidden={isRecurring && step !== "details"}>
+    <form ref={formRef} action={isRecurring ? createRecurringTask : createTask} className="form form-grid modal-form task-create-form" data-task-view={taskPanel === "options" ? "options" : step} onSubmit={handleSubmit}>
+      {taskPanel === "options" ? (
+        <div className="task-create-subhead full-span">
+          <button className="icon-button" type="button" aria-label="Zurück" title="Zurück" onClick={() => setTaskPanel("main")}>
+            <ArrowLeft size={18} aria-hidden="true" />
+          </button>
+          <div>
+            <strong>Weitere Optionen</strong>
+          </div>
+          <span aria-hidden="true" />
+        </div>
+      ) : null}
+      <fieldset className="fieldset modal-form-section full-span task-create-core" id="create-task-core" hidden={taskPanel !== "main" || step === "repeat"}>
         <legend>Aufgabe</legend>
-        <div className="form-grid">
-          <label>Titel<input name="title" required /></label>
-          <label>Zuweisen an<select name="assignedToUserId" defaultValue=""><option value="">Nicht zugewiesen</option>{members.map((member) => <option value={member.userId} key={member.id}>{member.user.name}</option>)}</select></label>
-          <label>Priorität<select name="priority" defaultValue="MEDIUM"><option value="LOW">Niedrig</option><option value="MEDIUM">Mittel</option><option value="HIGH">Hoch</option><option value="URGENT">Dringend</option></select></label>
-        </div>
+        <label className="full-span">Titel *<input name="title" required placeholder="Was ist zu erledigen?" value={taskTitle} onChange={(event) => setTaskTitle(event.currentTarget.value)} /></label>
+        <label>Fällig am<input name="dueDate" type="date" value={taskDueDate} onChange={(event) => setTaskDueDate(event.currentTarget.value)} /></label>
+        <label>Zuständig<select name="assignedToUserId" defaultValue=""><option value="">Nicht zugewiesen</option>{members.map((member) => <option value={member.userId} key={member.id}>{member.user.name}</option>)}</select></label>
+        <label>Priorität<select name="priority" defaultValue="MEDIUM"><option value="LOW">Niedrig</option><option value="MEDIUM">Mittel</option><option value="HIGH">Hoch</option><option value="URGENT">Dringend</option></select></label>
+        <label className="full-span">Notiz<textarea name="description" placeholder="Optional" /></label>
       </fieldset>
-      <fieldset className="fieldset modal-form-section full-span" id="create-task-plan" hidden={isRecurring && step !== "details"}>
-        <legend>Planung</legend>
-        <div className="form-grid">
-          <label>{isRecurring ? "Startdatum" : "Deadline"}<input key={isRecurring ? "recurring-date" : "single-date"} name="dueDate" type="date" defaultValue={isRecurring ? today : ""} required={isRecurring} /></label>
-          <label>Sichtbarkeit<select name="scope" defaultValue="FAMILY"><option value="FAMILY">Familie</option><option value="PRIVATE">Privat</option></select></label>
-        </div>
-      </fieldset>
-      <fieldset className="fieldset modal-form-section full-span" id="create-task-repeat" hidden={!isRecurring || step !== "repeat"}>
-        <legend>Wiederholen</legend>
-        <div className="form-grid">
+      <fieldset className="fieldset modal-form-section full-span" id="create-task-repeat" hidden={taskPanel !== "main" || !isRecurring || step !== "repeat"}>
+        <legend>Wiederholung</legend>
+        <div className="task-repeat-grid">
           <label>
-            Rhythmus
+            Wiederholt sich
             <select name="recurrencePreset" value={recurrencePreset} onChange={(event) => setRecurrencePreset(event.currentTarget.value)}>
-              <option value="NONE">Einmalig</option>
               <option value="DAILY">Täglich</option>
-              <option value="EVERY_2_DAYS">Alle 2 Tage</option>
               <option value="WEEKLY">Wöchentlich</option>
-              <option value="EVERY_2_WEEKS">Alle 2 Wochen</option>
               <option value="MONTHLY">Monatlich</option>
-              <option value="QUARTERLY">Vierteljährlich</option>
-              <option value="SEMIANNUAL">Halbjährlich</option>
               <option value="YEARLY">Jährlich</option>
               <option value="CUSTOM">Individuell</option>
             </select>
@@ -424,25 +424,41 @@ function TaskForm({
               </label>
             </>
           ) : null}
+          {recurrencePreset !== "CUSTOM" ? <input name="intervalCount" type="hidden" value="1" /> : null}
+          {recurrencePreset !== "CUSTOM" ? <input name="intervalUnit" type="hidden" value={recurrencePreset === "YEARLY" ? "YEAR" : recurrencePreset === "MONTHLY" ? "MONTH" : recurrencePreset === "WEEKLY" ? "WEEK" : "DAY"} /> : null}
+          <label>Startdatum<input name="startDate" type="date" value={selectedStartDate} required onChange={(event) => setTaskStartDate(event.currentTarget.value)} /></label>
           {isRecurring ? <label>Enddatum optional<input name="endDate" type="date" /></label> : null}
           {isRecurring ? <label>Aufgabe anzeigen<select name="leadTimeDays" defaultValue="2"><option value="0">Am Fälligkeitstag</option><option value="1">1 Tag vorher</option><option value="2">2 Tage vorher</option><option value="3">3 Tage vorher</option><option value="7">7 Tage vorher</option></select></label> : null}
         </div>
       </fieldset>
-      <fieldset className="fieldset modal-form-section full-span" id="create-task-details" hidden={isRecurring && step !== "details"}>
-        <legend>Details</legend>
-        <label>Beschreibung<textarea name="description" /></label>
-      </fieldset>
-      <details className="optional-section full-span" hidden={isRecurring && step !== "details"}>
-        <summary>Dokument verknüpfen</summary>
+      <button className="task-options-link full-span" type="button" hidden={taskPanel !== "main" || step === "repeat"} onClick={() => setTaskPanel("options")}>
+        <span>Weitere Optionen</span>
+        <ChevronRight size={18} aria-hidden="true" />
+      </button>
+      <fieldset className="fieldset modal-form-section full-span task-create-options-page" hidden={taskPanel !== "options"}>
+        <legend>Weitere Optionen</legend>
         <div className="form-grid">
+          <label>Sichtbarkeit<select name="scope" defaultValue="FAMILY"><option value="FAMILY">Familie</option><option value="PRIVATE">Privat</option></select></label>
           <label>Dokumenttitel<input name="documentTitle" placeholder="Anleitung, Foto, Nachweis ..." /></label>
           <label>HTTPS-Link<input name="documentUrl" type="url" placeholder="https://..." /></label>
           <DocumentFilePicker roots={documentRoots} />
         </div>
-      </details>
+      </fieldset>
+      {taskPanel === "main" && step !== "repeat" ? (
+        <button className="task-recurring-link full-span" type="button" onClick={continueToRepeat}>
+          <Repeat2 size={18} aria-hidden="true" />
+          <span>Als wiederkehrende Aufgabe planen</span>
+          <ChevronRight size={18} aria-hidden="true" />
+        </button>
+      ) : null}
       <div className="modal-submit-row modal-footer">
-        {isRecurring && step === "repeat" ? <button className="button secondary" type="button" onClick={() => setStep("details")}>Zurück</button> : <button className="button secondary" type="button" onClick={onSubmit}>Abbrechen</button>}
-        {isRecurring && step === "details" ? <button className="button" type="button" onClick={continueToRepeat}>Weiter</button> : <button className="button" type="submit">{isRecurring ? "Serie speichern" : "Aufgabe erstellen"}</button>}
+        {taskPanel === "options" ? (
+          <button className="button" type="button" onClick={() => setTaskPanel("main")}>Übernehmen</button>
+        ) : (
+          <>
+            <button className="button" type="submit">{isRecurring ? "Serie speichern" : "Aufgabe erstellen"}</button>
+          </>
+        )}
       </div>
     </form>
   );
@@ -653,19 +669,28 @@ function BottomSheet({
   labelledById: string;
   children: ReactNode;
 }) {
-  if (!open) return null;
+  const [closing, setClosing] = useState(false);
+
+  function closeSheet() {
+    setClosing(true);
+    window.setTimeout(() => {
+      onOpenChange(false);
+      setClosing(false);
+    }, 180);
+  }
+
+  if (!open && !closing) return null;
 
   return (
     <ModalPortal>
-      <div className="modal-backdrop" role="presentation">
+      <div className={closing ? "modal-backdrop is-closing" : "modal-backdrop"} role="presentation">
         <section className={wide ? "modal-panel create-dialog action-modal-wide" : "modal-panel create-dialog"} role="dialog" aria-modal="true" aria-labelledby={labelledById}>
           {leadingAction}
-          <button className="icon-button modal-close-button" type="button" aria-label="Schließen" title="Schließen" onClick={() => onOpenChange(false)}>
+          <button className="icon-button modal-close-button" type="button" aria-label="Schließen" title="Schließen" onClick={closeSheet}>
             <X size={20} />
           </button>
           <div className="modal-head">
             <div>
-              <span className="eyebrow">Neu erstellen</span>
               <h2 id={labelledById}>{title}</h2>
               {description ? <p className="muted">{description}</p> : null}
             </div>

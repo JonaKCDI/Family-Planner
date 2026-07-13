@@ -1,4 +1,5 @@
 ﻿import { archiveRecurringTask, pauseRecurringTask, resumeRecurringTask, updateRecurringTask, updateTask, updateTaskStatus } from "@/lib/actions";
+import { Pencil } from "lucide-react";
 import { requireSession } from "@/lib/auth";
 import { formatDate, toDateInputValue } from "@/lib/format";
 import { getFamilyMembers, getVisibleRecurringTasks, getVisibleTasks } from "@/lib/queries";
@@ -8,6 +9,7 @@ import { ActionModal } from "@/components/action-modal";
 import { AutosaveForm } from "@/components/autosave-form";
 import { TaskInlineCheck } from "@/components/task-inline-check";
 import { TaskStatusControl } from "@/components/task-status-control";
+import { TaskSummaryStrip } from "@/components/task-summary-strip";
 import { TaskSortControl, TaskToolbar } from "@/components/task-toolbar";
 import { Chip, EmptyState, PageHeader, ScopeSelect } from "@/components/ui";
 
@@ -76,24 +78,16 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
         </div>
       ) : null}
 
-      <section className="task-summary-strip" aria-label="Aufgabenansicht">
-        <a className={view === "active" ? "active" : ""} href={buildTasksHref(params, { view: view === "active" ? "all" : "active" })}>
-          <strong>{activeTasks.length}</strong>
-          <span>offen</span>
-        </a>
-        <a className={view === "overdue" ? "active" : ""} href={buildTasksHref(params, { view: view === "overdue" ? "all" : "overdue" })}>
-          <strong>{overdueTasks.length}</strong>
-          <span>überfällig</span>
-        </a>
-        <a className={view === "today" ? "active" : ""} href={buildTasksHref(params, { view: view === "today" ? "all" : "today" })}>
-          <strong>{todayTasks.length}</strong>
-          <span>heute</span>
-        </a>
-        <a className={view === "planned" ? "active" : ""} href={buildTasksHref(params, { view: view === "planned" ? "all" : "planned" })}>
-          <strong>{plannedTasks.length}</strong>
-          <span>geplant</span>
-        </a>
-      </section>
+      <TaskSummaryStrip
+        key={view}
+        view={view}
+        items={[
+          { count: activeTasks.length, href: buildTasksHref(params, { view: view === "active" ? "all" : "active" }), label: "offen", view: "active" },
+          { count: overdueTasks.length, href: buildTasksHref(params, { view: view === "overdue" ? "all" : "overdue" }), label: "überfällig", view: "overdue" },
+          { count: todayTasks.length, href: buildTasksHref(params, { view: view === "today" ? "all" : "today" }), label: "heute", view: "today" },
+          { count: plannedTasks.length, href: buildTasksHref(params, { view: view === "planned" ? "all" : "planned" }), label: "geplant", view: "planned" }
+        ]}
+      />
       {(view === "active" || view === "today" || view === "overdue" || view === "all") ? (
       <section className="task-list-section spacing-top">
         <div className="section-head">
@@ -311,62 +305,71 @@ function TaskCard({ task, members, completed = false }: { task: TaskLike; member
         triggerClassName={`task-row-trigger ${completed ? "task-completed" : urgency.className}`}
         modalId={`task-${task.id}`}
       >
-        <div className="task-expanded-content">
-          <div className="task-expanded-copy">
-            <p>{task.description || "Keine Beschreibung hinterlegt."}</p>
-            <div className="badge-row">
-              <Chip>{task.scope === "FAMILY" ? "Familie" : "Privat"}</Chip>
-              <Chip>{taskStatusTone(task.status).label}</Chip>
-              {task.recurringTask ? <Chip tone="neutral">{task.recurringTask.title}</Chip> : null}
+        <div className="task-expanded-content task-detail-sheet">
+          <details className="edit-drawer task-edit-drawer task-detail-edit">
+            <summary aria-label="Aufgabe bearbeiten" title="Aufgabe bearbeiten"><Pencil size={17} aria-hidden="true" /><span>Bearbeiten</span></summary>
+            <AutosaveForm action={updateTask} className="form form-grid modal-form">
+              <input type="hidden" name="id" value={task.id} />
+              <nav className="modal-section-tabs full-span" aria-label="Formularbereiche">
+                <a href={`#task-${task.id}-details`}>Details</a>
+                <a href={`#task-${task.id}-options`}>Weitere Optionen</a>
+              </nav>
+              <fieldset className="fieldset modal-form-section full-span" id={`task-${task.id}-details`}>
+                <legend>Details</legend>
+                <div className="form-grid">
+                  <label>Titel<input name="title" defaultValue={task.title} required /></label>
+                  <label>
+                    Zuweisen an
+                    <select name="assignedToUserId" defaultValue={task.assignedToUserId ?? ""}>
+                      <option value="">Nicht zugewiesen</option>
+                      {members.map((member) => <option value={member.userId} key={member.id}>{member.user.name}</option>)}
+                    </select>
+                  </label>
+                  <label>Deadline<input name="dueDate" type="date" defaultValue={toDateInputValue(task.dueDate)} /></label>
+                  <label>
+                    Priorität
+                    <select name="priority" defaultValue={task.priority}>
+                      <option value="LOW">Niedrig</option>
+                      <option value="MEDIUM">Mittel</option>
+                      <option value="HIGH">Hoch</option>
+                      <option value="URGENT">Dringend</option>
+                    </select>
+                  </label>
+                  <label className="full-span">Beschreibung<textarea name="description" defaultValue={task.description ?? ""} /></label>
+                </div>
+              </fieldset>
+              <fieldset className="fieldset modal-form-section full-span" id={`task-${task.id}-options`}>
+                <legend>Weitere Optionen</legend>
+                <div className="form-grid">
+                  <ScopeSelect defaultValue={task.scope} />
+                  <div className="form-note full-span">
+                    {task.recurringTask ? `Wiederholung: ${task.recurringTask.title}` : "Keine Wiederholung verknüpft."}
+                  </div>
+                </div>
+              </fieldset>
+              <button className="button full-span autosave-submit" type="submit">Speichern</button>
+            </AutosaveForm>
+          </details>
+          <div className="task-detail-read">
+            <div className={`task-detail-status ${urgency.className}`}>
+              <span>{taskStatusTone(task.status).label}</span>
+              <time dateTime={task.dueDate?.toISOString()}>{task.dueDate ? formatDate(task.dueDate) : "Ohne Datum"}</time>
             </div>
-          </div>
-          <div className="task-actions">
-            <TaskDoneButton taskId={task.id} done={done} />
-            <TaskStatusControl taskId={task.id} initialStatus={task.status} />
-            <details className="edit-drawer task-edit-drawer">
-              <summary>Bearbeiten</summary>
-              <AutosaveForm action={updateTask} className="form form-grid modal-form">
-                <input type="hidden" name="id" value={task.id} />
-                <nav className="modal-section-tabs full-span" aria-label="Formularbereiche">
-                  <a href={`#task-${task.id}-details`}>Details</a>
-                  <a href={`#task-${task.id}-options`}>Weitere Optionen</a>
-                </nav>
-                <fieldset className="fieldset modal-form-section full-span" id={`task-${task.id}-details`}>
-                  <legend>Details</legend>
-                  <div className="form-grid">
-                    <label>Titel<input name="title" defaultValue={task.title} required /></label>
-                    <label>
-                      Zuweisen an
-                      <select name="assignedToUserId" defaultValue={task.assignedToUserId ?? ""}>
-                        <option value="">Nicht zugewiesen</option>
-                        {members.map((member) => <option value={member.userId} key={member.id}>{member.user.name}</option>)}
-                      </select>
-                    </label>
-                    <label>Deadline<input name="dueDate" type="date" defaultValue={toDateInputValue(task.dueDate)} /></label>
-                    <label>
-                      Priorität
-                      <select name="priority" defaultValue={task.priority}>
-                        <option value="LOW">Niedrig</option>
-                        <option value="MEDIUM">Mittel</option>
-                        <option value="HIGH">Hoch</option>
-                        <option value="URGENT">Dringend</option>
-                      </select>
-                    </label>
-                    <label className="full-span">Beschreibung<textarea name="description" defaultValue={task.description ?? ""} /></label>
-                  </div>
-                </fieldset>
-                <fieldset className="fieldset modal-form-section full-span" id={`task-${task.id}-options`}>
-                  <legend>Weitere Optionen</legend>
-                  <div className="form-grid">
-                    <ScopeSelect defaultValue={task.scope} />
-                    <div className="form-note full-span">
-                      {task.recurringTask ? `Wiederholung: ${task.recurringTask.title}` : "Keine Wiederholung verknüpft."}
-                    </div>
-                  </div>
-                </fieldset>
-                <button className="button full-span autosave-submit" type="submit">Speichern</button>
-              </AutosaveForm>
-            </details>
+            <div className="task-detail-title-block">
+              <h3>{task.title}</h3>
+            </div>
+            <dl className="task-detail-meta">
+              <div><dt>Zuständig</dt><dd>{task.assignee?.name ?? "Nicht zugewiesen"}</dd></div>
+              <div><dt>Fällig am</dt><dd>{task.dueDate ? formatDate(task.dueDate) : "Ohne Datum"}</dd></div>
+              <div><dt>Priorität</dt><dd>{priorityLabels[task.priority]}</dd></div>
+              <div><dt>Sichtbarkeit</dt><dd>{task.scope === "FAMILY" ? "Familie" : "Privat"}</dd></div>
+              {task.recurringTask ? <div><dt>Serie</dt><dd>{task.recurringTask.title}</dd></div> : null}
+            </dl>
+            {task.description ? <div className="task-detail-note"><span>Notiz</span><p>{task.description}</p></div> : null}
+            <div className="task-actions task-detail-actions">
+              <TaskDoneButton taskId={task.id} done={done} />
+              <TaskStatusControl taskId={task.id} initialStatus={task.status} />
+            </div>
           </div>
         </div>
       </ActionModal>
@@ -387,91 +390,100 @@ function PlannedTaskCard({ task, members }: { task: RecurringTaskLike; members: 
       triggerClassName={`task-row-trigger ${task.status === "PAUSED" ? "task-completed" : "task-calm"}`}
       modalId={`recurring-task-${task.id}`}
     >
-      <div className="task-expanded-content">
-        <div className="task-expanded-copy">
-          <p>{task.description || "Keine Beschreibung hinterlegt."}</p>
-          <div className="badge-row">
-            <Chip>{task.scope === "FAMILY" ? "Familie" : "Privat"}</Chip>
-            <Chip>{getRecurringTaskIntervalLabel(task)}</Chip>
-            <Chip tone="neutral">{priorityLabels[task.priority]}</Chip>
+      <div className="task-expanded-content task-detail-sheet">
+        <details className="edit-drawer task-edit-drawer task-detail-edit">
+          <summary aria-label="Geplante Aufgabe bearbeiten" title="Geplante Aufgabe bearbeiten"><Pencil size={17} aria-hidden="true" /><span>Bearbeiten</span></summary>
+          <AutosaveForm action={updateRecurringTask} className="form form-grid modal-form">
+            <input type="hidden" name="id" value={task.id} />
+            <nav className="modal-section-tabs full-span" aria-label="Formularbereiche">
+              <a href={`#recurring-task-${task.id}-details`}>Details</a>
+              <a href={`#recurring-task-${task.id}-options`}>Weitere Optionen</a>
+            </nav>
+            <fieldset className="fieldset modal-form-section full-span" id={`recurring-task-${task.id}-details`}>
+              <legend>Details</legend>
+              <div className="form-grid">
+                <label>Titel<input name="title" defaultValue={task.title} required /></label>
+                <label>
+                  Zuweisen an
+                  <select name="assignedToUserId" defaultValue={task.assignedToUserId ?? ""}>
+                    <option value="">Nicht zugewiesen</option>
+                    {members.map((member) => <option value={member.userId} key={member.id}>{member.user.name}</option>)}
+                  </select>
+                </label>
+                <label>Startdatum<input name="startDate" type="date" defaultValue={toDateInputValue(task.startDate)} required /></label>
+                <label>Enddatum optional<input name="endDate" type="date" defaultValue={toDateInputValue(task.endDate)} /></label>
+                <label>
+                  Priorität
+                  <select name="priority" defaultValue={task.priority}>
+                    <option value="LOW">Niedrig</option>
+                    <option value="MEDIUM">Mittel</option>
+                    <option value="HIGH">Hoch</option>
+                    <option value="URGENT">Dringend</option>
+                  </select>
+                </label>
+                <label className="full-span">Beschreibung<textarea name="description" defaultValue={task.description ?? ""} /></label>
+              </div>
+            </fieldset>
+            <fieldset className="fieldset modal-form-section full-span" id={`recurring-task-${task.id}-options`}>
+              <legend>Weitere Optionen</legend>
+              <div className="form-grid">
+                <label>Alle<input name="intervalCount" type="number" min="1" max={editInterval.unit === "WEEK" ? 52 : 365} defaultValue={editInterval.count} required /></label>
+                <label>
+                  Einheit
+                  <select name="intervalUnit" defaultValue={editInterval.unit}>
+                    <option value="DAY">Tage</option>
+                    <option value="WEEK">Wochen</option>
+                    <option value="MONTH">Monate</option>
+                    <option value="YEAR">Jahre</option>
+                  </select>
+                </label>
+                <label>
+                  Status
+                  <select name="status" defaultValue={task.status}>
+                    <option value="ACTIVE">Aktiv</option>
+                    <option value="PAUSED">Pausiert</option>
+                    <option value="ARCHIVED">Archiviert</option>
+                  </select>
+                </label>
+                <ScopeSelect defaultValue={task.scope} />
+              </div>
+            </fieldset>
+            <button className="button full-span autosave-submit" type="submit">Speichern</button>
+          </AutosaveForm>
+          <form action={archiveRecurringTask} className="form compact spacing-top">
+            <input type="hidden" name="id" value={task.id} />
+            <button className="button secondary" type="submit">Archivieren</button>
+          </form>
+        </details>
+        <div className="task-detail-read">
+          <div className={`task-detail-status ${task.status === "PAUSED" ? "task-warning" : "task-calm"}`}>
+            <span>{task.status === "PAUSED" ? "Pausiert" : "Aktiv"}</span>
+            <time dateTime={task.nextDueDate?.toISOString()}>{task.nextDueDate ? formatDate(task.nextDueDate) : "Ohne Datum"}</time>
           </div>
-        </div>
-        <div className="task-actions">
-          {task.status === "PAUSED" ? (
-            <form action={resumeRecurringTask}>
-              <input type="hidden" name="id" value={task.id} />
-              <button className="button secondary" type="submit">Fortsetzen</button>
-            </form>
-          ) : (
-            <form action={pauseRecurringTask}>
-              <input type="hidden" name="id" value={task.id} />
-              <button className="button secondary" type="submit">Pausieren</button>
-            </form>
-          )}
-          <details className="edit-drawer task-edit-drawer">
-            <summary>Bearbeiten</summary>
-            <AutosaveForm action={updateRecurringTask} className="form form-grid modal-form">
-              <input type="hidden" name="id" value={task.id} />
-              <nav className="modal-section-tabs full-span" aria-label="Formularbereiche">
-                <a href={`#recurring-task-${task.id}-details`}>Details</a>
-                <a href={`#recurring-task-${task.id}-options`}>Weitere Optionen</a>
-              </nav>
-              <fieldset className="fieldset modal-form-section full-span" id={`recurring-task-${task.id}-details`}>
-                <legend>Details</legend>
-                <div className="form-grid">
-                  <label>Titel<input name="title" defaultValue={task.title} required /></label>
-                  <label>
-                    Zuweisen an
-                    <select name="assignedToUserId" defaultValue={task.assignedToUserId ?? ""}>
-                      <option value="">Nicht zugewiesen</option>
-                      {members.map((member) => <option value={member.userId} key={member.id}>{member.user.name}</option>)}
-                    </select>
-                  </label>
-                  <label>Startdatum<input name="startDate" type="date" defaultValue={toDateInputValue(task.startDate)} required /></label>
-                  <label>Enddatum optional<input name="endDate" type="date" defaultValue={toDateInputValue(task.endDate)} /></label>
-                  <label>
-                    Priorität
-                    <select name="priority" defaultValue={task.priority}>
-                      <option value="LOW">Niedrig</option>
-                      <option value="MEDIUM">Mittel</option>
-                      <option value="HIGH">Hoch</option>
-                      <option value="URGENT">Dringend</option>
-                    </select>
-                  </label>
-                  <label className="full-span">Beschreibung<textarea name="description" defaultValue={task.description ?? ""} /></label>
-                </div>
-              </fieldset>
-              <fieldset className="fieldset modal-form-section full-span" id={`recurring-task-${task.id}-options`}>
-                <legend>Weitere Optionen</legend>
-                <div className="form-grid">
-                  <label>Alle<input name="intervalCount" type="number" min="1" max={editInterval.unit === "WEEK" ? 52 : 365} defaultValue={editInterval.count} required /></label>
-                  <label>
-                    Einheit
-                    <select name="intervalUnit" defaultValue={editInterval.unit}>
-                      <option value="DAY">Tage</option>
-                      <option value="WEEK">Wochen</option>
-                      <option value="MONTH">Monate</option>
-                      <option value="YEAR">Jahre</option>
-                    </select>
-                  </label>
-                  <label>
-                    Status
-                    <select name="status" defaultValue={task.status}>
-                      <option value="ACTIVE">Aktiv</option>
-                      <option value="PAUSED">Pausiert</option>
-                      <option value="ARCHIVED">Archiviert</option>
-                    </select>
-                  </label>
-                  <ScopeSelect defaultValue={task.scope} />
-                </div>
-              </fieldset>
-              <button className="button full-span autosave-submit" type="submit">Speichern</button>
-            </AutosaveForm>
-            <form action={archiveRecurringTask} className="form compact spacing-top">
-              <input type="hidden" name="id" value={task.id} />
-              <button className="button secondary" type="submit">Archivieren</button>
-            </form>
-          </details>
+          <div className="task-detail-title-block">
+            <h3>{task.title}</h3>
+          </div>
+          <dl className="task-detail-meta">
+            <div><dt>Zuständig</dt><dd>{task.assignee?.name ?? "Nicht zugewiesen"}</dd></div>
+            <div><dt>Nächste Fälligkeit</dt><dd>{task.nextDueDate ? formatDate(task.nextDueDate) : "Ohne Datum"}</dd></div>
+            <div><dt>Wiederholung</dt><dd>{getRecurringTaskIntervalLabel(task)}</dd></div>
+            <div><dt>Priorität</dt><dd>{priorityLabels[task.priority]}</dd></div>
+            <div><dt>Sichtbarkeit</dt><dd>{task.scope === "FAMILY" ? "Familie" : "Privat"}</dd></div>
+          </dl>
+          {task.description ? <div className="task-detail-note"><span>Notiz</span><p>{task.description}</p></div> : null}
+          <div className="task-actions task-detail-actions">
+            {task.status === "PAUSED" ? (
+              <form action={resumeRecurringTask}>
+                <input type="hidden" name="id" value={task.id} />
+                <button className="button secondary" type="submit">Fortsetzen</button>
+              </form>
+            ) : (
+              <form action={pauseRecurringTask}>
+                <input type="hidden" name="id" value={task.id} />
+                <button className="button secondary" type="submit">Pausieren</button>
+              </form>
+            )}
+          </div>
         </div>
       </div>
     </ActionModal>

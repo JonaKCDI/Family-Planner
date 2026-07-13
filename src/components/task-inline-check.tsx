@@ -24,7 +24,7 @@ export function TaskInlineCheck({ taskId, done }: TaskInlineCheckProps) {
     const nextStatus: TaskStatus = nextDone ? "DONE" : "OPEN";
     setVisualDone(nextDone);
     setIsAnimating(true);
-    window.setTimeout(() => setIsAnimating(false), 260);
+    window.setTimeout(() => setIsAnimating(false), 460);
 
     if (!navigator.onLine) {
       void enqueueOfflineTaskStatus(taskId, nextStatus);
@@ -39,7 +39,7 @@ export function TaskInlineCheck({ taskId, done }: TaskInlineCheckProps) {
         await updateTaskStatus(formData);
         router.refresh();
       });
-    }, 220);
+    }, 360);
   }
 
   return (
@@ -54,6 +54,10 @@ export function TaskInlineCheck({ taskId, done }: TaskInlineCheckProps) {
         event.stopPropagation();
         toggleTaskStatus();
       }}
-    />
+    >
+      <svg className="task-check-drawing" viewBox="0 0 22 18" aria-hidden="true" focusable="false">
+        <path d="M4.5 9.2 9.1 13.7 17.6 4.4" />
+      </svg>
+    </button>
   );
 }

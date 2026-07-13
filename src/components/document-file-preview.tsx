@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { X } from "lucide-react";
+import { Eye, X } from "lucide-react";
 import { ModalPortal } from "@/components/modal-portal";
 
 type DocumentFilePreviewProps = {
@@ -10,9 +10,10 @@ type DocumentFilePreviewProps = {
   fileName: string;
   mimeType?: string | null;
   disabled?: boolean;
+  compact?: boolean;
 };
 
-export function DocumentFilePreview({ href, downloadHref, fileName, mimeType, disabled = false }: DocumentFilePreviewProps) {
+export function DocumentFilePreview({ href, downloadHref, fileName, mimeType, disabled = false, compact = false }: DocumentFilePreviewProps) {
   const [open, setOpen] = useState(false);
   const previewKind = getPreviewKind(mimeType);
 
@@ -22,8 +23,8 @@ export function DocumentFilePreview({ href, downloadHref, fileName, mimeType, di
 
   return (
     <>
-      <button className="button" type="button" onClick={() => setOpen(true)}>
-        Vorschau
+      <button className={compact ? "document-preview-icon-button" : "button"} type="button" onClick={() => setOpen(true)} aria-label={`${fileName} ansehen`} title="Vorschau">
+        {compact ? <Eye size={18} aria-hidden="true" /> : "Vorschau"}
       </button>
       {open ? (
         <ModalPortal>
