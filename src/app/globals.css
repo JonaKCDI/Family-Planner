@@ -10410,6 +10410,35 @@ html[data-finance-direction="neutral"] .finance-planning-page > .planning-panel 
   .modal-panel:not(.create-dialog) .modal-footer {
     padding-bottom: calc(1rem + env(safe-area-inset-bottom)) !important;
   }
+
+  .modal-panel.create-dialog .create-dialog-body,
+  .modal-panel.action-modal:has(:is(.expense-sheet-form, .mileage-edit-form)) .modal-body {
+    overflow: hidden !important;
+    padding-bottom: .75rem !important;
+  }
+
+  .modal-panel.create-dialog .create-dialog-body > .modal-form,
+  .modal-panel.action-modal:has(:is(.expense-sheet-form, .mileage-edit-form)) .modal-body > .modal-form {
+    height: 100%;
+    min-height: 100%;
+    max-height: 100%;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scroll-padding-bottom: calc(5.5rem + env(safe-area-inset-bottom));
+  }
+
+  .modal-panel.create-dialog .modal-form > .modal-submit-row,
+  .modal-panel.action-modal :is(.expense-sheet-form, .mileage-edit-form) > .modal-submit-row {
+    position: sticky !important;
+    bottom: 0;
+    z-index: 4;
+    margin-right: -1rem;
+    margin-bottom: -.75rem;
+    margin-left: -1rem;
+    border-top: 1px solid var(--line);
+    background: #fff !important;
+    padding: .75rem 1rem calc(.75rem + env(safe-area-inset-bottom)) !important;
+  }
 }
 
 /* Auto page: align mileage with the current finance/task overview pattern. */
@@ -10632,12 +10661,91 @@ html[data-finance-direction="neutral"] .finance-planning-page > .planning-panel 
   }
 }
 
-/* Restore the approved Aufgaben create-sheet treatment after broad UI layers. */
+/* Restore the approved sheet-form treatment after broad UI layers. */
 html.modal-scroll-locked .app-nav,
 body.modal-scroll-locked .app-nav {
   opacity: 0;
   pointer-events: none;
   transform: translateY(100%);
+}
+
+.modal-panel.create-dialog .modal-form {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.modal-panel.create-dialog .modal-form .modal-form-section,
+.modal-panel.create-dialog .modal-form .optional-section,
+.modal-panel.action-modal :is(.expense-sheet-form, .mileage-edit-form) .modal-form-section,
+.modal-panel.action-modal :is(.expense-sheet-form, .mileage-edit-form) .optional-section {
+  border-right: 0 !important;
+  border-bottom: 0 !important;
+  border-left: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  padding-right: 0;
+  padding-left: 0;
+}
+
+.modal-panel.create-dialog .modal-form .modal-form-section:first-of-type,
+.modal-panel.action-modal :is(.expense-sheet-form, .mileage-edit-form) .modal-form-section:first-of-type {
+  border-top: 0 !important;
+  padding-top: 0;
+}
+
+.modal-panel.create-dialog .modal-form .modal-form-section + .modal-form-section,
+.modal-panel.create-dialog .modal-form .modal-form-section + .optional-section,
+.modal-panel.create-dialog .modal-form .optional-section + .optional-section,
+.modal-panel.action-modal :is(.expense-sheet-form, .mileage-edit-form) .modal-form-section + .modal-form-section,
+.modal-panel.action-modal :is(.expense-sheet-form, .mileage-edit-form) .modal-form-section + .optional-section,
+.modal-panel.action-modal :is(.expense-sheet-form, .mileage-edit-form) .optional-section + .optional-section {
+  border-top: 1px solid var(--line) !important;
+  padding-top: .68rem;
+}
+
+.modal-panel.create-dialog .modal-form legend,
+.modal-panel.action-modal :is(.expense-sheet-form, .mileage-edit-form) legend {
+  margin-bottom: .42rem;
+  color: var(--accent-dark);
+  font-size: .9rem;
+  font-weight: 820;
+}
+
+.modal-panel.create-dialog .modal-form label,
+.modal-panel.action-modal :is(.expense-sheet-form, .mileage-edit-form) label {
+  color: var(--muted);
+  font-size: .84rem;
+  font-weight: 740;
+}
+
+.modal-panel.create-dialog .modal-form input,
+.modal-panel.create-dialog .modal-form select,
+.modal-panel.create-dialog .modal-form textarea,
+.modal-panel.action-modal :is(.expense-sheet-form, .mileage-edit-form) input,
+.modal-panel.action-modal :is(.expense-sheet-form, .mileage-edit-form) select,
+.modal-panel.action-modal :is(.expense-sheet-form, .mileage-edit-form) textarea {
+  font-size: .98rem;
+  font-weight: 500;
+}
+
+.modal-panel.create-dialog .modal-form .modal-submit-row,
+.modal-panel.action-modal :is(.expense-sheet-form, .mileage-edit-form) .modal-submit-row {
+  position: sticky !important;
+  bottom: -.9rem;
+  z-index: 3;
+  margin-top: .2rem;
+  margin-right: -1rem;
+  margin-bottom: -.9rem;
+  margin-left: -1rem;
+  border-top: 1px solid var(--line);
+  background: #fff !important;
+  padding: .75rem 1rem calc(.75rem + env(safe-area-inset-bottom)) !important;
+}
+
+.modal-panel.create-dialog .modal-form .modal-submit-row:has(.button:only-child),
+.modal-panel.action-modal :is(.expense-sheet-form, .mileage-edit-form) .modal-submit-row:has(.button:only-child) {
+  grid-template-columns: minmax(0, 1fr) !important;
 }
 
 .modal-panel.create-dialog .task-create-form .modal-form-section,
@@ -10674,6 +10782,37 @@ body.modal-scroll-locked .app-nav {
 .modal-panel.create-dialog .task-create-form .modal-submit-row {
   grid-template-columns: minmax(0, 1fr) !important;
   margin-top: .2rem;
+}
+
+.modal-panel.create-dialog .flow-link {
+  display: grid !important;
+  grid-template-columns: 22px minmax(0, 1fr) 22px !important;
+  align-items: center;
+  justify-items: stretch;
+  min-height: 46px;
+  border: 0;
+  border-top: 1px solid var(--line);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  gap: .65rem;
+  padding: 0 .15rem;
+  text-align: left;
+  font-size: .88rem;
+  font-weight: 780;
+}
+
+.modal-panel.create-dialog .flow-link span {
+  min-width: 0;
+  text-align: left;
+}
+
+.modal-panel.create-dialog .flow-link svg:first-child {
+  color: var(--accent-dark);
+}
+
+.modal-panel.create-dialog .flow-link svg:last-child {
+  justify-self: end;
 }
 
 /* Final scroll safety override: this must stay at the end of the stylesheet. */

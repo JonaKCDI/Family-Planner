@@ -237,7 +237,13 @@ function ExpenseForm({
         </details>
       {planningRecurring ? <input type="hidden" name="scope" value="PRIVATE" /> : null}
       <PaymentMethods />
-      {!planningRecurring ? <button className="flow-link full-span" type="button" onClick={() => setPlanningRecurring(true)}>Als wiederkehrende Buchung planen <ChevronRight size={18} aria-hidden="true" /></button> : null}
+      {!planningRecurring ? (
+        <button className="flow-link full-span" type="button" onClick={() => setPlanningRecurring(true)}>
+          <Repeat2 size={18} aria-hidden="true" />
+          <span>Als wiederkehrende Buchung planen</span>
+          <ChevronRight size={18} aria-hidden="true" />
+        </button>
+      ) : null}
       {!planningRecurring ? <details className="optional-section full-span" id="create-expense-document">
         <summary>Beleg / Dokument verknüpfen</summary>
         <div className="form-grid">

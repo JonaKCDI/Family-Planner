@@ -125,6 +125,21 @@ For tasks specifically:
 - If a task belongs to a recurring series, editing must allow updating the linked
   series values supported by the data model.
 
+Other create/edit sheets must inherit the same visual contract:
+
+- Expense, fuel, contract, mileage and document forms use the same white sheet,
+  transparent field groups, divider rows and full-width single primary action as
+  task creation.
+- Use cards inside a sheet only for real choices or repeated items, such as the
+  document source choice or file rows. Do not wrap ordinary form fieldsets in
+  grey panels.
+- A single submit action spans the sheet width. Two intentional actions, such as
+  back plus save, may split the footer into two equal buttons.
+- Mobile navigation, FABs and page scroll buffers must not cover or pad out
+  create/edit sheet footers.
+- If a form needs a domain-specific subpage, reuse the local body back arrow and
+  footer behavior from task creation rather than introducing a second sheet.
+
 ## Detail Sheets
 
 Detail sheets are read-first. Editing is intentional.
