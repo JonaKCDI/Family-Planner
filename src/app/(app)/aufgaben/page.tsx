@@ -1,17 +1,16 @@
-﻿import { archiveRecurringTask, pauseRecurringTask, resumeRecurringTask, updateRecurringTask, updateTask, updateTaskStatus } from "@/lib/actions";
-import { Pencil } from "lucide-react";
+﻿import { pauseRecurringTask, resumeRecurringTask } from "@/lib/actions";
+import { CalendarDays, Flag, Lock, Pencil, RotateCcw, UserRound } from "lucide-react";
 import { requireSession } from "@/lib/auth";
 import { formatDate, toDateInputValue } from "@/lib/format";
-import { getFamilyMembers, getVisibleRecurringTasks, getVisibleTasks } from "@/lib/queries";
+import { getFamilyMembers, getVisibleDocumentRoots, getVisibleRecurringTasks, getVisibleTasks } from "@/lib/queries";
 import { ensureDueRecurringTasks } from "@/lib/recurring-tasks";
 import { daysUntil, getRecurringTaskIntervalLabel, taskRank, taskUrgency } from "@/lib/tasks";
 import { ActionModal } from "@/components/action-modal";
-import { AutosaveForm } from "@/components/autosave-form";
+import { RecurringTaskEditForm, TaskEditForm } from "@/components/task-edit-form";
 import { TaskInlineCheck } from "@/components/task-inline-check";
-import { TaskStatusControl } from "@/components/task-status-control";
 import { TaskSummaryStrip } from "@/components/task-summary-strip";
 import { TaskSortControl, TaskToolbar } from "@/components/task-toolbar";
-import { Chip, EmptyState, PageHeader, ScopeSelect } from "@/components/ui";
+import { Chip, EmptyState, PageHeader } from "@/components/ui";
 
 type TasksPageProps = {
   searchParams: Promise<TaskPageParams>;
@@ -34,10 +33,11 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
   const view = getTaskView(params.view);
   const filters = getTaskFilters(params);
   const sort = getTaskSort(params.sort);
-  const [tasks, recurringTasks, members] = await Promise.all([
+  const [tasks, recurringTasks, members, documentRoots] = await Promise.all([
     getVisibleTasks(session.family.id, session.user.id),
     getVisibleRecurringTasks(session.family.id, session.user.id),
-    getFamilyMembers(session.family.id)
+    getFamilyMembers(session.family.id),
+    getVisibleDocumentRoots(session.family.id, session.user.id, session.role)
   ]);
   const searchedTasks = tasks
     .filter((task) => !query || matchesTask(task, query))
@@ -98,7 +98,7 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
         </div>
         <div className="task-priority-list">
           {visibleActiveTasks.length === 0 ? <EmptyState>{query ? "Keine passenden offenen Aufgaben." : "Keine offenen Aufgaben."}</EmptyState> : null}
-          {visibleActiveTasks.map((task) => <TaskCard task={task} members={members} key={task.id} />)}
+          {visibleActiveTasks.map((task) => <TaskCard task={task} members={members} documentRoots={documentRoots} key={task.id} />)}
         </div>
       </section>
       ) : null}
@@ -128,7 +128,7 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
         </div>
         <div className="task-priority-list">
           {completedTasks.length === 0 ? <EmptyState>{query ? "Keine passenden erledigten Aufgaben." : "Noch keine erledigten Aufgaben."}</EmptyState> : null}
-          {completedTasks.map((task) => <TaskCard task={task} members={members} completed key={task.id} />)}
+          {completedTasks.map((task) => <TaskCard task={task} members={members} documentRoots={documentRoots} completed key={task.id} />)}
         </div>
       </section>
       ) : null}
@@ -238,7 +238,6 @@ function TaskRow({ task, urgency }: { task: TaskLike; urgency?: ReturnType<typeo
   const assignee = task.assignee?.name ?? "Nicht zugewiesen";
   const dueDateLabel = task.dueDate ? formatDate(task.dueDate) : "Ohne Datum";
   const sideLabel = urgency && urgency.className !== "task-calm" ? urgency.label : priorityLabels[task.priority];
-  const dotClassName = urgency ? `${urgency.className} priority-${task.priority.toLowerCase()}` : `priority-${task.priority.toLowerCase()}`;
   return (
     <span className="task-row">
       <span className={`task-checkmark ${task.status === "DONE" || task.status === "ARCHIVED" ? "is-done" : ""}`} aria-hidden="true" />
@@ -252,7 +251,6 @@ function TaskRow({ task, urgency }: { task: TaskLike; urgency?: ReturnType<typeo
       <span className="task-row-side">
         <time dateTime={task.dueDate?.toISOString()}>{dueDateLabel}</time>
         <span>{sideLabel}</span>
-        <span className={`task-priority-dot ${dotClassName}`} aria-hidden="true" />
       </span>
     </span>
   );
@@ -284,17 +282,87 @@ function InitialAvatar({ name }: { name: string }) {
   return <span className="task-avatar" aria-label={name}>{initial}</span>;
 }
 
-function TaskDoneButton({ taskId, done }: { taskId: string; done: boolean }) {
+function TaskEditModal({ task, members, documentRoots }: { task: TaskLike; members: MemberLike[]; documentRoots: DocumentRootLike[] }) {
   return (
-    <form action={updateTaskStatus}>
-      <input type="hidden" name="id" value={taskId} />
-      <input type="hidden" name="status" value={done ? "OPEN" : "DONE"} />
-      <button className="button" type="submit">{done ? "Wieder öffnen" : "Als erledigt markieren"}</button>
-    </form>
+    <ActionModal
+      title="Aufgabe bearbeiten"
+      trigger={<Pencil size={18} aria-hidden="true" />}
+      triggerLabel="Aufgabe bearbeiten"
+      triggerClassName="task-detail-edit-button"
+      panelClassName="task-edit-dialog"
+      sheetVariant="create"
+      wide
+      modalId={`task-${task.id}-edit`}
+    >
+      <TaskEditForm
+        task={{
+          id: task.id,
+          title: task.title,
+          dueDate: toDateInputValue(task.dueDate),
+          assignedToUserId: task.assignedToUserId ?? "",
+          priority: task.priority,
+          description: task.description ?? "",
+          scope: task.scope,
+          recurrenceLabel: task.recurringTask ? `${task.recurringTask.title} · ${getRecurringTaskIntervalLabel(task.recurringTask)}` : null,
+          recurrence: task.recurringTask ? {
+            id: task.recurringTask.id,
+            title: task.recurringTask.title,
+            startDate: toDateInputValue(task.recurringTask.startDate),
+            endDate: toDateInputValue(task.recurringTask.endDate),
+            assignedToUserId: task.recurringTask.assignedToUserId ?? "",
+            priority: task.recurringTask.priority,
+            description: task.recurringTask.description ?? "",
+            scope: task.recurringTask.scope,
+            intervalCount: String(recurringTaskEditInterval(task.recurringTask).count),
+            intervalUnit: recurringTaskEditInterval(task.recurringTask).unit,
+            leadTimeDays: String(task.recurringTask.leadTimeDays),
+            status: task.recurringTask.status
+          } : null
+        }}
+        members={members}
+        documentRoots={documentRoots}
+      />
+    </ActionModal>
   );
 }
 
-function TaskCard({ task, members, completed = false }: { task: TaskLike; members: MemberLike[]; completed?: boolean }) {
+function RecurringTaskEditModal({ task, members }: { task: RecurringTaskLike; members: MemberLike[] }) {
+  const editInterval = recurringTaskEditInterval(task);
+  return (
+    <ActionModal
+      title="Wiederkehrende Aufgabe bearbeiten"
+      trigger={<Pencil size={18} aria-hidden="true" />}
+      triggerLabel="Geplante Aufgabe bearbeiten"
+      triggerClassName="task-detail-edit-button"
+      panelClassName="task-edit-dialog"
+      sheetVariant="create"
+      wide
+      modalId={`recurring-task-${task.id}-edit`}
+    >
+      <RecurringTaskEditForm
+        task={{
+          id: task.id,
+          title: task.title,
+          nextDueDate: toDateInputValue(task.nextDueDate),
+          startDate: toDateInputValue(task.startDate),
+          endDate: toDateInputValue(task.endDate),
+          assignedToUserId: task.assignedToUserId ?? "",
+          priority: task.priority,
+          description: task.description ?? "",
+          scope: task.scope,
+          intervalCount: String(editInterval.count),
+          intervalUnit: editInterval.unit,
+          leadTimeDays: String(task.leadTimeDays),
+          status: task.status,
+          recurrenceLabel: getRecurringTaskIntervalLabel(task)
+        }}
+        members={members}
+      />
+    </ActionModal>
+  );
+}
+
+function TaskCard({ task, members, documentRoots, completed = false }: { task: TaskLike; members: MemberLike[]; documentRoots: DocumentRootLike[]; completed?: boolean }) {
   const urgency = taskUrgency(task);
   const done = task.status === "DONE" || task.status === "ARCHIVED";
   return (
@@ -306,69 +374,28 @@ function TaskCard({ task, members, completed = false }: { task: TaskLike; member
         modalId={`task-${task.id}`}
       >
         <div className="task-expanded-content task-detail-sheet">
-          <details className="edit-drawer task-edit-drawer task-detail-edit">
-            <summary aria-label="Aufgabe bearbeiten" title="Aufgabe bearbeiten"><Pencil size={17} aria-hidden="true" /><span>Bearbeiten</span></summary>
-            <AutosaveForm action={updateTask} className="form form-grid modal-form">
-              <input type="hidden" name="id" value={task.id} />
-              <nav className="modal-section-tabs full-span" aria-label="Formularbereiche">
-                <a href={`#task-${task.id}-details`}>Details</a>
-                <a href={`#task-${task.id}-options`}>Weitere Optionen</a>
-              </nav>
-              <fieldset className="fieldset modal-form-section full-span" id={`task-${task.id}-details`}>
-                <legend>Details</legend>
-                <div className="form-grid">
-                  <label>Titel<input name="title" defaultValue={task.title} required /></label>
-                  <label>
-                    Zuweisen an
-                    <select name="assignedToUserId" defaultValue={task.assignedToUserId ?? ""}>
-                      <option value="">Nicht zugewiesen</option>
-                      {members.map((member) => <option value={member.userId} key={member.id}>{member.user.name}</option>)}
-                    </select>
-                  </label>
-                  <label>Deadline<input name="dueDate" type="date" defaultValue={toDateInputValue(task.dueDate)} /></label>
-                  <label>
-                    Priorität
-                    <select name="priority" defaultValue={task.priority}>
-                      <option value="LOW">Niedrig</option>
-                      <option value="MEDIUM">Mittel</option>
-                      <option value="HIGH">Hoch</option>
-                      <option value="URGENT">Dringend</option>
-                    </select>
-                  </label>
-                  <label className="full-span">Beschreibung<textarea name="description" defaultValue={task.description ?? ""} /></label>
-                </div>
-              </fieldset>
-              <fieldset className="fieldset modal-form-section full-span" id={`task-${task.id}-options`}>
-                <legend>Weitere Optionen</legend>
-                <div className="form-grid">
-                  <ScopeSelect defaultValue={task.scope} />
-                  <div className="form-note full-span">
-                    {task.recurringTask ? `Wiederholung: ${task.recurringTask.title}` : "Keine Wiederholung verknüpft."}
-                  </div>
-                </div>
-              </fieldset>
-              <button className="button full-span autosave-submit" type="submit">Speichern</button>
-            </AutosaveForm>
-          </details>
           <div className="task-detail-read">
-            <div className={`task-detail-status ${urgency.className}`}>
-              <span>{taskStatusTone(task.status).label}</span>
-              <time dateTime={task.dueDate?.toISOString()}>{task.dueDate ? formatDate(task.dueDate) : "Ohne Datum"}</time>
-            </div>
-            <div className="task-detail-title-block">
-              <h3>{task.title}</h3>
+            <div className="task-detail-head">
+              <div className="task-detail-check">
+                <TaskInlineCheck taskId={task.id} done={done} />
+              </div>
+              <div className="task-detail-title-block">
+                <h3>{task.title}</h3>
+                {urgency.className !== "task-calm" ? <span className={`task-detail-urgency ${urgency.className}`}>{urgency.label}</span> : null}
+              </div>
+              <TaskEditModal task={task} members={members} documentRoots={documentRoots} />
             </div>
             <dl className="task-detail-meta">
-              <div><dt>Zuständig</dt><dd>{task.assignee?.name ?? "Nicht zugewiesen"}</dd></div>
-              <div><dt>Fällig am</dt><dd>{task.dueDate ? formatDate(task.dueDate) : "Ohne Datum"}</dd></div>
-              <div><dt>Priorität</dt><dd>{priorityLabels[task.priority]}</dd></div>
-              <div><dt>Sichtbarkeit</dt><dd>{task.scope === "FAMILY" ? "Familie" : "Privat"}</dd></div>
-              {task.recurringTask ? <div><dt>Serie</dt><dd>{task.recurringTask.title}</dd></div> : null}
+              <div><UserRound size={18} aria-hidden="true" /><dt>Zuständig</dt><dd>{task.assignee ? <><InitialAvatar name={task.assignee.name} /> {task.assignee.name}</> : "Nicht zugewiesen"}</dd></div>
+              <div><CalendarDays size={18} aria-hidden="true" /><dt>Fällig</dt><dd>{task.dueDate ? formatDate(task.dueDate) : "Ohne Datum"}</dd></div>
+              <div><Flag size={18} aria-hidden="true" /><dt>Priorität</dt><dd>{priorityLabels[task.priority]}</dd></div>
+              <div><Lock size={18} aria-hidden="true" /><dt>Sichtbarkeit</dt><dd>{task.scope === "FAMILY" ? "Familie" : "Privat"}</dd></div>
+              {task.recurringTask ? <div><RotateCcw size={18} aria-hidden="true" /><dt>Serie</dt><dd>{task.recurringTask.title} · {getRecurringTaskIntervalLabel(task.recurringTask)}</dd></div> : null}
             </dl>
             {task.description ? <div className="task-detail-note"><span>Notiz</span><p>{task.description}</p></div> : null}
-            <div className="task-actions task-detail-actions">
-              <TaskDoneButton taskId={task.id} done={done} />
-              <TaskStatusControl taskId={task.id} initialStatus={task.status} />
+            <div className="task-detail-footnote">
+              <span>Erstellt von {task.owner.name}</span>
+              <time>Aktualisiert {formatDate(task.updatedAt)}</time>
             </div>
           </div>
         </div>
@@ -381,8 +408,6 @@ function TaskCard({ task, members, completed = false }: { task: TaskLike; member
 }
 
 function PlannedTaskCard({ task, members }: { task: RecurringTaskLike; members: MemberLike[] }) {
-  const editInterval = recurringTaskEditInterval(task);
-
   return (
     <ActionModal
       title="Geplante Aufgabe"
@@ -391,86 +416,29 @@ function PlannedTaskCard({ task, members }: { task: RecurringTaskLike; members: 
       modalId={`recurring-task-${task.id}`}
     >
       <div className="task-expanded-content task-detail-sheet">
-        <details className="edit-drawer task-edit-drawer task-detail-edit">
-          <summary aria-label="Geplante Aufgabe bearbeiten" title="Geplante Aufgabe bearbeiten"><Pencil size={17} aria-hidden="true" /><span>Bearbeiten</span></summary>
-          <AutosaveForm action={updateRecurringTask} className="form form-grid modal-form">
-            <input type="hidden" name="id" value={task.id} />
-            <nav className="modal-section-tabs full-span" aria-label="Formularbereiche">
-              <a href={`#recurring-task-${task.id}-details`}>Details</a>
-              <a href={`#recurring-task-${task.id}-options`}>Weitere Optionen</a>
-            </nav>
-            <fieldset className="fieldset modal-form-section full-span" id={`recurring-task-${task.id}-details`}>
-              <legend>Details</legend>
-              <div className="form-grid">
-                <label>Titel<input name="title" defaultValue={task.title} required /></label>
-                <label>
-                  Zuweisen an
-                  <select name="assignedToUserId" defaultValue={task.assignedToUserId ?? ""}>
-                    <option value="">Nicht zugewiesen</option>
-                    {members.map((member) => <option value={member.userId} key={member.id}>{member.user.name}</option>)}
-                  </select>
-                </label>
-                <label>Startdatum<input name="startDate" type="date" defaultValue={toDateInputValue(task.startDate)} required /></label>
-                <label>Enddatum optional<input name="endDate" type="date" defaultValue={toDateInputValue(task.endDate)} /></label>
-                <label>
-                  Priorität
-                  <select name="priority" defaultValue={task.priority}>
-                    <option value="LOW">Niedrig</option>
-                    <option value="MEDIUM">Mittel</option>
-                    <option value="HIGH">Hoch</option>
-                    <option value="URGENT">Dringend</option>
-                  </select>
-                </label>
-                <label className="full-span">Beschreibung<textarea name="description" defaultValue={task.description ?? ""} /></label>
-              </div>
-            </fieldset>
-            <fieldset className="fieldset modal-form-section full-span" id={`recurring-task-${task.id}-options`}>
-              <legend>Weitere Optionen</legend>
-              <div className="form-grid">
-                <label>Alle<input name="intervalCount" type="number" min="1" max={editInterval.unit === "WEEK" ? 52 : 365} defaultValue={editInterval.count} required /></label>
-                <label>
-                  Einheit
-                  <select name="intervalUnit" defaultValue={editInterval.unit}>
-                    <option value="DAY">Tage</option>
-                    <option value="WEEK">Wochen</option>
-                    <option value="MONTH">Monate</option>
-                    <option value="YEAR">Jahre</option>
-                  </select>
-                </label>
-                <label>
-                  Status
-                  <select name="status" defaultValue={task.status}>
-                    <option value="ACTIVE">Aktiv</option>
-                    <option value="PAUSED">Pausiert</option>
-                    <option value="ARCHIVED">Archiviert</option>
-                  </select>
-                </label>
-                <ScopeSelect defaultValue={task.scope} />
-              </div>
-            </fieldset>
-            <button className="button full-span autosave-submit" type="submit">Speichern</button>
-          </AutosaveForm>
-          <form action={archiveRecurringTask} className="form compact spacing-top">
-            <input type="hidden" name="id" value={task.id} />
-            <button className="button secondary" type="submit">Archivieren</button>
-          </form>
-        </details>
         <div className="task-detail-read">
-          <div className={`task-detail-status ${task.status === "PAUSED" ? "task-warning" : "task-calm"}`}>
-            <span>{task.status === "PAUSED" ? "Pausiert" : "Aktiv"}</span>
-            <time dateTime={task.nextDueDate?.toISOString()}>{task.nextDueDate ? formatDate(task.nextDueDate) : "Ohne Datum"}</time>
-          </div>
-          <div className="task-detail-title-block">
-            <h3>{task.title}</h3>
+          <div className="task-detail-head task-detail-head-plain">
+            <div className="task-detail-title-block">
+              <div className={`task-detail-status ${task.status === "PAUSED" ? "task-warning" : "task-calm"}`}>
+                <RotateCcw size={15} aria-hidden="true" />
+              <span>{task.status === "PAUSED" ? "Pausiert" : "Aktiv"}</span>
+              </div>
+              <h3>{task.title}</h3>
+            </div>
+            <RecurringTaskEditModal task={task} members={members} />
           </div>
           <dl className="task-detail-meta">
-            <div><dt>Zuständig</dt><dd>{task.assignee?.name ?? "Nicht zugewiesen"}</dd></div>
-            <div><dt>Nächste Fälligkeit</dt><dd>{task.nextDueDate ? formatDate(task.nextDueDate) : "Ohne Datum"}</dd></div>
-            <div><dt>Wiederholung</dt><dd>{getRecurringTaskIntervalLabel(task)}</dd></div>
-            <div><dt>Priorität</dt><dd>{priorityLabels[task.priority]}</dd></div>
-            <div><dt>Sichtbarkeit</dt><dd>{task.scope === "FAMILY" ? "Familie" : "Privat"}</dd></div>
+            <div><UserRound size={18} aria-hidden="true" /><dt>Zuständig</dt><dd>{task.assignee ? <><InitialAvatar name={task.assignee.name} /> {task.assignee.name}</> : "Nicht zugewiesen"}</dd></div>
+            <div><CalendarDays size={18} aria-hidden="true" /><dt>Nächste Fälligkeit</dt><dd>{task.nextDueDate ? formatDate(task.nextDueDate) : "Ohne Datum"}</dd></div>
+            <div><RotateCcw size={18} aria-hidden="true" /><dt>Wiederholung</dt><dd>{getRecurringTaskIntervalLabel(task)}</dd></div>
+            <div><Flag size={18} aria-hidden="true" /><dt>Priorität</dt><dd>{priorityLabels[task.priority]}</dd></div>
+            <div><Lock size={18} aria-hidden="true" /><dt>Sichtbarkeit</dt><dd>{task.scope === "FAMILY" ? "Familie" : "Privat"}</dd></div>
           </dl>
           {task.description ? <div className="task-detail-note"><span>Notiz</span><p>{task.description}</p></div> : null}
+          <div className="task-detail-footnote">
+            <span>Erstellt von {task.owner.name}</span>
+            <time>Aktualisiert {formatDate(task.updatedAt)}</time>
+          </div>
           <div className="task-actions task-detail-actions">
             {task.status === "PAUSED" ? (
               <form action={resumeRecurringTask}>
@@ -490,7 +458,7 @@ function PlannedTaskCard({ task, members }: { task: RecurringTaskLike; members: 
   );
 }
 
-function recurringTaskEditInterval(task: Pick<RecurringTaskLike, "intervalCount" | "intervalUnit">) {
+function recurringTaskEditInterval(task: Pick<RecurringTaskLike, "intervalCount" | "intervalUnit">): { count: number; unit: "DAY" | "WEEK" | "MONTH" | "YEAR" } {
   if (task.intervalUnit === "DAY" && task.intervalCount >= 7 && task.intervalCount % 7 === 0) {
     return { count: task.intervalCount / 7, unit: "WEEK" };
   }
@@ -547,3 +515,4 @@ const sortLabels = {
 type TaskLike = Awaited<ReturnType<typeof getVisibleTasks>>[number];
 type RecurringTaskLike = Awaited<ReturnType<typeof getVisibleRecurringTasks>>[number];
 type MemberLike = Awaited<ReturnType<typeof getFamilyMembers>>[number];
+type DocumentRootLike = Awaited<ReturnType<typeof getVisibleDocumentRoots>>[number];

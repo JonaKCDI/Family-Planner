@@ -7,23 +7,32 @@ export type ExpenseFilterParams = {
   month?: string | null;
   label?: string | null;
   category?: string | null;
+  kind?: "expense" | "income" | string | null;
+  paymentMethod?: string | string[] | null;
+  source?: "manual" | "contract" | "fuel" | "recurring" | string | string[] | null;
   q?: string | null;
   sort?: ExpenseSortKey | string | null;
-  view?: "entries" | "overview" | "categories" | "labels" | "periods" | "analysis" | string | null;
+  view?: "entries" | "categories" | "analysis" | "compare" | "overview" | "budgets" | "labels" | "periods" | string | null;
   compareA?: string | null;
   compareB?: string | null;
+  compareMode?: "month" | "year" | "custom" | string | null;
+  compareMonth?: string | null;
+  compareYear?: string | null;
+  compareFrom?: string | null;
+  compareTo?: string | null;
   chartDimension?: "category" | "label" | string | null;
   chartMetric?: "spending" | "income" | "saldo" | "net" | string | null;
   chartTop?: string | null;
   chartMonths?: string | null;
-  trendCategory?: string | null;
-  trendMonths?: string | null;
 };
 
-const orderedKeys = ["from", "to", "year", "month", "label", "category", "q", "sort", "view", "compareA", "compareB", "chartDimension", "chartMetric", "chartTop", "chartMonths", "trendCategory", "trendMonths"] as const;
-const expenseViewKeys = ["entries", "overview", "categories", "labels", "periods", "analysis"] as const;
+const orderedKeys = ["from", "to", "year", "month", "label", "category", "kind", "paymentMethod", "source", "q", "sort", "view", "compareA", "compareB", "compareMode", "compareMonth", "compareYear", "compareFrom", "compareTo", "chartDimension", "chartMetric", "chartTop", "chartMonths"] as const;
+const expenseViewKeys = ["entries", "categories", "analysis", "compare", "overview", "budgets", "labels", "periods"] as const;
 const chartDimensionKeys = ["category", "label"] as const;
 const chartMetricKeys = ["spending", "income", "saldo", "net"] as const;
+const kindKeys = ["expense", "income"] as const;
+const sourceKeys = ["manual", "contract", "fuel", "recurring"] as const;
+const compareModeKeys = ["month", "year", "custom"] as const;
 
 export function getMonthKey(date = new Date()) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
@@ -52,7 +61,7 @@ export function getRawExpensesHref(params: ExpenseFilterParams) {
   const search = new URLSearchParams();
   for (const key of orderedKeys) {
     const value = params[key];
-    if (value !== undefined && value !== null) search.set(key, String(value));
+    for (const item of toValues(value)) search.append(key, item);
   }
   const query = search.toString();
   return query ? `/ausgaben?${query}` : "/ausgaben";
@@ -75,12 +84,15 @@ export function buildYearNavigationHref(params: ExpenseFilterParams, year: numbe
   return buildPeriodHref(params, { year: String(year + amount) });
 }
 
-export function buildFilterHref(params: ExpenseFilterParams, values: Pick<ExpenseFilterParams, "from" | "to" | "category" | "label" | "q">) {
+export function buildFilterHref(params: ExpenseFilterParams, values: Pick<ExpenseFilterParams, "from" | "to" | "category" | "label" | "kind" | "paymentMethod" | "source" | "q">) {
   const hasCustomRange = Boolean(cleanValue(values.from) || cleanValue(values.to));
   return buildExpensesHref(params, {
     q: values.q,
     category: values.category,
     label: values.label,
+    kind: values.kind,
+    paymentMethod: values.paymentMethod,
+    source: values.source,
     from: values.from,
     to: values.to,
     ...(hasCustomRange ? { year: undefined, month: undefined } : {})
@@ -90,8 +102,12 @@ export function buildFilterHref(params: ExpenseFilterParams, values: Pick<Expens
 function normalizeExpenseParams(params: ExpenseFilterParams) {
   const next: ExpenseFilterParams = {};
   for (const key of orderedKeys) {
-    const value = cleanValue(params[key]);
-    if (value) next[key] = value;
+    const value = key === "paymentMethod" || key === "source" ? cleanValues(params[key]) : cleanValue(singleValue(params[key]));
+    if (Array.isArray(value)) {
+      if (value.length > 0) (next as Record<string, string | string[]>)[key] = value;
+    } else if (value) {
+      (next as Record<string, string | string[]>)[key] = value;
+    }
   }
 
   if (next.month && /^\d{2}$/.test(next.month) && next.year) {
@@ -111,6 +127,40 @@ function normalizeExpenseParams(params: ExpenseFilterParams) {
 
   if (next.sort && !isExpenseSortKey(next.sort)) delete next.sort;
   if (next.view && !expenseViewKeys.includes(next.view as typeof expenseViewKeys[number])) delete next.view;
+  if (next.kind && !kindKeys.includes(next.kind as typeof kindKeys[number])) delete next.kind;
+  if (next.compareMode && !compareModeKeys.includes(next.compareMode as typeof compareModeKeys[number])) delete next.compareMode;
+  if (next.compareMonth && !/^\d{4}-\d{2}$/.test(next.compareMonth)) delete next.compareMonth;
+  if (next.compareYear) {
+    const year = Number(next.compareYear);
+    if (!Number.isInteger(year) || year < 1900 || year > 2200) delete next.compareYear;
+  }
+  if (!next.compareMode) {
+    if (next.compareFrom || next.compareTo) next.compareMode = "custom";
+    else if (next.compareYear) next.compareMode = "year";
+    else if (next.compareMonth) next.compareMode = "month";
+  }
+  if (next.compareMode === "month") {
+    delete next.compareYear;
+    delete next.compareFrom;
+    delete next.compareTo;
+  } else if (next.compareMode === "year") {
+    delete next.compareMonth;
+    delete next.compareFrom;
+    delete next.compareTo;
+  } else if (next.compareMode === "custom") {
+    delete next.compareMonth;
+    delete next.compareYear;
+  } else {
+    delete next.compareMonth;
+    delete next.compareYear;
+    delete next.compareFrom;
+    delete next.compareTo;
+  }
+  if (next.source) {
+    const sources = cleanValues(next.source).filter((source) => sourceKeys.includes(source as typeof sourceKeys[number]));
+    if (sources.length > 0) next.source = sources;
+    else delete next.source;
+  }
   if (next.chartDimension && !chartDimensionKeys.includes(next.chartDimension as typeof chartDimensionKeys[number])) delete next.chartDimension;
   if (next.chartMetric && !chartMetricKeys.includes(next.chartMetric as typeof chartMetricKeys[number])) delete next.chartMetric;
   if (next.chartTop) {
@@ -121,11 +171,6 @@ function normalizeExpenseParams(params: ExpenseFilterParams) {
     const months = Number(next.chartMonths);
     if (months !== 6 && months !== 12) delete next.chartMonths;
   }
-  if (next.trendMonths) {
-    const months = Number(next.trendMonths);
-    if (months !== 3 && months !== 6 && months !== 12) delete next.trendMonths;
-  }
-
   return next;
 }
 
@@ -133,7 +178,7 @@ function toExpensesHref(params: ExpenseFilterParams) {
   const search = new URLSearchParams();
   for (const key of orderedKeys) {
     const value = params[key];
-    if (value) search.set(key, value);
+    for (const item of toValues(value)) search.append(key, item);
   }
   const query = search.toString();
   return query ? `/ausgaben?${query}` : "/ausgaben";
@@ -142,4 +187,18 @@ function toExpensesHref(params: ExpenseFilterParams) {
 function cleanValue(value: string | null | undefined) {
   const text = String(value ?? "").trim();
   return text || undefined;
+}
+
+function cleanValues(value: string | string[] | null | undefined) {
+  return [...new Set((Array.isArray(value) ? value : [value])
+    .map((item) => cleanValue(item ?? undefined))
+    .filter((item): item is string => Boolean(item)))];
+}
+
+function singleValue(value: string | string[] | null | undefined) {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function toValues(value: string | string[] | null | undefined) {
+  return cleanValues(value);
 }

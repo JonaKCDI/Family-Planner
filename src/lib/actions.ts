@@ -6,11 +6,13 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { cleanupExpiredSessions, createSession, destroySession, hashPassword, requireSession, verifyPassword } from "@/lib/auth";
+import { normalizeCategoryIcon } from "@/lib/category-icon-options";
 import { resolveContractCancellationSchedule } from "@/lib/contracts";
 import { db } from "@/lib/db";
 import { ensureDueContractExpenses } from "@/lib/contract-auto-expenses";
 import { isLocalDocumentsFallback } from "@/lib/document-root-default";
 import { ensureDueRecurringTasks } from "@/lib/recurring-tasks";
+import { createPlanningRuleFromExpense, type ExpensePlanningTreatmentType, type PlanningExpense } from "@/lib/expense-planning-analysis";
 import { buildExpenseWorkbook, parseExpenseWorkbook, type ExpenseFormatRow } from "@/lib/expense-formats";
 import { buildFuelWorkbook, inferCarNameFromFuelFileName, parseFuelWorkbook, type FuelFormatRow } from "@/lib/mileage-formats";
 import { safeFilePart } from "@/lib/file-names";
@@ -104,7 +106,7 @@ export async function createExpense(formData: FormData) {
       labelId: labelId || null,
       contractId,
       description: optionalText(formData, "description") ?? "",
-      scope: "PRIVATE"
+      scope: expenseScopeValue(formData)
     }
   });
 
@@ -153,6 +155,36 @@ export async function createExpenseLabel(formData: FormData) {
 
   revalidatePath("/ausgaben");
   redirectToReturnToIfPresent(formData);
+}
+
+export async function quickCreateExpenseLabel(formData: FormData) {
+  const session = await requireSession();
+  const name = requiredText(formData, "name");
+  const existingLabels = await db.expenseLabel.count({
+    where: { familyId: session.family.id, ownerUserId: session.user.id }
+  });
+  const label = await db.expenseLabel.upsert({
+    where: {
+      ownerUserId_name: {
+        ownerUserId: session.user.id,
+        name
+      }
+    },
+    create: {
+      familyId: session.family.id,
+      ownerUserId: session.user.id,
+      name,
+      color: chooseCategoryColor(name, existingLabels, optionalText(formData, "color")),
+      budgetCents: parseOptionalEuroInputToCents(formData.get("budget"))
+    },
+    update: {
+      archivedAt: null
+    },
+    select: { id: true, name: true }
+  });
+
+  revalidatePath("/ausgaben");
+  return label;
 }
 
 export async function updateExpenseLabel(formData: FormData) {
@@ -353,7 +385,7 @@ export async function importExpensesFromUploadedXlsx(formData: FormData) {
   await importExpenseRows(session.family.id, session.user.id, rows);
   revalidatePath("/ausgaben");
   revalidatePath("/dashboard");
-  redirect(`/ausgaben?year=${primaryImportedYear(rows)}`);
+  redirect(actionReturnTo(formData, `/ausgaben?year=${primaryImportedYear(rows)}`));
 }
 
 export async function importExpensesFromSynologyExcel(formData: FormData) {
@@ -365,7 +397,7 @@ export async function importExpensesFromSynologyExcel(formData: FormData) {
   await importExpenseRows(session.family.id, session.user.id, rows);
   revalidatePath("/ausgaben");
   revalidatePath("/dashboard");
-  redirect(`/ausgaben?year=${primaryImportedYear(rows)}`);
+  redirect(actionReturnTo(formData, `/ausgaben?year=${primaryImportedYear(rows)}`));
 }
 
 export async function updateExpense(formData: FormData) {
@@ -391,7 +423,7 @@ export async function updateExpense(formData: FormData) {
       labelId: labelId || null,
       contractId,
       description: optionalText(formData, "description") ?? "",
-      scope: "PRIVATE"
+      scope: expenseScopeValue(formData)
     }
   });
 
@@ -401,13 +433,91 @@ export async function updateExpense(formData: FormData) {
       ownerUserId: session.user.id,
       linkedEntityType: "EXPENSE",
       linkedEntityId: requiredText(formData, "id"),
-      scope: "PRIVATE"
+      scope: expenseScopeValue(formData)
     });
   }
 
   revalidatePath("/ausgaben");
   revalidatePath("/dashboard");
   redirect(actionReturnTo(formData, "/ausgaben"));
+}
+
+export async function applyExpensePlanningTreatment(formData: FormData) {
+  const session = await requireSession();
+  const expenseId = optionalText(formData, "expenseId");
+  const groupKey = optionalText(formData, "groupKey");
+  const expenseIds = formData.getAll("expenseIds").map((value) => String(value)).filter(Boolean);
+  const treatment = enumValue(formData, "treatment", [
+    "NORMAL",
+    "FIXED_COST",
+    "SPECIAL_EFFECT",
+    "REIMBURSEMENT",
+    "IGNORE_FOR_PLANNING",
+    "SAVINGS_INVESTMENT"
+  ] as const, "NORMAL") satisfies ExpensePlanningTreatmentType;
+  const note = optionalText(formData, "note") ?? "";
+  const learnRule = formData.get("learnRule") === "on";
+  const firstExpenseId = expenseId ?? expenseIds[0];
+  const sourceExpense = firstExpenseId ? await db.expense.findFirst({
+    where: {
+      id: firstExpenseId,
+      familyId: session.family.id,
+      ownerUserId: session.user.id
+    },
+    include: { category: true }
+  }) : null;
+
+  if (!expenseId && !groupKey) throw new Error("Für die Planungsregel fehlt der Bezug.");
+  if (expenseId && !sourceExpense) throw new Error("Diese Ausgabe ist nicht verfügbar.");
+
+  await db.expensePlanningTreatment.deleteMany({
+    where: {
+      familyId: session.family.id,
+      ownerUserId: session.user.id,
+      ...(expenseId ? { expenseId } : { groupKey })
+    }
+  });
+  const planningTreatment = await db.expensePlanningTreatment.create({
+    data: {
+      familyId: session.family.id,
+      ownerUserId: session.user.id,
+      expenseId: expenseId ?? null,
+      groupKey: groupKey ?? null,
+      treatment,
+      note
+    }
+  });
+
+  if (learnRule && sourceExpense) {
+    const rule = createPlanningRuleFromExpense(toPlanningExpense(sourceExpense), treatment);
+    if (rule) {
+      await db.expensePlanningRule.deleteMany({
+        where: {
+          familyId: session.family.id,
+          ownerUserId: session.user.id,
+          patternType: rule.patternType,
+          patternValue: rule.patternValue,
+          categoryId: rule.categoryId
+        }
+      });
+      await db.expensePlanningRule.create({
+        data: {
+          familyId: session.family.id,
+          ownerUserId: session.user.id,
+          patternType: rule.patternType,
+          patternValue: rule.patternValue,
+          categoryId: rule.categoryId,
+          treatment: rule.treatment,
+          confidence: 78,
+          sourceTreatmentId: planningTreatment.id
+        }
+      });
+    }
+  }
+
+  revalidatePath("/ausgaben");
+  revalidatePath("/ausgaben/planung");
+  redirect(actionReturnTo(formData, "/ausgaben/planung"));
 }
 
 export async function exportExpensesToSynologyExcel(formData: FormData) {
@@ -757,7 +867,7 @@ export async function createCategory(formData: FormData) {
       type,
       name,
       color: chooseCategoryColor(name, existingCategories, submittedColor),
-      icon: optionalText(formData, "icon") ?? "tag",
+      icon: normalizeCategoryIcon(formData.get("icon")),
       monthlyBudgetCents: parseOptionalEuroInputToCents(formData.get("monthlyBudget")),
       scope: type === "EXPENSE" ? "PRIVATE" : scopeValue(formData)
     }
@@ -767,11 +877,40 @@ export async function createCategory(formData: FormData) {
   redirectToReturnToIfPresent(formData);
 }
 
+export async function quickCreateExpenseCategory(formData: FormData) {
+  const session = await requireSession();
+  const name = requiredText(formData, "name");
+  const existingCategories = await db.category.count({
+    where: {
+      familyId: session.family.id,
+      type: "EXPENSE",
+      ...scopeWhereForCategoryColor(session.user.id)
+    }
+  });
+  const category = await db.category.create({
+    data: {
+      familyId: session.family.id,
+      ownerUserId: session.user.id,
+      type: "EXPENSE",
+      name,
+      color: chooseCategoryColor(name, existingCategories, optionalText(formData, "color")),
+      icon: normalizeCategoryIcon(formData.get("icon")),
+      monthlyBudgetCents: parseOptionalEuroInputToCents(formData.get("monthlyBudget")),
+      scope: "PRIVATE"
+    },
+    select: { id: true, name: true, color: true, icon: true }
+  });
+
+  revalidatePath("/ausgaben");
+  return category;
+}
+
 export async function updateCategory(formData: FormData) {
   const session = await requireSession();
   const id = requiredText(formData, "id");
   const name = requiredText(formData, "name");
   const color = optionalText(formData, "color") ?? "#16776f";
+  const icon = normalizeCategoryIcon(formData.get("icon"));
 
   await db.category.updateMany({
     where: {
@@ -782,6 +921,7 @@ export async function updateCategory(formData: FormData) {
     data: {
       name,
       color,
+      icon,
       monthlyBudgetCents: parseOptionalEuroInputToCents(formData.get("monthlyBudget")),
       scope: scopeValue(formData)
     }
@@ -993,7 +1133,7 @@ export async function updateTask(formData: FormData) {
     ? enumValue(formData, "status", ["OPEN", "IN_PROGRESS", "DONE", "ARCHIVED"] as const, "OPEN")
     : undefined;
 
-  await db.task.updateMany({
+  const result = await db.task.updateMany({
     where: {
       id: requiredText(formData, "id"),
       familyId: session.family.id,
@@ -1009,6 +1149,17 @@ export async function updateTask(formData: FormData) {
       scope: scopeValue(formData)
     }
   });
+
+  if (result.count > 0) {
+    await createLinkedDocumentIfPresent(formData, {
+      familyId: session.family.id,
+      ownerUserId: session.user.id,
+      role: session.role,
+      linkedEntityType: "TASK",
+      linkedEntityId: requiredText(formData, "id"),
+      scope: scopeValue(formData)
+    });
+  }
 
   revalidatePath("/aufgaben");
   revalidatePath("/dashboard");
@@ -1126,6 +1277,7 @@ export async function createRecurringTransaction(formData: FormData) {
   const categoryId = await resolveExpenseCategoryId(session.family.id, session.user.id, optionalText(formData, "categoryId"));
   const labelId = await resolveExpenseLabelId(session.family.id, session.user.id, optionalText(formData, "labelId"));
   const startDate = parseRequiredDateInput(formData.get("startDate"));
+  const priceValidFrom = parseOptionalDateInput(optionalText(formData, "priceValidFrom")) ?? startDate;
   const recurringTransaction = await db.recurringTransaction.create({
     data: {
       familyId: session.family.id,
@@ -1146,7 +1298,7 @@ export async function createRecurringTransaction(formData: FormData) {
           amountCents: parseEuroInputToCents(formData.get("amount")),
           currency: "EUR",
           billingInterval: recurringBillingIntervalValue(formData),
-          validFrom: startDate
+          validFrom: priceValidFrom
         }
       }
     }
@@ -2219,6 +2371,40 @@ function fuelEntryDataFromForm(formData: FormData, familyId: string, carId: stri
   };
 }
 
+function toPlanningExpense(expense: {
+  id: string;
+  ownerUserId: string;
+  kind: "EXPENSE" | "INCOME";
+  amountCents: number;
+  date: Date;
+  store: string;
+  description: string;
+  paymentMethod: string;
+  categoryId: string | null;
+  contractId: string | null;
+  recurringTransactionId: string | null;
+  generatedByContract: boolean;
+  generatedByRecurringTransaction: boolean;
+  category: { id: string; name: string; color: string; icon: string | null } | null;
+}): PlanningExpense {
+  return {
+    id: expense.id,
+    ownerUserId: expense.ownerUserId,
+    kind: expense.kind,
+    amountCents: expense.amountCents,
+    date: expense.date,
+    store: expense.store,
+    description: expense.description,
+    paymentMethod: expense.paymentMethod,
+    categoryId: expense.categoryId,
+    contractId: expense.contractId,
+    recurringTransactionId: expense.recurringTransactionId,
+    generatedByContract: expense.generatedByContract,
+    generatedByRecurringTransaction: expense.generatedByRecurringTransaction,
+    category: expense.category
+  };
+}
+
 async function resolveFamilyCar(familyId: string, carId: string) {
   const car = await db.car.findFirst({
     where: {
@@ -2284,6 +2470,10 @@ function toArrayBuffer(buffer: Buffer) {
 
 function scopeValue(formData: FormData) {
   return formData.get("scope") === "PRIVATE" ? "PRIVATE" : "FAMILY";
+}
+
+function expenseScopeValue(formData: FormData) {
+  return formData.get("scope") === "FAMILY" ? "FAMILY" : "PRIVATE";
 }
 
 function enumValue<T extends string>(formData: FormData, key: string, allowed: readonly T[], fallback: T) {

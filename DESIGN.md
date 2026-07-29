@@ -797,6 +797,18 @@ Filters are independent sheets. They never open on top of a create/detail sheet.
 9. Preserve desktop functionality while modernizing its visuals.
 10. Refactor historical CSS into ordered layers/modules; do not keep appending override blocks.
 
+## Approved Implementation Reference
+
+The accepted mobile Aufgaben design is documented in `docs/UI_GUIDELINES.md`
+and should be treated as the current practical reference for future pages.
+It covers the approved page background, compact list density, icon treatment,
+animated search, quick-filter summary strip, bottom-sheet geometry, detail/edit
+split, recurring-task handling and NAS/file picker behavior.
+
+Future feature pages should adapt those patterns before inventing new local
+variants. Preserve desktop functionality while applying the shared tokens and
+mobile-first interaction model.
+
 ## Acceptance Checklist
 
 - Shared header, bottom navigation and FAB are pixel-consistent.

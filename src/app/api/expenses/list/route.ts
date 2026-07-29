@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
 import { toExpenseDocumentItem, toExpenseListItem } from "@/lib/expense-list";
 import { getMonthKey, type ExpenseFilterParams } from "@/lib/expense-filter-url";
+import { filterExpenseFacets, normalizeList } from "@/lib/expense-filters";
 import { matchesExpenseSearch } from "@/lib/expense-search";
 import { sortExpenseEntries } from "@/lib/expense-sorting";
 import { getDocumentsForLinkedEntities, getVisibleExpenses } from "@/lib/queries";
@@ -20,11 +21,12 @@ export async function GET(request: Request) {
     .filter((entry) => isInRange(entry.date, range.from, range.to))
     .filter((entry) => !params.label || entry.labelId === params.label)
     .filter((entry) => !params.category || entry.categoryId === params.category);
+  const facetFilteredEntries = filterExpenseFacets(rangeFilteredEntries, params);
   const searchableDocuments = query
-    ? await getDocumentsForLinkedEntities(session.family.id, session.user.id, "EXPENSE", rangeFilteredEntries.map((entry) => entry.id))
+    ? await getDocumentsForLinkedEntities(session.family.id, session.user.id, "EXPENSE", facetFilteredEntries.map((entry) => entry.id))
     : [];
   const searchableDocumentsByExpense = groupBy(searchableDocuments, (document) => document.linkedEntityId ?? "");
-  const selectedEntries = rangeFilteredEntries
+  const selectedEntries = facetFilteredEntries
     .filter((entry) => !query || matchesExpenseSearch(entry, query, { documents: searchableDocumentsByExpense[entry.id] ?? [] }));
   const sortedEntries = sortExpenseEntries(selectedEntries, params.sort);
   const entries = sortedEntries.slice(offset, offset + limit);
@@ -48,6 +50,9 @@ function searchParamsToExpenseParams(searchParams: URLSearchParams): ExpenseFilt
     month: searchParams.get("month"),
     label: searchParams.get("label"),
     category: searchParams.get("category"),
+    kind: searchParams.get("kind"),
+    paymentMethod: searchParams.getAll("paymentMethod"),
+    source: searchParams.getAll("source"),
     q: searchParams.get("q"),
     sort: searchParams.get("sort")
   };
@@ -105,7 +110,7 @@ function allExpenseRange(expenses: Awaited<ReturnType<typeof getVisibleExpenses>
 }
 
 function hasFacetFilter(params: ExpenseFilterParams) {
-  return Boolean(params.q || params.category || params.label);
+  return Boolean(params.q || params.category || params.label || params.kind || normalizeList(params.paymentMethod).length > 0 || normalizeList(params.source).length > 0);
 }
 
 function isInRange(date: Date, from: Date, to: Date) {

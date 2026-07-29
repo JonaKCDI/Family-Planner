@@ -28,9 +28,14 @@
 - Avoid decorative clutter. Prioritize readable overviews, especially for many expenses, categories, and tasks.
 - The floating plus button is the only entry point for creating new expenses, tasks, contracts, and document references.
 - Follow the concise app UI/UX guideline in `docs/UI_GUIDELINES.md` for future interface changes.
+- The approved Aufgaben mobile UI is the current reference pattern for future pages. Preserve its white background, compact task rows, animated search, sliding summary strip, bottom-sheet structure, detail/edit split, and NAS picker conventions described in `docs/UI_GUIDELINES.md`.
 
 ## Agent Coordination
 
+- 2026-07-14 Codex: Documented the approved Aufgaben mobile design as the implementation reference for future UI work.
+  - Primary guide: `docs/UI_GUIDELINES.md`.
+  - Use the current Aufgaben implementation as the canonical pattern for mobile overviews, quick filters, task/list rows, bottom sheets, create/edit flows, detail sheets, and NAS file picker behavior.
+  - Keep future page work mobile-first, but preserve desktop functionality from the existing app.
 - 2026-07-09 Codex: Fixing UI modernization pass after analytics feedback.
   - Scope: concise UI guideline update, broad but reviewable CSS cleanup in `src/app/globals.css`, and narrow markup cleanup for analytics controls that looked like non-working buttons.
   - Goal: calmer/lighter private productivity UI; reduce boxed/admin/form visual weight while preserving all workflows.

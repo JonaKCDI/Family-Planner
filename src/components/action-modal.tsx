@@ -2,7 +2,7 @@
 
 import type React from "react";
 import { useEffect, useId, useRef, useState } from "react";
-import { X } from "lucide-react";
+import { ArrowLeft, X } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { ModalPortal } from "@/components/modal-portal";
 
@@ -12,31 +12,40 @@ type ActionModalProps = {
   triggerLabel?: string;
   modalId?: string;
   triggerClassName?: string;
+  panelClassName?: string;
+  sheetVariant?: "action" | "create";
+  sheetSize?: "compact" | "medium" | "large";
+  showBackButton?: boolean;
   wide?: boolean;
   children: React.ReactNode;
 };
 
-export function ActionModal({ title, trigger, triggerLabel, modalId, triggerClassName = "button secondary", wide = false, children }: ActionModalProps) {
+export function ActionModal({ title, trigger, triggerLabel, modalId, triggerClassName = "button secondary", panelClassName, sheetVariant = "action", sheetSize, showBackButton = false, wide = false, children }: ActionModalProps) {
   const generatedId = useId();
   const resolvedModalId = modalId ?? `modal-${generatedId.replace(/:/g, "")}`;
   const [localOpen, setLocalOpen] = useState(false);
   const [locallyClosed, setLocallyClosed] = useState(false);
+  const [closing, setClosing] = useState(false);
   const searchParams = useSearchParams();
   const openFromUrl = modalId ? searchParams.get("modal") === resolvedModalId : false;
   const open = localOpen || (openFromUrl && !locallyClosed);
+  const visible = open || closing;
   const triggerRef = useRef<HTMLButtonElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
-    if (!open) return;
+    if (!visible) return;
     const trigger = triggerRef.current;
+    const parentPanel = trigger?.closest(".modal-panel");
     document.documentElement.classList.add("modal-scroll-locked");
+    parentPanel?.classList.add("modal-panel-covered-by-child");
     window.setTimeout(() => closeRef.current?.focus(), 0);
     return () => {
       document.documentElement.classList.remove("modal-scroll-locked");
+      parentPanel?.classList.remove("modal-panel-covered-by-child");
       trigger?.focus();
     };
-  }, [open]);
+  }, [visible]);
 
   function setModalParam(nextOpen: boolean) {
     if (!modalId) return;
@@ -48,44 +57,68 @@ export function ActionModal({ title, trigger, triggerLabel, modalId, triggerClas
   }
 
   function openModal() {
+    setClosing(false);
     setLocalOpen(true);
     setLocallyClosed(false);
     setModalParam(true);
   }
 
   function closeModal(updateUrl = true) {
-    setLocalOpen(false);
-    setLocallyClosed(true);
+    setClosing(true);
+    window.setTimeout(() => {
+      setLocalOpen(false);
+      setLocallyClosed(true);
+      setClosing(false);
+    }, 180);
     if (updateUrl) setModalParam(false);
   }
+
+  const isCreateSheet = sheetVariant === "create";
+  const backdropClassName = [
+    isCreateSheet ? "modal-backdrop" : "modal-backdrop action-modal-backdrop",
+    closing ? "is-closing" : ""
+  ].filter(Boolean).join(" ");
+  const panelClassNames = [
+    isCreateSheet ? "modal-panel create-dialog" : "modal-panel action-modal task-sheet-modal",
+    wide ? "action-modal-wide sheet-large" : `sheet-${sheetSize ?? "medium"}`,
+    showBackButton ? "has-back-button" : "",
+    panelClassName ?? ""
+  ].filter(Boolean).join(" ");
 
   return (
     <>
       <button ref={triggerRef} className={triggerClassName} type="button" aria-label={triggerLabel} title={triggerLabel} onClick={(event) => { event.stopPropagation(); openModal(); }}>
         {trigger}
       </button>
-      {open ? (
+      {visible ? (
         <ModalPortal>
-          <div className="modal-backdrop action-modal-backdrop" role="presentation">
+          <div className={backdropClassName} role="presentation">
             <section
-              className={wide ? "modal-panel action-modal action-modal-wide" : "modal-panel action-modal"}
+              className={panelClassNames}
               role="dialog"
               aria-modal="true"
               aria-labelledby={`action-modal-${resolvedModalId}`}
-              onSubmit={(event) => {
-                const form = event.target instanceof HTMLFormElement ? event.target : null;
-                if (!event.defaultPrevented && form) window.setTimeout(() => closeModal(false), 0);
-              }}
             >
+              {showBackButton ? (
+                <button className="icon-button modal-back-button" type="button" aria-label="Zurück" title="Zurück" onClick={() => closeModal()}>
+                  <ArrowLeft size={19} aria-hidden="true" />
+                </button>
+              ) : null}
               <button ref={closeRef} className="icon-button modal-close-button" type="button" aria-label="Schließen" title="Schließen" onClick={() => closeModal()}>
                 <X size={20} />
               </button>
               <div className="modal-head">
                 <h2 className="section-title" id={`action-modal-${resolvedModalId}`}>{title}</h2>
               </div>
-              <div className="modal-body">
-                {children}
-              </div>
+              {isCreateSheet ? (
+                <div className="create-dialog-body">
+                  {children}
+                </div>
+              ) : (
+                <div className="modal-body">
+                  {children}
+                </div>
+              )}
             </section>
           </div>
         </ModalPortal>

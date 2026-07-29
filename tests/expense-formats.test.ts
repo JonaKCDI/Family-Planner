@@ -2,7 +2,7 @@ import { describe, expect, test } from "vitest";
 import ExcelJS from "exceljs";
 import { buildExpenseWorkbook, parseExpenseWorkbook } from "../src/lib/expense-formats";
 import { parseEuroToCents } from "../src/lib/format";
-import { buildCategoryRows, buildDonutSegments, buildExpenseTrendChart, buildLabelRows, buildPeriodRows, sumByKind } from "../src/lib/expense-analytics";
+import { buildCategoryRows, buildDonutSegments, buildExpenseTrendChart, buildLabelRows, buildPeriodRows, findDominantDonutSegment, formatDonutPercent, sumByKind } from "../src/lib/expense-analytics";
 
 describe("money parsing", () => {
   test("parses German euro input into cents", () => {
@@ -105,6 +105,27 @@ describe("expense analytics", () => {
 
     expect(segments.map((segment) => segment.name)).toEqual(["A", "B", "C", "Weitere"]);
     expect(segments.at(-1)).toMatchObject({ value: 900 });
+  });
+
+  test("formats tiny donut percentages as less than one percent", () => {
+    expect(formatDonutPercent(0)).toBe("0%");
+    expect(formatDonutPercent(0.2)).toBe("<1%");
+    expect(formatDonutPercent(1.4)).toBe("1%");
+  });
+
+  test("detects dominant donut segments for outlier guidance", () => {
+    const segments = buildDonutSegments([
+      { name: "Ohne Kategorie", color: "#666666", spending: 500024000 },
+      { name: "Sprit", color: "#dd6633", spending: 508100 },
+      { name: "Urlaub", color: "#5577ff", spending: 28475 }
+    ]);
+
+    expect(findDominantDonutSegment(segments)).toMatchObject({
+      name: "Ohne Kategorie",
+      value: 500024000
+    });
+    expect(findDominantDonutSegment(segments)?.remainingValue).toBeGreaterThan(0);
+    expect(findDominantDonutSegment(segments, 100)).toBeNull();
   });
 
   test("builds category and label time series for all chart metrics", () => {

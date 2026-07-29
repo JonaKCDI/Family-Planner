@@ -9,6 +9,8 @@ import {
   createDocumentReference,
   createLocalDocumentReference,
   createExpense,
+  quickCreateExpenseCategory,
+  quickCreateExpenseLabel,
   createFuelEntry,
   createRecurringTransaction,
   createRecurringTask,
@@ -20,7 +22,7 @@ import { ModalPortal } from "@/components/modal-portal";
 import { SearchableSelect } from "@/components/searchable-select";
 
 type CreateModalProps = {
-  categories: { id: string; name: string }[];
+  categories: { id: string; name: string; color: string; icon: string }[];
   labels: { id: string; name: string }[];
   contracts: { id: string; provider: string; contractType: string; status: string }[];
   members: { id: string; userId: string; user: { name: string } }[];
@@ -160,8 +162,14 @@ function ExpenseForm({
   onSubmit: () => void;
 }) {
   const [planningRecurring, setPlanningRecurring] = useState(false);
+  const [expenseKind, setExpenseKind] = useState<"EXPENSE" | "INCOME">("EXPENSE");
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    if (planningRecurring && !navigator.onLine) {
+      event.preventDefault();
+      window.alert("Wiederkehrende Buchungen können nur online erstellt werden.");
+      return;
+    }
     if (navigator.onLine) {
       onSubmit();
       return;
@@ -173,63 +181,71 @@ function ExpenseForm({
   }
 
   return (
-    <form action={planningRecurring ? createRecurringTransaction : createExpense} className="form form-grid modal-form" onSubmit={handleSubmit}>
+    <form action={planningRecurring ? createRecurringTransaction : createExpense} className="form form-grid modal-form finance-create-form" data-recurring={planningRecurring ? "true" : "false"} onSubmit={handleSubmit}>
       <input type="hidden" name="returnTo" value={returnTo} />
-      <nav className="modal-section-tabs full-span" aria-label="Formularbereiche">
-        <a href="#create-expense-core">Details</a>
-        <a href="#create-expense-assignment">Zuordnung</a>
-        <a href="#create-expense-document">Dokument</a>
-      </nav>
+      {planningRecurring ? (
+        <div className="task-create-subhead full-span finance-recurring-subhead">
+          <button className="icon-button" type="button" aria-label="Zurück" title="Zurück" onClick={() => setPlanningRecurring(false)}>
+            <ArrowLeft size={18} aria-hidden="true" />
+          </button>
+          <div>
+            <strong>Wiederkehrende Buchung</strong>
+          </div>
+          <span aria-hidden="true" />
+        </div>
+      ) : null}
       <fieldset className="fieldset modal-form-section full-span" id="create-expense-core">
-        <legend>Kernangaben</legend>
+        <legend>{planningRecurring ? "Details" : "Buchung"}</legend>
+        {!planningRecurring ? (
+          <div className="finance-kind-toggle" role="radiogroup" aria-label="Art der Buchung">
+            <label><input name="kind" type="radio" value="EXPENSE" checked={expenseKind === "EXPENSE"} onChange={() => setExpenseKind("EXPENSE")} />Ausgabe</label>
+            <label><input name="kind" type="radio" value="INCOME" checked={expenseKind === "INCOME"} onChange={() => setExpenseKind("INCOME")} />Einnahme</label>
+          </div>
+        ) : (
+          <input type="hidden" name="kind" value={expenseKind} />
+        )}
         <div className="form-grid">
-          <label>Art<select name="kind" defaultValue="EXPENSE"><option value="EXPENSE">Ausgabe</option><option value="INCOME">Einnahme</option></select></label>
-          <label>Betrag in EUR<input name="amount" inputMode="decimal" placeholder="42,50" required /></label>
+          {planningRecurring ? <label className="full-span">Titel<input name="title" required placeholder="z. B. Fitnessstudio" /></label> : null}
+          <label className="full-span">Beschreibung *<input name="description" placeholder="z. B. Supermarkt, Restaurant ..." required={!planningRecurring} /></label>
+          <label>Betrag *<input name="amount" inputMode="decimal" placeholder="0,00 EUR" required /></label>
           <label>Datum<input name="date" type="date" defaultValue={today} required /></label>
-        </div>
-      </fieldset>
-      <fieldset className="fieldset modal-form-section full-span">
-        <legend>Details</legend>
-        <div className="form-grid">
-          <label>Beschreibung<input name="description" placeholder="Wocheneinkauf, Dienstreise, Rückerstattung ..." /></label>
-          <label>Bezahlart<input name="paymentMethod" list="payment-methods" placeholder="Karte, Bar, Überweisung ..." /></label>
-          <label>Laden<input name="store" placeholder="Rewe, Lidl, Amazon ..." /></label>
-        </div>
-      </fieldset>
-      <fieldset className="fieldset modal-form-section full-span" id="create-expense-assignment">
-        <legend>Zuordnung</legend>
-        <div className="form-grid">
-          <SearchableSelect name="categoryId" label="Kategorie" options={categories} emptyLabel="Keine Kategorie" placeholder="Kategorie suchen oder auswählen" />
-          <SearchableSelect name="labelId" label="Label / Projekt" options={labels} emptyLabel="Kein Label" placeholder="Label suchen oder auswählen" />
-          <label>Vertrag<select name="contractId" defaultValue=""><option value="">Kein Vertrag</option>{contracts.filter((contract) => contract.status === "ACTIVE").map((contract) => <option value={contract.id} key={contract.id}>{contract.provider} · {contract.contractType}</option>)}</select></label>
+          <SearchableSelect name="categoryId" label="Kategorie" options={categories} emptyLabel="Keine Kategorie" placeholder="Kategorie auswählen" quickAddLabel="+ Neue Kategorie hinzufügen" quickAddAction={quickCreateExpenseCategory} />
+          <label>Zahlungsart<input name="paymentMethod" list="payment-methods" placeholder="Karte" /></label>
         </div>
       </fieldset>
       {planningRecurring ? (
         <fieldset className="fieldset modal-form-section full-span" id="create-recurring-expense">
           <legend>Wiederholung</legend>
-          <nav className="modal-section-tabs" aria-label="Schritte der wiederkehrenden Buchung">
-            <a href="#create-expense-core">Details</a>
-            <a className="active" href="#create-recurring-expense">Wiederholung</a>
-          </nav>
           <div className="form-grid">
-            <label>Titel<input name="title" required placeholder="z. B. Fitnessstudio" /></label>
             <label>Startdatum<input name="startDate" type="date" defaultValue={today} required /></label>
             <label>Zahlungsrhythmus<select name="billingInterval" defaultValue="MONTHLY"><option value="MONTHLY">Monatlich</option><option value="QUARTERLY">Vierteljährlich</option><option value="YEARLY">Jährlich</option><option value="ONCE">Einmalig</option><option value="OTHER">Sonstiges</option></select></label>
             <label>Enddatum optional<input name="endDate" type="date" /></label>
+            <label>Preis gilt ab<input name="priceValidFrom" type="date" defaultValue={today} /></label>
             <input type="hidden" name="status" value="ACTIVE" />
           </div>
+          <p className="muted">Änderungen des Preises erzeugen später eine neue Preisphase. Zukünftige Buchungen werden nach den Regeln erstellt.</p>
         </fieldset>
       ) : null}
+      <details className="optional-section full-span">
+          <summary>Weitere Optionen</summary>
+          <div className="form-grid">
+            <label>Geschäft / Anbieter<input name="store" placeholder="Rewe, Lidl, Amazon ..." /></label>
+            <SearchableSelect name="labelId" label="Label / Projekt" options={labels} emptyLabel="Kein Label" placeholder="Label suchen oder auswählen" quickAddLabel="+ Neues Label hinzufügen" quickAddAction={quickCreateExpenseLabel} />
+            {!planningRecurring ? <label>Vertrag<select name="contractId" defaultValue=""><option value="">Kein Vertrag</option>{contracts.filter((contract) => contract.status === "ACTIVE").map((contract) => <option value={contract.id} key={contract.id}>{contract.provider} · {contract.contractType}</option>)}</select></label> : null}
+            {!planningRecurring ? <label>Sichtbarkeit<select name="scope" defaultValue="PRIVATE"><option value="PRIVATE">Privat</option><option value="FAMILY">Familie</option></select></label> : null}
+          </div>
+        </details>
+      {planningRecurring ? <input type="hidden" name="scope" value="PRIVATE" /> : null}
       <PaymentMethods />
       {!planningRecurring ? <button className="flow-link full-span" type="button" onClick={() => setPlanningRecurring(true)}>Als wiederkehrende Buchung planen <ChevronRight size={18} aria-hidden="true" /></button> : null}
-      <details className="optional-section full-span" id="create-expense-document">
+      {!planningRecurring ? <details className="optional-section full-span" id="create-expense-document">
         <summary>Beleg / Dokument verknüpfen</summary>
         <div className="form-grid">
           <label>Dokumenttitel<input name="documentTitle" placeholder="Rechnung, Beleg, Nachweis ..." /></label>
           <label>HTTPS-Link<input name="documentUrl" type="url" placeholder="https://drive.google.com/..." /></label>
           <DocumentFilePicker roots={documentRoots} />
         </div>
-      </details>
+      </details> : null}
       <div className="modal-submit-row modal-footer">
         {planningRecurring ? <button className="button secondary" type="button" onClick={() => setPlanningRecurring(false)}>Zurück</button> : null}
         <button className="button full-span" type="submit">{planningRecurring ? "Serie speichern" : "Buchung speichern"}</button>
@@ -263,13 +279,8 @@ function FuelForm({
   }
 
   return (
-    <form action={createFuelEntry} className="form form-grid modal-form" onSubmit={onSubmit}>
+    <form action={createFuelEntry} className="form form-grid modal-form fuel-create-form" onSubmit={onSubmit}>
       <input type="hidden" name="returnTo" value={returnTo} />
-      <nav className="modal-section-tabs full-span" aria-label="Formularbereiche">
-        <a href="#create-fuel-stop">Tankstopp</a>
-        <a href="#create-fuel-cost">Kosten</a>
-        <a href="#create-fuel-expense">Ausgabe</a>
-      </nav>
       <fieldset className="fieldset modal-form-section full-span" id="create-fuel-stop">
         <legend>Tankstopp</legend>
         <div className="form-grid">
@@ -385,6 +396,17 @@ function TaskForm({
           </button>
           <div>
             <strong>Weitere Optionen</strong>
+          </div>
+          <span aria-hidden="true" />
+        </div>
+      ) : null}
+      {taskPanel === "main" && step === "repeat" ? (
+        <div className="task-create-subhead full-span">
+          <button className="icon-button" type="button" aria-label="Zurück" title="Zurück" onClick={() => { setStep("details"); onSheetTitleChange("Aufgabe erstellen"); }}>
+            <ArrowLeft size={18} aria-hidden="true" />
+          </button>
+          <div>
+            <strong>Wiederholung</strong>
           </div>
           <span aria-hidden="true" />
         </div>
@@ -684,7 +706,7 @@ function BottomSheet({
   return (
     <ModalPortal>
       <div className={closing ? "modal-backdrop is-closing" : "modal-backdrop"} role="presentation">
-        <section className={wide ? "modal-panel create-dialog action-modal-wide" : "modal-panel create-dialog"} role="dialog" aria-modal="true" aria-labelledby={labelledById}>
+        <section className={wide ? "modal-panel create-dialog create-from-fab action-modal-wide" : "modal-panel create-dialog create-from-fab"} role="dialog" aria-modal="true" aria-labelledby={labelledById}>
           {leadingAction}
           <button className="icon-button modal-close-button" type="button" aria-label="Schließen" title="Schließen" onClick={closeSheet}>
             <X size={20} />

@@ -2,17 +2,19 @@
 
 import { Car } from "lucide-react";
 import { useState } from "react";
-import { deleteExpense, updateExpense } from "@/lib/actions";
+import { createExpense, deleteExpense, quickCreateExpenseCategory, quickCreateExpenseLabel, updateExpense } from "@/lib/actions";
 import type { ExpenseDocumentItem, ExpenseListItem } from "@/lib/expense-list";
 import { formatDate, formatMoney, toDateInputValue } from "@/lib/format";
 import { ActionModal } from "@/components/action-modal";
 import { AutosaveForm } from "@/components/autosave-form";
+import { CategoryIcon } from "@/components/category-icon";
 import { SearchableSelect, type SearchableSelectOption } from "@/components/searchable-select";
 
 export type ExpenseEntryOption = {
   id: string;
   name: string;
   color?: string;
+  icon?: string | null;
 };
 
 export type ExpenseEntryContractOption = {
@@ -62,9 +64,8 @@ export function ExpenseEntryList({
       documentsByExpense: initialDocumentsByExpense,
       loading: false
     };
-  if (currentState !== state) {
-    setState(currentState);
-  }
+  if (currentState !== state) setState(currentState);
+
   const { entries, documentsByExpense, loading } = currentState;
   const hasMore = entries.length < totalCount;
 
@@ -128,135 +129,186 @@ function ExpenseEntryRow({
   contracts: ExpenseEntryContractOption[];
   returnTo: string;
 }) {
-  const [loaded, setLoaded] = useState(false);
+  const [mode, setMode] = useState<"read" | "edit" | "duplicate" | "delete">("read");
   const primaryDocument = linkedDocuments[0];
-  const categoryOptions = includeSelectedOption(categories, expense.category ? { id: expense.category.id, name: expense.category.name } : null);
+  const categoryOptions = includeSelectedOption(categories, expense.category ? { id: expense.category.id, name: expense.category.name, color: expense.category.color, icon: expense.category.icon } : null);
   const labelOptions = includeSelectedOption(labels, expense.label ? { id: expense.label.id, name: expense.label.name, meta: "archiviert" } : null);
   const overviewMeta = [expense.store, expense.paymentMethod].filter(isUsefulExpenseMeta);
+  const source = expense.generatedByFuelEntry || expense.fuelEntry
+    ? "Tankstopp"
+    : expense.recurringTransaction
+      ? "Serie"
+      : expense.generatedByContract || expense.contract
+        ? "Vertrag"
+        : "Manuell erfasst";
+  const amountPrefix = expense.kind === "INCOME" ? "+" : "-";
 
   return (
-    <details className="expense-row" onToggle={(event) => { if (event.currentTarget.open) setLoaded(true); }}>
-      <summary>
-        <span className="expense-summary-copy">
-          <span className="expense-summary-date">{formatDate(expense.date)}</span>
-          <span className="expense-summary-main">{expense.description}</span>
-          <span className="expense-overview-tags">
+    <ActionModal
+      title={mode === "read" ? "Buchungsdetails" : mode === "edit" ? "Buchung bearbeiten" : mode === "duplicate" ? "Buchung duplizieren" : "Buchung löschen"}
+      trigger={(
+        <span className="expense-row-summary">
+          <span className="expense-summary-copy">
+            <span className="expense-summary-date">{formatDate(expense.date)}</span>
+            <span className="expense-summary-main">{expense.description || "Ohne Beschreibung"}</span>
+          </span>
+          <span className={expense.kind === "INCOME" ? "positive expense-summary-amount" : "negative expense-summary-amount"}>
+            {amountPrefix}{formatMoney(expense.amountCents, expense.currency)}
+          </span>
+          <span className="expense-mobile-tags">
+            <span className="overview-tag expense-category-tag" style={expense.category ? { borderColor: expense.category.color } : undefined}>
+              {expense.category ? <CategoryIcon icon={expense.category.icon} size={14} /> : null}
+              {expense.category?.name ?? "Ohne Kategorie"}
+            </span>
             {overviewMeta.map((item, index) => <span className="overview-tag meta-overview-tag" key={`${item}-${index}`}>{item}</span>)}
             {expense.label ? <span className="overview-tag label-overview-tag" style={{ background: expense.label.color }}>{expense.label.name}</span> : null}
-            {expense.contract ? <span className="overview-tag">{expense.contract.contractType}</span> : null}
-            {expense.generatedByContract ? <span className="overview-tag source-tag">Auto-Vertrag</span> : null}
-            {expense.recurringTransaction ? <span className="overview-tag source-tag">Serie: {expense.recurringTransaction.title}</span> : null}
-            {expense.fuelEntry ? <FuelEntryTag expense={expense} variant="overview" /> : null}
+            {source !== "Manuell erfasst" ? <span className="overview-tag source-tag">{source}</span> : null}
             {duplicateCount > 1 ? <span className="overview-tag duplicate-tag">Mögliches Duplikat</span> : null}
           </span>
         </span>
-        <span className="expense-summary-value">
-          <strong className={expense.kind === "INCOME" ? "positive expense-summary-amount" : "negative expense-summary-amount"}>
-            {expense.kind === "INCOME" ? "+" : "-"}{formatMoney(expense.amountCents, expense.currency)}
-          </strong>
-          <span className="overview-tag expense-category-tag" style={expense.category ? { borderColor: expense.category.color } : undefined}>
-            {expense.category?.name ?? "Ohne Kategorie"}
-          </span>
-        </span>
-        <span className="expense-mobile-tags">
-          <span className="overview-tag expense-category-tag" style={expense.category ? { borderColor: expense.category.color } : undefined}>
-            {expense.category?.name ?? "Ohne Kategorie"}
-          </span>
-          {overviewMeta.map((item, index) => <span className="overview-tag meta-overview-tag" key={`mobile-${item}-${index}`}>{item}</span>)}
-          {expense.label ? <span className="overview-tag label-overview-tag" style={{ background: expense.label.color }}>{expense.label.name}</span> : null}
-          {expense.contract ? <span className="overview-tag">{expense.contract.contractType}</span> : null}
-          {expense.generatedByContract ? <span className="overview-tag source-tag">Auto-Vertrag</span> : null}
-          {expense.recurringTransaction ? <span className="overview-tag source-tag">Serie: {expense.recurringTransaction.title}</span> : null}
-          {expense.fuelEntry ? <FuelEntryTag expense={expense} variant="overview" /> : null}
-          {duplicateCount > 1 ? <span className="overview-tag duplicate-tag">Mögliches Duplikat</span> : null}
-        </span>
-      </summary>
-      {loaded ? (
-        <div className="expense-detail">
-          <div className="expense-detail-description">
-            <span>Beschreibung</span>
-            <p>{expense.description || "Ohne Beschreibung"}</p>
+      )}
+      triggerClassName="expense-row-trigger"
+      modalId={`expense-${expense.id}`}
+      panelClassName="expense-detail-sheet sheet-large"
+      wide
+    >
+      {mode === "read" ? (
+        <div className="expense-detail-read">
+          <div className="expense-detail-hero">
+            <span className="expense-detail-icon" style={expense.category ? { background: expense.category.color } : undefined} aria-hidden="true">
+              {expense.category ? <CategoryIcon icon={expense.category.icon} size={24} /> : "€"}
+            </span>
+            <div>
+              <h3>{expense.description || "Ohne Beschreibung"}</h3>
+              <strong className={expense.kind === "INCOME" ? "positive" : "negative"}>{amountPrefix}{formatMoney(expense.amountCents, expense.currency)}</strong>
+              <time>{formatDate(expense.date)}</time>
+            </div>
           </div>
-          <div className="expense-detail-meta">
-            <span className="badge">{expense.kind === "INCOME" ? "Einnahme" : "Ausgabe"}</span>
-            {isUsefulExpenseMeta(expense.paymentMethod) ? <span className="badge">{expense.paymentMethod}</span> : null}
-            {expense.store ? <span className="badge">{expense.store}</span> : null}
-            {expense.category ? <span className="badge" style={{ borderColor: expense.category.color }}>{expense.category.name}</span> : null}
-            {expense.label ? <span className="badge label-badge" style={{ background: expense.label.color }}>{expense.label.name}</span> : null}
-            {expense.contract ? <span className="badge">Vertrag: {expense.contract.provider} · {expense.contract.contractType}</span> : null}
-            {expense.generatedByContract ? <span className="badge">Automatisch aus Vertrag erstellt</span> : null}
-            {expense.recurringTransaction ? <span className="badge">Serie: {expense.recurringTransaction.title}</span> : null}
-            {expense.fuelEntry ? <FuelEntryTag expense={expense} variant="detail" /> : null}
-            {duplicateCount > 1 ? <span className="badge duplicate-badge">{duplicateCount} ähnliche Einträge im Zeitraum</span> : null}
-            {linkedDocuments.length === 0 ? <span className="badge">Kein Dokument</span> : null}
-            {linkedDocuments.map((document) => (
-              <a className="badge link-badge" href={document.url} key={document.id} target="_blank" rel="noreferrer">
-                {document.title}
-              </a>
-            ))}
+          <dl className="expense-detail-list">
+            <div><dt>Art</dt><dd>{expense.kind === "INCOME" ? "Einnahme" : "Ausgabe"}</dd></div>
+            <div><dt>Kategorie</dt><dd>{expense.category?.name ?? "Ohne Kategorie"}</dd></div>
+            <div><dt>Zahlungsart</dt><dd>{isUsefulExpenseMeta(expense.paymentMethod) ? expense.paymentMethod : "Nicht angegeben"}</dd></div>
+            <div><dt>Geschäft</dt><dd>{expense.store || "Nicht angegeben"}</dd></div>
+            <div><dt>Label / Projekt</dt><dd>{expense.label?.name ?? "Kein Label"}</dd></div>
+            <div><dt>Quelle</dt><dd>{source}{expense.recurringTransaction ? `: ${expense.recurringTransaction.title}` : ""}</dd></div>
+            <div><dt>Vertrag</dt><dd>{expense.contract ? `${expense.contract.provider} · ${expense.contract.contractType}` : "Keine Vertragsverknüpfung"}</dd></div>
+            <div><dt>Dokumente</dt><dd>{linkedDocuments.length === 0 ? "Kein Dokument" : linkedDocuments.map((document) => document.title).join(", ")}</dd></div>
+          </dl>
+          {expense.fuelEntry ? <FuelEntryTag expense={expense} variant="detail" /> : null}
+          {duplicateCount > 1 ? <span className="badge duplicate-badge">{duplicateCount} ähnliche Einträge im Zeitraum</span> : null}
+          <div className="modal-submit-row modal-footer expense-detail-actions">
+            <button className="button secondary" type="button" onClick={() => setMode("edit")}>Bearbeiten</button>
+            <button className="button" type="button" onClick={() => setMode("duplicate")}>Duplizieren</button>
           </div>
-          <div className="entry-actions">
+          <details className="expense-overflow-actions">
+            <summary>Weitere Aktionen</summary>
+            <button className="button secondary danger-subtle" type="button" onClick={() => setMode("delete")}>Löschen</button>
+          </details>
+        </div>
+      ) : null}
+
+      {mode === "edit" || mode === "duplicate" ? (
+        <ExpenseMutationForm
+          action={mode === "edit" ? updateExpense : createExpense}
+          expense={expense}
+          categories={categoryOptions}
+          labels={labelOptions}
+          contracts={contracts}
+          primaryDocument={mode === "edit" ? primaryDocument : undefined}
+          returnTo={returnTo}
+          submitLabel={mode === "edit" ? "Speichern" : "Duplikat speichern"}
+          statusKey={`${mode}-${expense.id}`}
+          onBack={() => setMode("read")}
+        />
+      ) : null}
+
+      {mode === "delete" ? (
+        <div className="expense-delete-confirm">
+          <p>Diese Buchung wirklich löschen?</p>
+          <div className="modal-submit-row modal-footer">
+            <button className="button secondary" type="button" onClick={() => setMode("read")}>Zurück</button>
             <form action={deleteExpense}>
               <input type="hidden" name="id" value={expense.id} />
               <input type="hidden" name="returnTo" value={returnTo} />
-              <button className="button secondary danger-subtle" type="submit">Löschen</button>
+              <button className="button danger-subtle" type="submit">Löschen</button>
             </form>
-            <ActionModal title="Eintrag bearbeiten" trigger="Bearbeiten" modalId={`expense-${expense.id}`}>
-              <AutosaveForm action={updateExpense} className="form form-grid modal-form" statusKey={`expense-${expense.id}`}>
-                <input type="hidden" name="id" value={expense.id} />
-                <input type="hidden" name="returnTo" value={returnTo} />
-                <fieldset className="fieldset modal-form-section full-span">
-                  <legend>Kernangaben</legend>
-                  <div className="form-grid">
-                    <label>
-                      Art
-                      <select name="kind" defaultValue={expense.kind}>
-                        <option value="EXPENSE">Ausgabe</option>
-                        <option value="INCOME">Einnahme</option>
-                      </select>
-                    </label>
-                    <label>Betrag in EUR<input name="amount" inputMode="decimal" defaultValue={formatEuroInput(expense.amountCents)} required /></label>
-                    <label>Datum<input name="date" type="date" defaultValue={toDateInputValue(expense.date)} required /></label>
-                  </div>
-                </fieldset>
-                <fieldset className="fieldset modal-form-section full-span">
-                  <legend>Details</legend>
-                  <div className="form-grid">
-                    <label>Beschreibung<input name="description" defaultValue={expense.description} /></label>
-                    <label>Bezahlart<input name="paymentMethod" list="payment-methods" defaultValue={expense.paymentMethod} /></label>
-                    <label>Laden<input name="store" defaultValue={expense.store} placeholder="Rewe, Lidl, Amazon ..." /></label>
-                  </div>
-                </fieldset>
-                <fieldset className="fieldset modal-form-section full-span">
-                  <legend>Zuordnung</legend>
-                  <div className="form-grid">
-                    <SearchableSelect name="categoryId" label="Kategorie" options={categoryOptions} defaultValue={expense.categoryId} emptyLabel="Keine Kategorie" placeholder="Kategorie suchen oder auswählen" />
-                    <SearchableSelect name="labelId" label="Label / Projekt" options={labelOptions} defaultValue={expense.labelId} emptyLabel="Kein Label" placeholder="Label suchen oder auswählen" />
-                    <label>
-                      Vertrag
-                      <select name="contractId" defaultValue={expense.contractId ?? ""}>
-                        <option value="">Kein Vertrag</option>
-                        {contracts.map((contract) => <option value={contract.id} key={contract.id}>{contract.provider} · {contract.contractType}</option>)}
-                      </select>
-                    </label>
-                  </div>
-                </fieldset>
-                <PaymentMethods />
-                <details className="optional-section full-span" open={Boolean(primaryDocument)}>
-                  <summary>Beleg / Drive-Link hinzufügen</summary>
-                  <input type="hidden" name="documentId" value={primaryDocument?.id ?? ""} />
-                  <div className="form-grid">
-                    <label>Dokumenttitel<input name="documentTitle" defaultValue={primaryDocument?.title ?? ""} placeholder="Rechnung, Beleg, Nachweis ..." /></label>
-                    <label>Drive-Link<input name="documentUrl" type="url" defaultValue={primaryDocument?.url ?? ""} placeholder="https://drive.google.com/..." /></label>
-                  </div>
-                </details>
-                <button className="button full-span autosave-submit" type="submit">Speichern</button>
-              </AutosaveForm>
-            </ActionModal>
           </div>
         </div>
       ) : null}
-    </details>
+    </ActionModal>
+  );
+}
+
+function ExpenseMutationForm({
+  action,
+  expense,
+  categories,
+  labels,
+  contracts,
+  primaryDocument,
+  returnTo,
+  submitLabel,
+  statusKey,
+  onBack
+}: {
+  action: typeof updateExpense | typeof createExpense;
+  expense: ExpenseListItem;
+  categories: SearchableSelectOption[];
+  labels: SearchableSelectOption[];
+  contracts: ExpenseEntryContractOption[];
+  primaryDocument?: ExpenseDocumentItem;
+  returnTo: string;
+  submitLabel: string;
+  statusKey: string;
+  onBack: () => void;
+}) {
+  return (
+    <AutosaveForm action={action} className="form form-grid modal-form expense-sheet-form" statusKey={statusKey}>
+      {action === updateExpense ? <input type="hidden" name="id" value={expense.id} /> : null}
+      <input type="hidden" name="returnTo" value={returnTo} />
+      <fieldset className="fieldset modal-form-section full-span">
+        <legend>Kernangaben</legend>
+        <div className="finance-kind-toggle" role="radiogroup" aria-label="Art der Buchung">
+          <label><input name="kind" type="radio" value="EXPENSE" defaultChecked={expense.kind === "EXPENSE"} />Ausgabe</label>
+          <label><input name="kind" type="radio" value="INCOME" defaultChecked={expense.kind === "INCOME"} />Einnahme</label>
+        </div>
+        <div className="form-grid">
+          <label className="full-span">Beschreibung<input name="description" defaultValue={expense.description} required /></label>
+          <label>Betrag in EUR<input name="amount" inputMode="decimal" defaultValue={formatEuroInput(expense.amountCents)} required /></label>
+          <label>Datum<input name="date" type="date" defaultValue={toDateInputValue(expense.date)} required /></label>
+          <SearchableSelect name="categoryId" label="Kategorie" options={categories} defaultValue={expense.categoryId} emptyLabel="Keine Kategorie" placeholder="Kategorie suchen oder auswählen" quickAddLabel="+ Neue Kategorie hinzufügen" quickAddAction={quickCreateExpenseCategory} />
+          <label>Zahlungsart<input name="paymentMethod" list="payment-methods" defaultValue={expense.paymentMethod} /></label>
+        </div>
+      </fieldset>
+      <details className="optional-section full-span" open>
+        <summary>Weitere Optionen</summary>
+        <div className="form-grid">
+          <label>Geschäft / Anbieter<input name="store" defaultValue={expense.store} placeholder="Rewe, Lidl, Amazon ..." /></label>
+          <SearchableSelect name="labelId" label="Label / Projekt" options={labels} defaultValue={expense.labelId} emptyLabel="Kein Label" placeholder="Label suchen oder auswählen" quickAddLabel="+ Neues Label hinzufügen" quickAddAction={quickCreateExpenseLabel} />
+          <label>
+            Vertrag
+            <select name="contractId" defaultValue={expense.contractId ?? ""}>
+              <option value="">Kein Vertrag</option>
+              {contracts.map((contract) => <option value={contract.id} key={contract.id}>{contract.provider} · {contract.contractType}</option>)}
+            </select>
+          </label>
+          <label>Sichtbarkeit<select name="scope" defaultValue="PRIVATE"><option value="PRIVATE">Privat</option><option value="FAMILY">Familie</option></select></label>
+        </div>
+      </details>
+      <PaymentMethods />
+      <details className="optional-section full-span" open={Boolean(primaryDocument)}>
+        <summary>Beleg / Drive-Link hinzufügen</summary>
+        <input type="hidden" name="documentId" value={primaryDocument?.id ?? ""} />
+        <div className="form-grid">
+          <label>Dokumenttitel<input name="documentTitle" defaultValue={primaryDocument?.title ?? ""} placeholder="Rechnung, Beleg, Nachweis ..." /></label>
+          <label>Drive-Link<input name="documentUrl" type="url" defaultValue={primaryDocument?.url ?? ""} placeholder="https://drive.google.com/..." /></label>
+        </div>
+      </details>
+      <div className="modal-submit-row modal-footer">
+        <button className="button secondary" type="button" onClick={onBack}>Zurück</button>
+        <button className="button autosave-submit" type="submit">{submitLabel}</button>
+      </div>
+    </AutosaveForm>
   );
 }
 

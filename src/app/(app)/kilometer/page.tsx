@@ -10,6 +10,7 @@ import {
   updateFuelExpenseSettings,
   updateFuelEntry
 } from "@/lib/actions";
+import Link from "next/link";
 import { requireSession } from "@/lib/auth";
 import { formatDate, formatMoney } from "@/lib/format";
 import {
@@ -26,9 +27,9 @@ import { buildMonthSelectOptions, formatMonthKeyLabel, splitMonthKey } from "@/l
 import { isFamilyAdmin } from "@/lib/permissions";
 import { getExpenseLabels, getFuelEntriesForCar, getFuelExpenseSettings, getVisibleCars, getVisibleCategories } from "@/lib/queries";
 import { ActionModal } from "@/components/action-modal";
-import { Search } from "lucide-react";
 import { AutosaveForm } from "@/components/autosave-form";
 import { ExcelProgressPanel } from "@/components/excel-progress-panel";
+import { MileageToolbar } from "@/components/mileage-toolbar";
 import { PeriodNavLink } from "@/components/period-nav-link";
 import { SearchableSelect } from "@/components/searchable-select";
 import { EmptyState, PageHeader } from "@/components/ui";
@@ -40,6 +41,7 @@ type MileagePageParams = {
   from?: string | null;
   to?: string | null;
   q?: string | null;
+  view?: string | null;
 };
 
 type MileagePageProps = {
@@ -71,28 +73,34 @@ export default async function MileagePage({ searchParams }: MileagePageProps) {
   const selectedEntries = derivedEntries
     .filter((entry) => isInRange(entry.date, range.from, range.to))
     .filter((entry) => !query || normalizeSearch(entry.note).includes(query) || String(entry.odometerKm).includes(query));
+  const view = getMileageView(params.view);
   const stats = calculateFuelStatsFromDerived(selectedEntries);
   const allTimeStats = calculateFuelStats(entries);
   const monthlyRows = buildMonthlyRows(derivedEntries);
+  const recentEntries = selectedEntries.slice(0, 6);
   const returnTo = getMileageHref(params, {});
   const activeFilterChips = buildMileageActiveFilterChips(params, range);
 
   return (
     <>
-      <PageHeader title="Auto" description="Tankstopps, Verbrauch und Kilometerstände pro Auto." />
+      <div className="task-page-head finance-page-head mileage-page-head">
+        <PageHeader title="Auto" />
+        <MileageToolbar
+          params={params}
+          selectedMonth={selectedMonth}
+          filterYear={filterYear}
+          years={years}
+          monthOptions={monthOptions}
+          resultCount={selectedEntries.length}
+          activeFilterCount={activeFilterChips.length}
+        />
+      </div>
 
-      <details className="compact-search page-search" open={Boolean(query)}>
-        <summary aria-label="Tankstopps durchsuchen" title="Suchen"><Search aria-hidden="true" size={19} /></summary>
-        <form className="search-bar">
-          <MileageHiddenFields params={params} includeCar includePeriod />
-          <label>
-            <span>Tankstopps durchsuchen</span>
-            <input name="q" type="search" defaultValue={params.q ?? ""} placeholder="Bemerkung oder Kilometerstand ..." autoFocus={Boolean(query)} />
-          </label>
-          <button className="button secondary" type="submit">Suchen</button>
-          {query ? <a className="button secondary" href={getMileageHref(params, { q: undefined })}>Suche schließen</a> : null}
-        </form>
-      </details>
+      <nav className="finance-primary-tabs mileage-primary-tabs" aria-label="Auto-Bereich">
+        <Link className={view === "overview" ? "active" : ""} href={getMileageHref(params, { view: "overview" })} scroll={false}>Übersicht</Link>
+        <Link className={view === "entries" ? "active" : ""} href={getMileageHref(params, { view: "entries" })} scroll={false}>Tankstopps</Link>
+        <Link className={view === "analysis" ? "active" : ""} href={getMileageHref(params, { view: "analysis" })} scroll={false}>Analyse</Link>
+      </nav>
 
       <section className="filter-system" aria-label="Kilometerfilter">
         {selectedCar ? (
@@ -101,17 +109,8 @@ export default async function MileagePage({ searchParams }: MileagePageProps) {
               <MileagePeriodNavigator params={params} range={range} currentMonthKey={currentMonthKey} />
               <div className="period-tools mileage-period-tools">
                 <PeriodNavLink className="button period-primary-action" href={getMileageHref(params, { month: currentMonthKey, year: undefined, from: undefined, to: undefined })}>Aktuell</PeriodNavLink>
-                <ActionModal title="Kilometer filtern" trigger="Filter" modalId="kilometer-filter" triggerClassName="button period-primary-action">
-                  <MileageFilterForm
-                    params={params}
-                    selectedMonth={selectedMonth}
-                    filterYear={filterYear}
-                    years={years}
-                    monthOptions={monthOptions}
-                  />
-                </ActionModal>
                 <CarPicker cars={activeCars} selectedCarId={selectedCar.id} params={params} />
-                <ActionModal title="Kilometer-Setup" trigger="Setup" modalId="kilometer-setup" triggerClassName="button secondary mileage-setup-action" wide>
+                <ActionModal title="Kilometer-Setup" trigger="Setup" modalId="kilometer-setup" triggerClassName="button secondary mileage-setup-action" panelClassName="mileage-setup-sheet" wide>
                   <MileageSetupPanel
                     selectedCar={selectedCar}
                     activeCars={activeCars}
@@ -138,7 +137,7 @@ export default async function MileagePage({ searchParams }: MileagePageProps) {
           </>
         ) : (
           <div className="overview-actions secondary-filter-actions mileage-secondary-actions">
-            <ActionModal title="Kilometer-Setup" trigger="Setup" modalId="kilometer-setup" wide>
+            <ActionModal title="Kilometer-Setup" trigger="Setup" modalId="kilometer-setup" panelClassName="mileage-setup-sheet" wide>
               <MileageSetupPanel
                 selectedCar={selectedCar}
                 activeCars={activeCars}
@@ -157,123 +156,150 @@ export default async function MileagePage({ searchParams }: MileagePageProps) {
         <EmptyState>Noch kein aktives Auto vorhanden. Admins können im Setup ein Auto anlegen oder eine Verbrauchsdatei importieren.</EmptyState>
       ) : (
         <>
-          <section className="stats">
-            <div className="stat"><span>Tankkosten</span><strong>{formatMoney(stats.totalCostCents)}</strong></div>
-            <div className="stat"><span>Liter</span><strong>{formatLiters(stats.totalLitersMilli)} l</strong></div>
-            <div className="stat"><span>Gefahrene km</span><strong>{formatKilometers(stats.drivenKm)} km</strong><small>Letzter Stand {formatKilometers(allTimeStats.lastOdometerKm)} km</small></div>
-            <div className="stat"><span>Ø l/100 km</span><strong>{formatDecimal(stats.averageLitersPer100Km)} l</strong><small>Ø {formatMoney(Math.round(stats.averagePricePerLiterCents ?? 0))}/l</small></div>
-          </section>
+          {view === "overview" ? (
+            <section className="finance-overview-page mileage-overview-page spacing-top">
+              <MileageSummaryPanel stats={stats} allTimeStats={allTimeStats} />
 
-          <details className="panel expense-section" open>
-            <summary className="expense-section-summary">
-              <div>
-                <h2 className="section-title">Tankstopps</h2>
-                <p className="muted">{formatDate(range.from)} bis {formatDate(range.to)} · {selectedEntries.length} Einträge</p>
-              </div>
-            </summary>
-            {selectedEntries.length === 0 ? (
-              <EmptyState>Noch keine Tankstopps im gewählten Zeitraum.</EmptyState>
-            ) : (
-              <div className="expense-list">
-                {selectedEntries.map((entry) => (
-                  <details className="expense-row mileage-row" key={entry.id}>
-                    <summary>
-                      <span className="mileage-date">{formatDate(entry.date)}</span>
-                      <span className="mileage-main">
-                        <span className="mileage-odometer">{formatKilometers(entry.odometerKm)} km</span>
-                        <small>{entry.note || "Ohne Bemerkung"}</small>
-                      </span>
-                      <span className="mileage-values" aria-label="Tankdaten">
-                        <span className="mileage-value"><small>Liter</small><b>{formatLiters(entry.litersMilli)} l</b></span>
-                        <span className="mileage-value"><small>Verbrauch</small><b>{formatDecimal(entry.litersPer100Km)} l/100 km</b></span>
-                        <span className="mileage-value"><small>Gefahren</small><b>{entry.drivenKm === null ? "-" : `${formatKilometers(entry.drivenKm)} km`}</b></span>
-                        <span className="mileage-value"><small>Preis</small><b>{formatMoney(Math.round(entry.pricePerLiterCents ?? 0))}/l</b></span>
-                      </span>
-                      <strong className="mileage-cost">{formatMoney(entry.costCents)}</strong>
-                    </summary>
-                    <div className="expense-detail">
-                      <div className="mileage-detail-grid">
-                        <span><small>Gefahren</small><b>{entry.drivenKm === null ? "Erster Eintrag" : `${formatKilometers(entry.drivenKm)} km`}</b></span>
-                        <span><small>Verbrauch</small><b>{formatDecimal(entry.litersPer100Km)} l/100 km</b></span>
-                        <span><small>Tankmenge</small><b>{formatLiters(entry.litersMilli)} l</b></span>
-                        <span><small>Preis je Liter</small><b>{formatMoney(Math.round(entry.pricePerLiterCents ?? 0))}/l</b></span>
-                      </div>
-                      <div className="entry-actions">
-                        <form action={deleteFuelEntry}>
-                          <input type="hidden" name="id" value={entry.id} />
-                          <input type="hidden" name="carId" value={selectedCar.id} />
-                          <input type="hidden" name="returnTo" value={returnTo} />
-                          <button className="button secondary danger-subtle" type="submit">Löschen</button>
-                        </form>
-                        <ActionModal title="Tankstopp bearbeiten" trigger="Bearbeiten" modalId={`fuel-entry-${entry.id}`}>
-                          <AutosaveForm action={updateFuelEntry} className="form form-grid modal-form">
-                            <input type="hidden" name="id" value={entry.id} />
-                            <input type="hidden" name="carId" value={selectedCar.id} />
-                            <input type="hidden" name="returnTo" value={returnTo} />
-                            <label>Datum<input name="date" type="date" defaultValue={toDateInputValue(entry.date)} required /></label>
-                            <label>Kilometerstand<input name="odometerKm" type="number" inputMode="numeric" min="0" defaultValue={entry.odometerKm} required /></label>
-                            <label>Liter<input name="liters" inputMode="decimal" defaultValue={formatLitersInput(entry.litersMilli)} required /></label>
-                            <label>Betrag in EUR<input name="cost" inputMode="decimal" defaultValue={formatEuroInputFromCents(entry.costCents)} required /></label>
-                            <label className="full-span">Bemerkung<input name="note" defaultValue={entry.note} /></label>
-                            <button className="button full-span autosave-submit" type="submit">Speichern</button>
-                          </AutosaveForm>
-                        </ActionModal>
-                      </div>
-                    </div>
-                  </details>
-                ))}
-              </div>
-            )}
-          </details>
-
-          <details className="panel spacing-top">
-            <summary className="section-title">Analyse</summary>
-            <div className="analysis-grid">
-              <div>
-                <h3>Monate</h3>
-                {monthlyRows.length === 0 ? <EmptyState>Noch keine Daten vorhanden.</EmptyState> : (
-                  <div className="mini-table">
-                    <div className="mini-table-head"><span>Monat</span><span>km</span><span>Liter</span><span>Kosten</span><span>Ø</span></div>
-                    {monthlyRows.map((row) => (
-                      <div className="mini-table-row" key={row.label}>
-                        <span>{row.label}</span>
-                        <span>{formatKilometers(row.drivenKm)}</span>
-                        <span>{formatLiters(row.litersMilli)} l</span>
-                        <span>{formatMoney(row.costCents)}</span>
-                        <strong>{formatDecimal(row.averageLitersPer100Km)} l</strong>
-                      </div>
-                    ))}
+              <section className="panel finance-overview-snapshot mileage-overview-snapshot">
+                <div className="section-head compact-section-head">
+                  <div>
+                    <h2 className="section-title">Letzte Tankstopps</h2>
+                    <p className="muted">{formatDate(range.from)} bis {formatDate(range.to)}</p>
                   </div>
-                )}
+                  <Link className="button secondary" href={getMileageHref(params, { view: "entries" })} scroll={false}>Alle</Link>
+                </div>
+                <FuelEntryList entries={recentEntries} selectedCarId={selectedCar.id} returnTo={returnTo} />
+              </section>
+
+              <Link className="finance-inline-analysis-link" href={getMileageHref(params, { view: "analysis" })} scroll={false}>Verbrauchsanalyse ansehen <span aria-hidden="true">→</span></Link>
+            </section>
+          ) : null}
+
+          {view === "entries" ? (
+            <section className="panel expense-section mileage-entry-section spacing-top">
+              <div className="expense-section-summary">
+                <div>
+                  <h2 className="section-title">Tankstopps</h2>
+                  <p className="muted">{formatDate(range.from)} bis {formatDate(range.to)} · {selectedEntries.length} Einträge</p>
+                </div>
               </div>
-            </div>
-          </details>
+              <FuelEntryList entries={selectedEntries} selectedCarId={selectedCar.id} returnTo={returnTo} />
+            </section>
+          ) : null}
+
+          {view === "analysis" ? (
+            <section className="panel finance-category-page mileage-analysis-page spacing-top">
+              <div className="section-head compact-section-head">
+                <div>
+                  <h2 className="section-title">Analyse</h2>
+                  <p className="muted">Monatswerte für Verbrauch, Kilometer und Kosten.</p>
+                </div>
+              </div>
+              <MileageSummaryPanel stats={stats} allTimeStats={allTimeStats} compact />
+              {monthlyRows.length === 0 ? <EmptyState>Noch keine Daten vorhanden.</EmptyState> : (
+                <div className="mini-table mileage-analysis-table">
+                  <div className="mini-table-head"><span>Monat</span><span>km</span><span>Liter</span><span>Kosten</span><span>Ø</span></div>
+                  {monthlyRows.map((row) => (
+                    <div className="mini-table-row" key={row.label}>
+                      <span>{row.label}</span>
+                      <span>{formatKilometers(row.drivenKm)}</span>
+                      <span>{formatLiters(row.litersMilli)} l</span>
+                      <span>{formatMoney(row.costCents)}</span>
+                      <strong>{formatDecimal(row.averageLitersPer100Km)} l</strong>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+          ) : null}
         </>
       )}
     </>
   );
 }
 
-function MileageHiddenFields({
-  params,
-  includeCar = false,
-  includePeriod = false,
-  includeSearch = false
+function MileageSummaryPanel({
+  stats,
+  allTimeStats,
+  compact = false
 }: {
-  params: MileagePageParams;
-  includeCar?: boolean;
-  includePeriod?: boolean;
-  includeSearch?: boolean;
+  stats: ReturnType<typeof calculateFuelStatsFromDerived>;
+  allTimeStats: ReturnType<typeof calculateFuelStats>;
+  compact?: boolean;
 }) {
   return (
-    <>
-      {includeCar && params.car ? <input type="hidden" name="car" value={params.car} /> : null}
-      {includePeriod && params.year ? <input type="hidden" name="year" value={params.year} /> : null}
-      {includePeriod && params.month ? <input type="hidden" name="month" value={params.month} /> : null}
-      {includePeriod && params.from ? <input type="hidden" name="from" value={params.from} /> : null}
-      {includePeriod && params.to ? <input type="hidden" name="to" value={params.to} /> : null}
-      {includeSearch && params.q ? <input type="hidden" name="q" value={params.q} /> : null}
-    </>
+    <section className={compact ? "finance-summary-panel mileage-summary-panel compact" : "finance-summary-panel mileage-summary-panel"} aria-label="Autoüberblick">
+      <div className="finance-summary-metric"><span>Tankkosten</span><strong>{formatMoney(stats.totalCostCents)}</strong></div>
+      <div className="finance-summary-metric"><span>Liter</span><strong>{formatLiters(stats.totalLitersMilli)} l</strong></div>
+      <div className="finance-summary-metric"><span>Gefahren</span><strong>{formatKilometers(stats.drivenKm)} km</strong><small>Letzter Stand {formatKilometers(allTimeStats.lastOdometerKm)} km</small></div>
+      <div className="finance-summary-metric"><span>Ø l/100 km</span><strong>{formatDecimal(stats.averageLitersPer100Km)} l</strong><small>Ø {formatMoney(Math.round(stats.averagePricePerLiterCents ?? 0))}/l</small></div>
+    </section>
+  );
+}
+
+function FuelEntryList({
+  entries,
+  selectedCarId,
+  returnTo
+}: {
+  entries: ReturnType<typeof addFuelDerivedFields>;
+  selectedCarId: string;
+  returnTo: string;
+}) {
+  if (entries.length === 0) return <EmptyState>Noch keine Tankstopps im gewählten Zeitraum.</EmptyState>;
+
+  return (
+    <div className="expense-list mileage-entry-list">
+      {entries.map((entry) => (
+        <details className="expense-row mileage-row" key={entry.id}>
+          <summary>
+            <span className="mileage-date">{formatDate(entry.date)}</span>
+            <span className="mileage-main">
+              <span className="mileage-odometer">{formatKilometers(entry.odometerKm)} km</span>
+              <small>{entry.note || "Ohne Bemerkung"}</small>
+            </span>
+            <span className="mileage-values" aria-label="Tankdaten">
+              <span className="mileage-value"><small>Liter</small><b>{formatLiters(entry.litersMilli)} l</b></span>
+              <span className="mileage-value"><small>Verbrauch</small><b>{formatDecimal(entry.litersPer100Km)} l/100 km</b></span>
+              <span className="mileage-value"><small>Gefahren</small><b>{entry.drivenKm === null ? "-" : `${formatKilometers(entry.drivenKm)} km`}</b></span>
+              <span className="mileage-value"><small>Preis</small><b>{formatMoney(Math.round(entry.pricePerLiterCents ?? 0))}/l</b></span>
+            </span>
+            <strong className="mileage-cost">{formatMoney(entry.costCents)}</strong>
+          </summary>
+          <div className="expense-detail mileage-detail-sheet">
+            <div className="mileage-detail-grid">
+              <span><small>Gefahren</small><b>{entry.drivenKm === null ? "Erster Eintrag" : `${formatKilometers(entry.drivenKm)} km`}</b></span>
+              <span><small>Verbrauch</small><b>{formatDecimal(entry.litersPer100Km)} l/100 km</b></span>
+              <span><small>Tankmenge</small><b>{formatLiters(entry.litersMilli)} l</b></span>
+              <span><small>Preis je Liter</small><b>{formatMoney(Math.round(entry.pricePerLiterCents ?? 0))}/l</b></span>
+            </div>
+            <div className="entry-actions">
+              <form action={deleteFuelEntry}>
+                <input type="hidden" name="id" value={entry.id} />
+                <input type="hidden" name="carId" value={selectedCarId} />
+                <input type="hidden" name="returnTo" value={returnTo} />
+                <button className="button secondary danger-subtle" type="submit">Löschen</button>
+              </form>
+              <ActionModal title="Tankstopp bearbeiten" trigger="Bearbeiten" modalId={`fuel-entry-${entry.id}`} sheetVariant="create" panelClassName="mileage-edit-sheet" wide>
+                <AutosaveForm action={updateFuelEntry} className="form form-grid modal-form mileage-edit-form">
+                  <input type="hidden" name="id" value={entry.id} />
+                  <input type="hidden" name="carId" value={selectedCarId} />
+                  <input type="hidden" name="returnTo" value={returnTo} />
+                  <label>Datum<input name="date" type="date" defaultValue={toDateInputValue(entry.date)} required /></label>
+                  <label>Kilometerstand<input name="odometerKm" type="number" inputMode="numeric" min="0" defaultValue={entry.odometerKm} required /></label>
+                  <label>Liter<input name="liters" inputMode="decimal" defaultValue={formatLitersInput(entry.litersMilli)} required /></label>
+                  <label>Betrag in EUR<input name="cost" inputMode="decimal" defaultValue={formatEuroInputFromCents(entry.costCents)} required /></label>
+                  <label className="full-span">Bemerkung<input name="note" defaultValue={entry.note} /></label>
+                  <div className="modal-submit-row modal-footer">
+                    <button className="button full-span autosave-submit" type="submit">Speichern</button>
+                  </div>
+                </AutosaveForm>
+              </ActionModal>
+            </div>
+          </div>
+        </details>
+      ))}
+    </div>
   );
 }
 
@@ -332,7 +358,7 @@ function CarPicker({
   }
 
   return (
-    <ActionModal title="Auto auswählen" trigger={cars.find((car) => car.id === selectedCarId)?.name ?? "Auto"} triggerLabel="Auto auswählen" modalId="kilometer-auto" triggerClassName="button secondary mileage-car-trigger">
+    <ActionModal title="Auto auswählen" trigger={cars.find((car) => car.id === selectedCarId)?.name ?? "Auto"} triggerLabel="Auto auswählen" modalId="kilometer-auto" triggerClassName="button secondary mileage-car-trigger" panelClassName="mileage-car-sheet" sheetSize="compact">
       <div className="mileage-car-menu" role="list" aria-label="Autos">
         {cars.map((car) => (
           <a role="listitem" className={selectedCarId === car.id ? "active" : ""} href={getMileageHref(params, { car: car.id })} key={car.id}>
@@ -345,56 +371,6 @@ function CarPicker({
         ))}
       </div>
     </ActionModal>
-  );
-}
-
-function MileageFilterForm({
-  params,
-  selectedMonth,
-  filterYear,
-  years,
-  monthOptions
-}: {
-  params: MileagePageParams;
-  selectedMonth: ReturnType<typeof splitMonthKey> | null;
-  filterYear: string;
-  years: number[];
-  monthOptions: ReturnType<typeof buildMonthSelectOptions>;
-}) {
-  return (
-    <form action="/kilometer" className="form form-grid expense-filter-form" method="get">
-      <MileageHiddenFields params={params} includeCar />
-      <fieldset className="fieldset full-span compact-fieldset period-picker-fieldset">
-        <legend>Monat/Jahr</legend>
-        <div className="period-select-row">
-          <label>
-            Monat
-            <select name="month" defaultValue={selectedMonth?.month ?? ""}>
-              <option value="">Kein Monatsfilter</option>
-              {monthOptions.map((month) => <option value={month.value} key={month.value}>{month.label}</option>)}
-            </select>
-          </label>
-          <label>
-            Jahr
-            <select name="year" defaultValue={filterYear}>
-              {years.map((year) => <option value={year} key={year}>{year}</option>)}
-            </select>
-          </label>
-        </div>
-      </fieldset>
-      <fieldset className="fieldset full-span compact-fieldset">
-        <legend>Zeitraum optional eingrenzen</legend>
-        <div className="form-grid">
-          <label>Von<input name="from" type="date" defaultValue={params.from ?? ""} /></label>
-          <label>Bis<input name="to" type="date" defaultValue={params.to ?? ""} /></label>
-        </div>
-      </fieldset>
-      <label className="full-span">Suche<input name="q" type="search" defaultValue={params.q ?? ""} placeholder="Bemerkung oder Kilometerstand ..." /></label>
-      <div className="filter-actions full-span">
-        <button className="button" type="submit">Anwenden</button>
-        <a className="button secondary" href={getMileageHref(params, { q: undefined, from: undefined, to: undefined })}>Filter löschen</a>
-      </div>
-    </form>
   );
 }
 
@@ -582,9 +558,9 @@ function getRange(params: MileagePageParams, currentMonthKey: string) {
 function getMileageHref(params: MileagePageParams, overrides: MileagePageParams) {
   const next = cleanMileageParams({ ...params, ...overrides });
   const search = new URLSearchParams();
-  for (const key of ["car", "from", "to", "year", "month", "q"] as const) {
+  for (const key of ["car", "from", "to", "year", "month", "q", "view"] as const) {
     const value = next[key];
-    if (value) search.set(key, value);
+    if (value && !(key === "view" && value === "overview")) search.set(key, value);
   }
   const query = search.toString();
   return query ? `/kilometer?${query}` : "/kilometer";
@@ -612,7 +588,7 @@ function buildMileageYearNavigationHref(params: MileagePageParams, year: number,
 
 function cleanMileageParams(params: MileagePageParams) {
   const next: MileagePageParams = {};
-  for (const key of ["car", "from", "to", "year", "month", "q"] as const) {
+  for (const key of ["car", "from", "to", "year", "month", "q", "view"] as const) {
     const value = String(params[key] ?? "").trim();
     if (value) next[key] = value;
   }
@@ -631,7 +607,13 @@ function cleanMileageParams(params: MileagePageParams) {
   } else if (next.year) {
     delete next.month;
   }
+  if (next.view && getMileageView(next.view) === "overview") delete next.view;
   return next;
+}
+
+function getMileageView(value: unknown): "overview" | "entries" | "analysis" {
+  if (value === "entries" || value === "analysis") return value;
+  return "overview";
 }
 
 function buildMileageActiveFilterChips(params: MileagePageParams, range: ReturnType<typeof getRange>) {

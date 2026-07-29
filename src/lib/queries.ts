@@ -134,8 +134,17 @@ export async function getVisibleTasks(familyId: string, userId: string) {
         select: {
           id: true,
           title: true,
+          assignedToUserId: true,
+          description: true,
+          priority: true,
+          scope: true,
+          startDate: true,
+          endDate: true,
+          leadTimeDays: true,
+          status: true,
           intervalCount: true,
-          intervalUnit: true
+          intervalUnit: true,
+          nextDueDate: true
         }
       }
     },
@@ -209,6 +218,26 @@ export async function getRecurringTransactions(familyId: string, userId: string)
       pricePhases: { orderBy: { validFrom: "asc" } }
     },
     orderBy: [{ status: "asc" }, { title: "asc" }]
+  });
+}
+
+export async function getExpensePlanningTreatments(familyId: string, userId: string) {
+  return db.expensePlanningTreatment.findMany({
+    where: {
+      familyId,
+      ownerUserId: userId
+    },
+    orderBy: { updatedAt: "desc" }
+  });
+}
+
+export async function getExpensePlanningRules(familyId: string, userId: string) {
+  return db.expensePlanningRule.findMany({
+    where: {
+      familyId,
+      ownerUserId: userId
+    },
+    orderBy: { updatedAt: "desc" }
   });
 }
 

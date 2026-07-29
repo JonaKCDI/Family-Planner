@@ -320,7 +320,22 @@ function serializeExpense(expense: Awaited<ReturnType<typeof getVisibleExpenses>
   };
 }
 
-function serializeTask(task: Awaited<ReturnType<typeof getVisibleTasks>>[number]) {
+function serializeTask(task: {
+  id: string;
+  title: string;
+  description: string | null;
+  status: string;
+  priority: string;
+  dueDate: Date | null;
+  recurringTaskId: string | null;
+  recurringTaskDueDate: Date | null;
+  recurringTask: { id: string; title: string; intervalCount: number; intervalUnit: string } | null;
+  scope: string;
+  assignedToUserId: string | null;
+  updatedAt: Date;
+  owner: { id: string; name: string };
+  assignee: { id: string; name: string } | null;
+}) {
   return {
     id: task.id,
     title: task.title,

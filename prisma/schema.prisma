@@ -99,6 +99,23 @@ enum LinkedEntityType {
   GENERAL
 }
 
+enum ExpensePlanningTreatmentType {
+  NORMAL
+  FIXED_COST
+  SPECIAL_EFFECT
+  REIMBURSEMENT
+  IGNORE_FOR_PLANNING
+  SAVINGS_INVESTMENT
+}
+
+enum ExpensePlanningRulePatternType {
+  CATEGORY
+  STORE
+  DESCRIPTION
+  CATEGORY_STORE
+  REIMBURSEMENT_TEXT
+}
+
 model User {
   id           String         @id @default(cuid())
   name         String         @unique
@@ -124,6 +141,8 @@ model User {
   createdDocumentRoots DocumentRoot[] @relation("DocumentRootCreator")
   documentRootAccesses DocumentRootAccess[]
   createdRecoveryKeys AdminRecoveryKey[] @relation("AdminRecoveryKeyCreator")
+  expensePlanningTreatments ExpensePlanningTreatment[]
+  expensePlanningRules ExpensePlanningRule[]
 }
 
 model Session {
@@ -164,6 +183,8 @@ model Family {
   documents  DocumentReference[]
   documentRoots DocumentRoot[]
   adminRecoveryKey AdminRecoveryKey?
+  expensePlanningTreatments ExpensePlanningTreatment[]
+  expensePlanningRules ExpensePlanningRule[]
 }
 
 model AdminRecoveryKey {
@@ -210,6 +231,7 @@ model Category {
   contractExpenseDefaults Contract[] @relation("ContractExpenseCategory")
   recurringTransactions RecurringTransaction[]
   fuelExpenseSettings FuelExpenseSettings[]
+  expensePlanningRules ExpensePlanningRule[]
 
   @@index([familyId, type])
 }
@@ -264,6 +286,7 @@ model Expense {
   contract    Contract? @relation(fields: [contractId], references: [id], onDelete: SetNull)
   fuelEntry   FuelEntry? @relation(fields: [fuelEntryId], references: [id], onDelete: SetNull)
   recurringTransaction RecurringTransaction? @relation(fields: [recurringTransactionId], references: [id], onDelete: SetNull)
+  planningTreatments ExpensePlanningTreatment[]
 
   @@index([familyId, date])
   @@index([familyId, kind])
@@ -272,6 +295,49 @@ model Expense {
   @@index([contractId])
   @@index([fuelEntryId])
   @@index([recurringTransactionId])
+}
+
+model ExpensePlanningTreatment {
+  id          String   @id @default(cuid())
+  familyId    String
+  ownerUserId String
+  expenseId   String?
+  groupKey    String?
+  treatment   ExpensePlanningTreatmentType
+  note        String   @default("")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  family      Family   @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  owner       User     @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
+  expense     Expense? @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+  learnedRules ExpensePlanningRule[]
+
+  @@unique([ownerUserId, expenseId])
+  @@unique([ownerUserId, groupKey])
+  @@index([familyId, ownerUserId])
+  @@index([expenseId])
+}
+
+model ExpensePlanningRule {
+  id          String   @id @default(cuid())
+  familyId    String
+  ownerUserId String
+  patternType ExpensePlanningRulePatternType
+  patternValue String
+  categoryId  String?
+  treatment   ExpensePlanningTreatmentType
+  confidence  Int      @default(70)
+  sourceTreatmentId String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  family      Family   @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  owner       User     @relation(fields: [ownerUserId], references: [id], onDelete: Cascade)
+  category    Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  sourceTreatment ExpensePlanningTreatment? @relation(fields: [sourceTreatmentId], references: [id], onDelete: SetNull)
+
+  @@unique([ownerUserId, patternType, patternValue, categoryId])
+  @@index([familyId, ownerUserId])
+  @@index([categoryId])
 }
 
 model FuelExpenseSettings {

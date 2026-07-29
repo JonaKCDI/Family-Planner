@@ -2,7 +2,7 @@ export type AnalyticsExpense = {
   kind: "EXPENSE" | "INCOME";
   amountCents: number;
   date: Date | string;
-  category?: { id?: string; name: string; color: string; monthlyBudgetCents: number } | null;
+  category?: { id?: string; name: string; color: string; icon?: string | null; monthlyBudgetCents: number } | null;
   label?: { id?: string; name: string; color: string; budgetCents: number } | null;
 };
 
@@ -10,6 +10,7 @@ export type AnalyticsCategory = {
   id?: string;
   name: string;
   color: string;
+  icon?: string | null;
   monthlyBudgetCents: number;
 };
 
@@ -32,6 +33,9 @@ export type DonutSegment = {
   percent: number;
   strokeDasharray: string;
   strokeDashoffset: number;
+};
+export type DominantDonutSegment = DonutSegment & {
+  remainingValue: number;
 };
 export type ExpenseTrendSeries = {
   id?: string;
@@ -66,13 +70,14 @@ export function sumByKind(entries: AnalyticsExpense[], kind: "EXPENSE" | "INCOME
 }
 
 export function buildCategoryRows(entries: AnalyticsExpense[], categories: AnalyticsCategory[], totalSpending: number, showBudget: boolean) {
-  const rows = new Map<string, { income: number; spending: number; color: string; category?: AnalyticsCategory; id?: string }>();
+  const rows = new Map<string, { income: number; spending: number; color: string; icon?: string | null; category?: AnalyticsCategory; id?: string }>();
   for (const entry of entries) {
     const name = entry.category?.name ?? "Ohne Kategorie";
     const current = rows.get(name) ?? {
       income: 0,
       spending: 0,
       color: entry.category?.color ?? "#6b6f76",
+      icon: entry.category?.icon,
       category: entry.category ?? undefined,
       id: entry.category?.id
     };
@@ -83,7 +88,7 @@ export function buildCategoryRows(entries: AnalyticsExpense[], categories: Analy
   if (showBudget) {
     for (const category of categories) {
       if (category.monthlyBudgetCents <= 0 || rows.has(category.name)) continue;
-      rows.set(category.name, { income: 0, spending: 0, color: category.color, category });
+      rows.set(category.name, { income: 0, spending: 0, color: category.color, icon: category.icon, category });
     }
   }
 
@@ -101,6 +106,7 @@ export function buildCategoryRows(entries: AnalyticsExpense[], categories: Analy
       saldo,
       netConsumption,
       color: row.color,
+      icon: row.icon ?? row.category?.icon,
       budget,
       remaining: budget - netConsumption,
       budgetUsage: budget > 0 ? Math.min(100, (netConsumption / budget) * 100) : netConsumption > 0 ? 100 : 0,
@@ -203,6 +209,23 @@ export function buildDonutSegments(
     offset -= percent;
     return segment;
   });
+}
+
+export function formatDonutPercent(percent: number) {
+  if (!Number.isFinite(percent) || percent <= 0) return "0%";
+  if (percent < 0.5) return "<1%";
+  return `${Math.round(percent)}%`;
+}
+
+export function findDominantDonutSegment(segments: DonutSegment[], thresholdPercent = 85): DominantDonutSegment | null {
+  if (segments.length < 2) return null;
+  const [first] = [...segments].sort((a, b) => b.percent - a.percent);
+  if (!first || first.percent < thresholdPercent) return null;
+  const total = segments.reduce((sum, segment) => sum + segment.value, 0);
+  return {
+    ...first,
+    remainingValue: Math.max(0, total - first.value)
+  };
 }
 
 export function buildExpenseTrendChart(
