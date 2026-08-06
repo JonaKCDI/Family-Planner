@@ -1652,7 +1652,7 @@ export async function updateDocumentReference(formData: FormData) {
     data: {
       linkedEntityType,
       linkedEntityId,
-      title: requiredText(formData, "title"),
+      title: requiredText(formData, "title", "description"),
       referenceType: existing.referenceType,
       url,
       description: optionalText(formData, "description"),

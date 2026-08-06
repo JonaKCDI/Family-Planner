@@ -16,6 +16,7 @@ describe("expense planning analysis", () => {
       entries,
       categories: [food],
       referenceDate: new Date("2026-07-31"),
+      asOfDate: new Date("2026-08-01"),
       months: 7,
       displayYear: 2026
     });
@@ -38,6 +39,7 @@ describe("expense planning analysis", () => {
       entries,
       categories: [misc],
       referenceDate: new Date("2026-07-31"),
+      asOfDate: new Date("2026-08-01"),
       months: 6,
       displayYear: 2026
     });
@@ -60,6 +62,7 @@ describe("expense planning analysis", () => {
       treatment: "REIMBURSEMENT"
     }];
     const entries = [
+      ...monthlyIncome("user_a", [300000, 300000, 300000, 300000, 300000, 300000], "2026-01"),
       income("user_a", "2026-07-28", 300000, "Gehalt"),
       income("user_a", "2026-07-15", 120000, "Abrechnung Projekt")
     ];
@@ -69,12 +72,13 @@ describe("expense planning analysis", () => {
       categories: [],
       treatments,
       referenceDate: new Date("2026-07-31"),
+      asOfDate: new Date("2026-08-01"),
       months: 1,
       displayYear: 2026
     });
 
     expect(analysis.summary.normalIncomeCents).toBe(300000);
-    expect(analysis.monthlyRows[0]).toMatchObject({
+    expect(analysis.monthlyRows.at(-1)).toMatchObject({
       incomeCents: 420000,
       normalIncomeCents: 300000
     });
@@ -92,12 +96,85 @@ describe("expense planning analysis", () => {
       entries,
       categories: [rent],
       referenceDate: new Date("2026-04-30"),
+      asOfDate: new Date("2026-05-01"),
       months: 4,
       displayYear: 2026
     });
 
     expect(analysis.summary.fixedCostCents).toBe(95000);
     expect(analysis.categoryRows[0].plannedCents).toBe(380000);
+    expect(analysis.monthlyRows.map((row) => row.fixedCostCents)).toEqual([95000, 95000, 95000, 95000]);
+    expect(analysis.fixedCostTrendRows).toHaveLength(24);
+    expect(analysis.fixedCostTrendRows.filter((row) => row.fixedCostCents > 0).map((row) => row.fixedCostCents)).toEqual([95000, 95000, 95000, 95000]);
+  });
+
+  test("does not let future months distort current year planning", () => {
+    const entries = [
+      ...monthlyCategory("user_a", food, [15000, 16000, 15500, 15800, 16200, 15900], "2026-01"),
+      expense("user_a", food, "2026-12-10", 400000, "Silvester Vorauszahlung"),
+      ...monthlyIncome("user_a", [300000, 300000, 300000, 300000, 300000, 300000], "2026-01")
+    ];
+
+    const analysis = buildExpensePlanningAnalysis({
+      entries,
+      categories: [food],
+      referenceDate: new Date("2026-12-31"),
+      asOfDate: new Date("2026-07-15"),
+      months: 12,
+      displayYear: 2026
+    });
+
+    expect(analysis.periods).toEqual(["2026-01", "2026-02", "2026-03", "2026-04", "2026-05", "2026-06"]);
+    expect(analysis.categoryRows[0].grossCents).toBe(94400);
+    expect(analysis.categoryRows[0].planMonthlyCents).toBeLessThan(20000);
+  });
+
+  test("amortizes quarterly and annual fixed costs into monthly need", () => {
+    const insurance = { id: "cat_insurance", name: "Versicherung", color: "#556b2f", icon: "shield" };
+    const entries = [
+      ...monthlyCategory("user_a", rent, Array(12).fill(95000), "2026-01"),
+      expense("user_a", insurance, "2026-01-05", 30000, "Quartal Versicherung"),
+      expense("user_a", insurance, "2026-04-05", 30000, "Quartal Versicherung"),
+      expense("user_a", insurance, "2026-07-05", 30000, "Quartal Versicherung"),
+      expense("user_a", insurance, "2026-10-05", 30000, "Quartal Versicherung"),
+      expense("user_a", insurance, "2024-01-10", 120000, "Jahrespolice"),
+      expense("user_a", insurance, "2025-01-10", 120000, "Jahrespolice"),
+      expense("user_a", insurance, "2026-01-10", 120000, "Jahrespolice"),
+      ...monthlyIncome("user_a", Array(12).fill(350000), "2026-01")
+    ];
+
+    const analysis = buildExpensePlanningAnalysis({
+      entries,
+      categories: [rent, insurance],
+      referenceDate: new Date("2026-12-31"),
+      asOfDate: new Date("2027-01-01"),
+      historyMonths: 36,
+      displayYear: 2026
+    });
+
+    expect(analysis.summary.fixedCostCents).toBe(115000);
+    expect(analysis.fixedCostTrendRows.filter((row) => row.month.startsWith("2026-")).map((row) => row.fixedCostCents)).toEqual(Array(12).fill(115000));
+  });
+
+  test("does not keep stale fixed costs in current monthly need", () => {
+    const entries = [
+      expense("user_a", rent, "2024-01-01", 95000, "Alter Vermieter"),
+      expense("user_a", rent, "2024-02-01", 95000, "Alter Vermieter"),
+      expense("user_a", rent, "2024-03-01", 95000, "Alter Vermieter"),
+      ...monthlyIncome("user_a", Array(12).fill(320000), "2026-01")
+    ];
+
+    const analysis = buildExpensePlanningAnalysis({
+      entries,
+      categories: [rent],
+      referenceDate: new Date("2026-12-31"),
+      asOfDate: new Date("2027-01-01"),
+      historyMonths: 36,
+      displayYear: 2026
+    });
+
+    expect(analysis.summary.fixedCostCents).toBe(0);
+    expect(analysis.fixedCostTrendRows.filter((row) => row.month.startsWith("2026-")).every((row) => row.fixedCostCents === 0)).toBe(true);
   });
 
   test("adjusts the plan upward after a persistent new level", () => {
@@ -107,6 +184,7 @@ describe("expense planning analysis", () => {
       entries,
       categories: [food],
       referenceDate: new Date("2026-07-31"),
+      asOfDate: new Date("2026-08-01"),
       months: 10,
       displayYear: 2026
     });
@@ -132,12 +210,43 @@ describe("expense planning analysis", () => {
       categories: [misc],
       rules,
       referenceDate: new Date("2026-07-31"),
+      asOfDate: new Date("2026-08-01"),
       months: 3,
       displayYear: 2026
     });
 
     expect(analysis.summary.grossSpendingCents).toBe(60000);
     expect(analysis.summary.plannedSpendingCents).toBe(30000);
+  });
+
+  test("marks large open review amounts as warning", () => {
+    const entries = [
+      expense("user_a", misc, "2026-06-10", 500000, "Einmaliger Kauf"),
+      ...monthlyIncome("user_a", [300000, 300000, 300000, 300000, 300000, 300000], "2026-01")
+    ];
+
+    const analysis = buildExpensePlanningAnalysis({
+      entries,
+      categories: [misc],
+      referenceDate: new Date("2026-12-31"),
+      asOfDate: new Date("2026-07-15"),
+      displayYear: 2026
+    });
+
+    expect(analysis.qualityStatus).toBe("WARNING");
+    expect(analysis.summary.reviewNeededCents).toBe(500000);
+  });
+
+  test("marks missing income or too little history as unreliable", () => {
+    const analysis = buildExpensePlanningAnalysis({
+      entries: [expense("user_a", misc, "2026-01-10", 25000, "Kauf")],
+      categories: [misc],
+      referenceDate: new Date("2026-12-31"),
+      asOfDate: new Date("2026-02-15"),
+      displayYear: 2026
+    });
+
+    expect(analysis.qualityStatus).toBe("UNRELIABLE");
   });
 });
 

@@ -61,6 +61,7 @@ export type PlanningCategoryRow = {
   medianCents: number;
   activeMonths: number;
   confidence: number;
+  reliability: "RELIABLE" | "WARNING" | "REVIEW";
   reason: string;
 };
 
@@ -78,6 +79,7 @@ export type PlanningSuggestion = {
 export type PlanningMonthlyRow = {
   month: string;
   grossSpendingCents: number;
+  fixedCostCents: number;
   plannedSpendingCents: number;
   incomeCents: number;
   normalIncomeCents: number;
@@ -86,8 +88,17 @@ export type PlanningMonthlyRow = {
   plannedSavingsCents: number;
 };
 
+export type PlanningFixedCostTrendRow = {
+  month: string;
+  fixedCostCents: number;
+};
+
+export type PlanningQualityStatus = "RELIABLE" | "WARNING" | "UNRELIABLE";
+
 export type ExpensePlanningAnalysis = {
   periods: string[];
+  qualityStatus: PlanningQualityStatus;
+  qualityReasons: string[];
   summary: {
     grossSpendingCents: number;
     plannedSpendingCents: number;
@@ -103,6 +114,7 @@ export type ExpensePlanningAnalysis = {
   };
   categoryRows: PlanningCategoryRow[];
   monthlyRows: PlanningMonthlyRow[];
+  fixedCostTrendRows: PlanningFixedCostTrendRow[];
   suggestions: PlanningSuggestion[];
 };
 
@@ -127,7 +139,11 @@ type CategoryProfile = {
 type FixedGroup = {
   key: string;
   categoryId: string;
-  amountCents: number;
+  monthlyAmountCents: number;
+  cadenceMonths: number;
+  firstMonth: string;
+  lastMonth: string;
+  activeUntilMonth: string;
   expenseIds: Set<string>;
 };
 
@@ -137,7 +153,9 @@ const planningConstants = {
   reserveShareOfDetectedEffects: 0.5,
   normalRangeMultiplier: 1.25,
   outlierIqrMultiplier: 1.5,
-  minimumOutlierGapCents: 5000
+  minimumOutlierGapCents: 5000,
+  reviewWarningIncomeShare: 0.5,
+  reviewWarningSpendingShare: 0.25
 } as const;
 const reimbursementWords = ["spesen", "erstattung", "rueckzahlung", "rückzahlung", "auslage", "reisekosten", "gutschrift", "refund"];
 
@@ -147,7 +165,9 @@ export function buildExpensePlanningAnalysis({
   treatments = [],
   rules = [],
   months = 12,
+  historyMonths = 24,
   referenceDate = new Date(),
+  asOfDate = referenceDate,
   displayYear
 }: {
   entries: PlanningExpense[];
@@ -155,20 +175,27 @@ export function buildExpensePlanningAnalysis({
   treatments?: PlanningTreatment[];
   rules?: PlanningRule[];
   months?: number;
+  historyMonths?: number;
   referenceDate?: Date | string;
+  asOfDate?: Date | string;
   displayYear?: number;
 }): ExpensePlanningAnalysis {
-  const periods = buildMonthPeriods(referenceDate, months);
+  const periods = buildAnalysisPeriods(referenceDate, months, displayYear, asOfDate);
   const periodSet = new Set(periods);
+  const historyEnd = periods.at(-1) ?? monthKey(referenceDate);
+  const historyPeriods = buildMonthPeriods(monthDate(historyEnd), Math.max(months, historyMonths));
+  const historyPeriodSet = new Set(historyPeriods);
   const treatmentByExpense = new Map(treatments.filter((item) => item.expenseId).map((item) => [item.expenseId ?? "", item.treatment]));
   const treatmentByGroup = new Map(treatments.filter((item) => item.groupKey).map((item) => [item.groupKey ?? "", item.treatment]));
   const visibleEntries = entries.filter((entry) => periodSet.has(monthKey(entry.date)));
+  const historyEntries = entries.filter((entry) => historyPeriodSet.has(monthKey(entry.date)));
   const expenseEntries = visibleEntries.filter((entry) => entry.kind === "EXPENSE");
   const incomeEntries = visibleEntries.filter((entry) => entry.kind === "INCOME");
-  const fixedGroups = detectFixedGroups(expenseEntries);
+  const historyExpenseEntries = historyEntries.filter((entry) => entry.kind === "EXPENSE");
+  const fixedGroups = detectFixedGroups(historyExpenseEntries);
   const fixedExpenseIds = new Set([...fixedGroups.values()].flatMap((group) => [...group.expenseIds]));
   const profiles = buildCategoryProfiles(expenseEntries, categories, periods);
-  const selectedPeriods = displayYear ? periods.filter((period) => period.startsWith(`${displayYear}-`)) : periods;
+  const selectedPeriods = periods;
   const selectedPeriodSet = new Set(selectedPeriods);
   const applied = expenseEntries
     .filter((entry) => selectedPeriodSet.has(monthKey(entry.date)))
@@ -203,6 +230,7 @@ export function buildExpensePlanningAnalysis({
         medianCents: Math.round(profile.median),
         activeMonths: profile.activeMonths,
         confidence: profile.confidence,
+        reliability: categoryReliability(profile),
         reason: categoryReason(profile)
       },
       values: profile.values
@@ -230,43 +258,60 @@ export function buildExpensePlanningAnalysis({
     }
   }
 
-  const monthlyRows = selectedPeriods.map((period) => buildMonthlyRow(period, expenseEntries, incomeEntries, profiles, rules, treatmentByExpense, treatmentByGroup, fixedExpenseIds));
-  const fixedCostCents = [...fixedGroups.values()].reduce((sum, group) => sum + group.amountCents, 0)
-    + applied.filter((item) => item.treatment === "FIXED_COST" && !fixedExpenseIds.has(item.entry.id)).reduce((sum, item) => sum + item.entry.amountCents, 0);
+  const monthlyRows = selectedPeriods.map((period) => buildMonthlyRow(period, expenseEntries, incomeEntries, profiles, rules, treatmentByExpense, treatmentByGroup, fixedExpenseIds, fixedGroups));
+  const fixedCostTrendRows = historyPeriods.map((period) => buildFixedCostTrendRow(period, historyExpenseEntries, profiles, rules, treatmentByExpense, treatmentByGroup, fixedExpenseIds, fixedGroups));
+  const activeFixedMonthValues = monthlyRows.map((row) => row.fixedCostCents).filter((value) => value > 0);
+  const fixedCostCents = activeFixedMonthValues.length > 0 ? Math.round(median(activeFixedMonthValues)) : 0;
   const categoryRows = [...categoryBuckets.values()].map((bucket) => bucket.row).sort((a, b) => b.grossCents - a.grossCents || a.name.localeCompare(b.name, "de"));
   const planTotal = categoryRows.reduce((sum, row) => sum + row.planMonthlyCents, 0);
-  const normalIncomeCents = normalMonthlyIncome(incomeEntries, periods, treatmentByExpense, rules);
+  const monthlyNeedCents = Math.max(planTotal, fixedCostCents);
+  const normalIncomeCents = normalMonthlyIncome(incomeEntries, selectedPeriods, treatmentByExpense, rules);
   const grossSpendingCents = monthlyRows.reduce((sum, row) => sum + row.grossSpendingCents, 0);
   const plannedSpendingCents = monthlyRows.reduce((sum, row) => sum + row.plannedSpendingCents, 0);
   const specialEffectCents = Math.max(0, grossSpendingCents - plannedSpendingCents);
-  const sparseSpendingCents = categoryRows
-    .filter((row) => row.activeMonths < planningConstants.sparseCategoryMonthLimit)
-    .reduce((sum, row) => sum + row.grossCents, 0);
+  const sparseSpendingCents = applied
+    .filter((item) => {
+      const profile = item.profile ?? fallbackProfile(item.entry);
+      return profile.activeMonths < planningConstants.sparseCategoryMonthLimit && !item.isFixed && !item.treatment;
+    })
+    .reduce((sum, item) => sum + item.entry.amountCents, 0);
   const monthlyReserveCents = Math.round((specialEffectCents * planningConstants.reserveShareOfDetectedEffects) / Math.max(1, selectedPeriods.length));
   const incomeCents = monthlyRows.reduce((sum, row) => sum + row.incomeCents, 0);
-  const conservativeNeed = fixedCostCents + categoryRows.reduce((sum, row) => sum + Math.max(row.planMonthlyCents, row.normalHighCents), 0) - fixedCostCents;
+  const conservativeNeed = Math.max(fixedCostCents, categoryRows.reduce((sum, row) => sum + Math.max(row.planMonthlyCents, row.normalHighCents), 0));
+  const suggestions = [
+    ...suggestionsByGroup.values(),
+    ...buildReimbursementSuggestions(incomeEntries, selectedPeriodSet, treatmentByExpense)
+  ].sort((a, b) => b.plannedImpactCents - a.plannedImpactCents);
+  const quality = buildQualityStatus({
+    periods: selectedPeriods,
+    categoryRows,
+    normalIncomeCents,
+    monthlyNeedCents,
+    reviewNeededCents: sparseSpendingCents,
+    suggestions
+  });
 
   return {
     periods: selectedPeriods,
+    qualityStatus: quality.status,
+    qualityReasons: quality.reasons,
     summary: {
       grossSpendingCents,
       plannedSpendingCents,
       specialEffectCents,
       fixedCostCents,
-      variablePlanCents: Math.max(0, planTotal - fixedCostCents),
+      variablePlanCents: Math.max(0, monthlyNeedCents - fixedCostCents),
       monthlyReserveCents,
       reviewNeededCents: sparseSpendingCents,
       normalIncomeCents,
       grossSavingsCents: incomeCents - grossSpendingCents,
-      plannedSavingsCents: normalIncomeCents - planTotal - monthlyReserveCents,
+      plannedSavingsCents: normalIncomeCents - monthlyNeedCents - monthlyReserveCents,
       conservativeSavingsCents: normalIncomeCents - conservativeNeed - monthlyReserveCents
     },
     categoryRows,
     monthlyRows,
-    suggestions: [
-      ...suggestionsByGroup.values(),
-      ...buildReimbursementSuggestions(incomeEntries, selectedPeriodSet, treatmentByExpense)
-    ].sort((a, b) => b.plannedImpactCents - a.plannedImpactCents)
+    fixedCostTrendRows,
+    suggestions
   };
 }
 
@@ -344,7 +389,8 @@ function buildMonthlyRow(
   rules: PlanningRule[],
   treatmentByExpense: Map<string, ExpensePlanningTreatmentType>,
   treatmentByGroup: Map<string, ExpensePlanningTreatmentType>,
-  fixedExpenseIds: Set<string>
+  fixedExpenseIds: Set<string>,
+  fixedGroups: Map<string, FixedGroup>
 ): PlanningMonthlyRow {
   let grossSpendingCents = 0;
   let plannedSpendingCents = 0;
@@ -356,6 +402,7 @@ function buildMonthlyRow(
     grossSpendingCents += entry.amountCents;
     plannedSpendingCents += plannedAmountForExpense(entry, profile, treatment, fixedExpenseIds.has(entry.id) || treatment === "FIXED_COST");
   }
+  const fixedCostCents = fixedCostForPeriod(period, expenseEntries, profiles, rules, treatmentByExpense, treatmentByGroup, fixedExpenseIds, fixedGroups);
   const periodIncome = incomeEntries.filter((entry) => monthKey(entry.date) === period);
   const incomeCents = periodIncome.reduce((sum, entry) => sum + entry.amountCents, 0);
   const normalIncomeCents = periodIncome
@@ -364,6 +411,7 @@ function buildMonthlyRow(
   return {
     month: period,
     grossSpendingCents,
+    fixedCostCents,
     plannedSpendingCents,
     incomeCents,
     normalIncomeCents,
@@ -371,6 +419,47 @@ function buildMonthlyRow(
     grossSavingsCents: incomeCents - grossSpendingCents,
     plannedSavingsCents: normalIncomeCents - plannedSpendingCents
   };
+}
+
+function buildFixedCostTrendRow(
+  period: string,
+  expenseEntries: PlanningExpense[],
+  profiles: Map<string, CategoryProfile>,
+  rules: PlanningRule[],
+  treatmentByExpense: Map<string, ExpensePlanningTreatmentType>,
+  treatmentByGroup: Map<string, ExpensePlanningTreatmentType>,
+  fixedExpenseIds: Set<string>,
+  fixedGroups: Map<string, FixedGroup>
+): PlanningFixedCostTrendRow {
+  return {
+    month: period,
+    fixedCostCents: fixedCostForPeriod(period, expenseEntries, profiles, rules, treatmentByExpense, treatmentByGroup, fixedExpenseIds, fixedGroups)
+  };
+}
+
+function fixedCostForPeriod(
+  period: string,
+  expenseEntries: PlanningExpense[],
+  profiles: Map<string, CategoryProfile>,
+  rules: PlanningRule[],
+  treatmentByExpense: Map<string, ExpensePlanningTreatmentType>,
+  treatmentByGroup: Map<string, ExpensePlanningTreatmentType>,
+  fixedExpenseIds: Set<string>,
+  fixedGroups: Map<string, FixedGroup>
+) {
+  const detectedFixedCents = [...fixedGroups.values()]
+    .filter((group) => fixedGroupActiveInPeriod(group, period))
+    .reduce((sum, group) => sum + group.monthlyAmountCents, 0);
+  const manualFixedCents = expenseEntries
+    .filter((entry) => monthKey(entry.date) === period)
+    .filter((entry) => {
+      const profile = profiles.get(categoryKey(entry)) ?? fallbackProfile(entry);
+      const groupKey = specialGroupKey(entry, profile);
+      const treatment = treatmentByExpense.get(entry.id) ?? (groupKey ? treatmentByGroup.get(groupKey) : undefined) ?? matchingRuleTreatment(entry, rules);
+      return treatment === "FIXED_COST" && !fixedExpenseIds.has(entry.id);
+    })
+    .reduce((sum, entry) => sum + entry.amountCents, 0);
+  return Math.round(detectedFixedCents + manualFixedCents);
 }
 
 function detectFixedGroups(entries: PlanningExpense[]) {
@@ -393,18 +482,34 @@ function detectFixedGroups(entries: PlanningExpense[]) {
     const cv = meanValue > 0 ? standardDeviation(amounts) / meanValue : 1;
     const gaps = sorted.slice(1).map((entry, index) => daysBetween(sorted[index].date, entry.date));
     const cadence = median(gaps);
+    const cadenceMonths = cadenceMonthsFromDays(cadence);
     const generated = sorted.some((entry) => entry.generatedByContract || entry.generatedByRecurringTransaction || entry.contractId || entry.recurringTransactionId);
     const regularCadence = (cadence >= 25 && cadence <= 35) || (cadence >= 80 && cadence <= 100) || (cadence >= 350 && cadence <= 380);
     if (sorted.length >= 3 && (generated || (cv <= 0.1 && regularCadence))) {
+      const lastMonth = monthKey(sorted[sorted.length - 1].date);
       fixed.set(key, {
         key,
         categoryId: categoryKey(sorted[0]),
-        amountCents: Math.round(median(amounts)),
+        monthlyAmountCents: Math.round(median(amounts) / cadenceMonths),
+        cadenceMonths,
+        firstMonth: monthKey(sorted[0].date),
+        lastMonth,
+        activeUntilMonth: addMonthsToKey(lastMonth, Math.max(1, cadenceMonths + Math.ceil(cadenceMonths / 2))),
         expenseIds: new Set(sorted.map((entry) => entry.id))
       });
     }
   }
   return fixed;
+}
+
+function fixedGroupActiveInPeriod(group: FixedGroup, period: string) {
+  return compareMonthKeys(period, group.firstMonth) >= 0 && compareMonthKeys(period, group.activeUntilMonth) <= 0;
+}
+
+function cadenceMonthsFromDays(days: number) {
+  if (days >= 300) return 12;
+  if (days >= 70) return 3;
+  return 1;
 }
 
 function matchingRuleTreatment(entry: PlanningExpense, rules: PlanningRule[]) {
@@ -485,8 +590,14 @@ function categoryKey(entry: PlanningExpense) {
 }
 
 function categoryReason(profile: CategoryProfile) {
-  if (profile.activeMonths < planningConstants.sparseCategoryMonthLimit) return "Noch wenig Historie; bleibt unverÃ¤ndert und wird als PrÃ¼fbedarf gezeigt.";
+  if (profile.activeMonths < planningConstants.sparseCategoryMonthLimit) return "Noch wenig Historie; bleibt unverändert und wird als Prüfbedarf gezeigt.";
   return `Planwert aus Median ${formatCents(profile.median)} und getrimmtem Durchschnitt ${formatCents(profile.trimmedMean)}.`;
+}
+
+function categoryReliability(profile: CategoryProfile): PlanningCategoryRow["reliability"] {
+  if (profile.activeMonths < planningConstants.sparseCategoryMonthLimit) return "REVIEW";
+  if (profile.confidence < 55) return "WARNING";
+  return "RELIABLE";
 }
 
 function looksLikeReimbursement(entry: PlanningExpense) {
@@ -508,6 +619,46 @@ function isNormalPlanningIncome(entry: PlanningExpense, treatment?: ExpensePlann
   return !looksLikeReimbursement(entry);
 }
 
+function buildQualityStatus({
+  periods,
+  categoryRows,
+  normalIncomeCents,
+  monthlyNeedCents,
+  reviewNeededCents,
+  suggestions
+}: {
+  periods: string[];
+  categoryRows: PlanningCategoryRow[];
+  normalIncomeCents: number;
+  monthlyNeedCents: number;
+  reviewNeededCents: number;
+  suggestions: PlanningSuggestion[];
+}) {
+  const criticalReasons: string[] = [];
+  const warningReasons: string[] = [];
+  if (periods.length < planningConstants.sparseCategoryMonthLimit) {
+    criticalReasons.push("Es gibt weniger als drei vollständige Monate im Auswertungszeitraum.");
+  }
+  if (normalIncomeCents <= 0) {
+    criticalReasons.push("Es wurde kein belastbares monatliches Einkommen erkannt.");
+  }
+  const reviewLimit = Math.max(normalIncomeCents * planningConstants.reviewWarningIncomeShare, monthlyNeedCents * planningConstants.reviewWarningSpendingShare, 1);
+  if (reviewNeededCents > reviewLimit) {
+    warningReasons.push(`Es liegen ${formatCents(reviewNeededCents)} in seltenen Kategorien, die noch geprüft werden sollten.`);
+  }
+  const reviewRows = categoryRows.filter((row) => row.reliability === "REVIEW" && row.grossCents > 0);
+  if (reviewRows.length >= 3) {
+    warningReasons.push(`${reviewRows.length} Kategorien haben noch zu wenig Historie.`);
+  }
+  const openSuggestionCents = suggestions.reduce((sum, suggestion) => sum + suggestion.plannedImpactCents, 0);
+  if (openSuggestionCents > Math.max(normalIncomeCents * 0.35, monthlyNeedCents * 0.25, 1)) {
+    warningReasons.push(`Offene Vorschläge beeinflussen die Planung um ${formatCents(openSuggestionCents)}.`);
+  }
+  if (criticalReasons.length > 0) return { status: "UNRELIABLE" as const, reasons: criticalReasons };
+  if (warningReasons.length > 0) return { status: "WARNING" as const, reasons: warningReasons };
+  return { status: "RELIABLE" as const, reasons: ["Die wichtigsten Werte basieren auf vollständigen Monaten und ausreichender Historie."] };
+}
+
 function buildMonthPeriods(referenceDate: Date | string, count: number) {
   const end = new Date(referenceDate);
   return Array.from({ length: count }, (_, index) => {
@@ -516,9 +667,39 @@ function buildMonthPeriods(referenceDate: Date | string, count: number) {
   });
 }
 
+function buildAnalysisPeriods(referenceDate: Date | string, count: number, displayYear: number | undefined, asOfDate: Date | string) {
+  const reference = new Date(referenceDate);
+  const asOf = new Date(asOfDate);
+  if (!displayYear) return buildMonthPeriods(lastCompleteMonthDate(asOf), count);
+  if (displayYear < asOf.getFullYear()) return Array.from({ length: 12 }, (_, index) => monthKey(new Date(displayYear, index, 1)));
+  if (displayYear > asOf.getFullYear()) return [];
+  const lastComplete = lastCompleteMonthDate(asOf);
+  if (lastComplete.getFullYear() < displayYear) return [];
+  const endMonth = Math.min(lastComplete.getMonth(), reference.getMonth());
+  return Array.from({ length: endMonth + 1 }, (_, index) => monthKey(new Date(displayYear, index, 1)));
+}
+
+function lastCompleteMonthDate(date: Date) {
+  return new Date(date.getFullYear(), date.getMonth() - 1, 1);
+}
+
+function monthDate(month: string) {
+  const [year, value] = month.split("-").map(Number);
+  return new Date(year, value - 1, 1);
+}
+
 function monthKey(dateLike: Date | string) {
   const date = new Date(dateLike);
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function addMonthsToKey(month: string, count: number) {
+  const date = monthDate(month);
+  return monthKey(new Date(date.getFullYear(), date.getMonth() + count, 1));
+}
+
+function compareMonthKeys(a: string, b: string) {
+  return monthDate(a).getTime() - monthDate(b).getTime();
 }
 
 function normalizedMerchant(entry: PlanningExpense) {

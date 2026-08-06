@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { requireSession } from "@/lib/auth";
 import { applyExpensePlanningTreatment } from "@/lib/actions";
-import { buildExpensePlanningAnalysis, type ExpensePlanningTreatmentType, type PlanningExpense } from "@/lib/expense-planning-analysis";
+import { buildExpensePlanningAnalysis, type ExpensePlanningTreatmentType, type PlanningExpense, type PlanningFixedCostTrendRow } from "@/lib/expense-planning-analysis";
 import { formatMoney } from "@/lib/format";
 import { getExpensePlanningRules, getExpensePlanningTreatments, getVisibleCategories, getVisibleExpenses } from "@/lib/queries";
 import { FinanceTransitionMarker } from "@/components/finance-transition-marker";
@@ -29,7 +29,8 @@ export default async function ExpensePlanningPage({ searchParams }: PlanningPage
     getExpensePlanningTreatments(session.family.id, session.user.id),
     getExpensePlanningRules(session.family.id, session.user.id)
   ]);
-  const currentYear = new Date().getFullYear();
+  const today = new Date();
+  const currentYear = today.getFullYear();
   const years = [...new Set([currentYear, ...expenses.map((entry) => new Date(entry.date).getFullYear())])].sort((a, b) => b - a);
   const selectedYear = normalizeYear(params.year, years, currentYear);
   const referenceDate = new Date(selectedYear, 11, 31);
@@ -40,6 +41,7 @@ export default async function ExpensePlanningPage({ searchParams }: PlanningPage
     rules,
     months: 12,
     referenceDate,
+    asOfDate: today,
     displayYear: selectedYear
   });
   const sparseRows = analysis.categoryRows.filter((row) => row.activeMonths < 3 && row.grossCents > 0);
@@ -95,13 +97,25 @@ export default async function ExpensePlanningPage({ searchParams }: PlanningPage
           info="Erkannte Verträge, Serien und stabile wiederkehrende Buchungen. Manuell bestätigte Fixkosten fließen ebenfalls ein."
         />
         <PlanningMetric
-          label="Sparrate"
+          label={analysis.qualityStatus === "RELIABLE" ? "Sparrate" : "Vorläufige Sparrate"}
           value={analysis.summary.plannedSavingsCents}
-          infoTitle="Sparrate"
-          info="Normale monatliche Einnahmen minus Monatsbedarf und Rücklage für erkannte Ausreißer."
+          infoTitle={analysis.qualityStatus === "RELIABLE" ? "Sparrate" : "Vorläufige Sparrate"}
+          info="Normale monatliche Einnahmen minus Monatsbedarf und Rücklage für erkannte Ausreißer. Bei offenen Prüfposten ist die Zahl nur eine Orientierung."
           tone={analysis.summary.plannedSavingsCents < 0 ? "negative" : "positive"}
         />
       </section>
+
+      {analysis.qualityStatus !== "RELIABLE" ? (
+        <section className={`panel planning-quality-note ${analysis.qualityStatus === "UNRELIABLE" ? "is-unreliable" : ""}`} aria-label="Belastbarkeit der Planungsanalyse">
+          <div>
+            <strong>{analysis.qualityStatus === "UNRELIABLE" ? "Sparrate nicht belastbar" : "Sparrate vorläufig"}</strong>
+            <p className="muted">Die Zahl bleibt sichtbar, sollte aber erst nach Prüfung dieser Punkte für Entscheidungen genutzt werden.</p>
+          </div>
+          <ul>
+            {analysis.qualityReasons.map((reason) => <li key={reason}>{reason}</li>)}
+          </ul>
+        </section>
+      ) : null}
 
       {sparseRows.length > 0 ? (
         <section className="panel planning-data-note" aria-label="Datenhinweis">
@@ -184,6 +198,16 @@ export default async function ExpensePlanningPage({ searchParams }: PlanningPage
       <section className="panel planning-panel">
         <div className="section-head compact-section-head">
           <div>
+            <h2 className="section-title">Fixkosten-Verlauf</h2>
+            <p className="muted">Monatliche Entwicklung der erkannten und bestätigten Fixkosten.</p>
+          </div>
+        </div>
+        <FixedCostTrendChart rows={analysis.fixedCostTrendRows} />
+      </section>
+
+      <section className="panel planning-panel">
+        <div className="section-head compact-section-head">
+          <div>
             <h2 className="section-title">Kategorie-Planwerte</h2>
             <p className="muted">Planwert, Normalbereich und erkannte Abweichungen pro Kategorie.</p>
           </div>
@@ -200,6 +224,7 @@ export default async function ExpensePlanningPage({ searchParams }: PlanningPage
               <span>{row.activeMonths < 3 ? "Prüfen" : `${formatMoney(row.planMonthlyCents)} Plan/Monat`}</span>
               <span className={row.specialEffectCents > 0 ? "negative" : ""}>{formatMoney(row.specialEffectCents)} Effekt</span>
               <span>{reliabilityLabel(row.confidence)}</span>
+              <span>{categoryReliabilityLabel(row.reliability)}</span>
             </div>
           ))}
         </div>
@@ -247,6 +272,72 @@ function MetricInfo({ title, children }: { title: string; children: string }) {
   );
 }
 
+function FixedCostTrendChart({ rows }: { rows: PlanningFixedCostTrendRow[] }) {
+  const activeRows = rows.filter((row) => row.fixedCostCents > 0);
+  if (activeRows.length === 0) return <EmptyState>Noch keine erkannten Fixkosten für den Verlauf.</EmptyState>;
+
+  const first = activeRows[0];
+  const last = activeRows[activeRows.length - 1];
+  const delta = last.fixedCostCents - first.fixedCostCents;
+  const maxValue = Math.max(...rows.map((row) => row.fixedCostCents), 1);
+  const width = 320;
+  const height = 148;
+  const padX = 18;
+  const padTop = 18;
+  const padBottom = 30;
+  const plotWidth = width - padX * 2;
+  const plotHeight = height - padTop - padBottom;
+
+  function x(index: number) {
+    if (rows.length <= 1) return padX + plotWidth / 2;
+    return padX + (index / (rows.length - 1)) * plotWidth;
+  }
+
+  function y(value: number) {
+    return padTop + ((maxValue - value) / maxValue) * plotHeight;
+  }
+
+  const points = rows.map((row, index) => `${x(index).toFixed(1)},${y(row.fixedCostCents).toFixed(1)}`).join(" ");
+  const labelStep = rows.length > 18 ? 5 : rows.length > 12 ? 3 : 2;
+
+  return (
+    <div className="planning-fixed-trend">
+      <div className="planning-fixed-trend-summary">
+        <span>Aktuell</span>
+        <strong>{formatMoney(last.fixedCostCents)}</strong>
+        <small className={delta > 0 ? "negative" : delta < 0 ? "positive" : undefined}>
+          {delta === 0 ? "unverändert" : `${delta > 0 ? "+" : ""}${formatMoney(delta)} seit ${formatMonth(first.month)}`}
+        </small>
+      </div>
+      <div className="finance-trend-chart planning-fixed-trend-chart" role="img" aria-label="Fixkosten-Verlauf">
+        <svg viewBox={`0 0 ${width} ${height}`} aria-hidden="true">
+          {[0.25, 0.5, 0.75].map((step) => {
+            const gridY = padTop + step * plotHeight;
+            return <line className="finance-chart-grid-line muted-line" x1={padX} x2={width - padX} y1={gridY} y2={gridY} key={step} />;
+          })}
+          <polyline className="finance-chart-line" fill="none" points={points} stroke="#16776f" />
+          {rows.map((row, index) => (
+            <circle className="finance-chart-dot" cx={x(index)} cy={y(row.fixedCostCents)} fill="#16776f" key={row.month} r={row.fixedCostCents > 0 ? "2.8" : "1.9"} />
+          ))}
+          {rows.map((row, index) => (
+            index % labelStep === 0 || index === rows.length - 1
+              ? <text className="finance-chart-axis" x={x(index)} y={height - 8} textAnchor="middle" key={row.month}>{formatMonth(row.month)}</text>
+              : null
+          ))}
+        </svg>
+        <div className="planning-fixed-trend-list">
+          {activeRows.slice(-6).map((row) => (
+            <span key={row.month}>
+              <small>{formatMonth(row.month)}</small>
+              <strong>{formatMoney(row.fixedCostCents)}</strong>
+            </span>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function PlanningTreatmentForm({
   groupKey,
   expenseIds,
@@ -282,6 +373,12 @@ function reliabilityLabel(confidence: number) {
   if (confidence >= 75) return "gute Datenbasis";
   if (confidence >= 50) return "brauchbarer Hinweis";
   return "nur grober Hinweis";
+}
+
+function categoryReliabilityLabel(reliability: "RELIABLE" | "WARNING" | "REVIEW") {
+  if (reliability === "RELIABLE") return "belastbar";
+  if (reliability === "WARNING") return "vorläufig";
+  return "prüfen";
 }
 
 function suggestionTreatmentLabel(treatment: ExpensePlanningTreatmentType) {

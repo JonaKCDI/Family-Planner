@@ -163,6 +163,8 @@ function ExpenseForm({
 }) {
   const [planningRecurring, setPlanningRecurring] = useState(false);
   const [expenseKind, setExpenseKind] = useState<"EXPENSE" | "INCOME">("EXPENSE");
+  const [expensePanel, setExpensePanel] = useState<"main" | "document">("main");
+  const showMainExpenseFields = expensePanel === "main" && !planningRecurring;
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     if (planningRecurring && !navigator.onLine) {
@@ -181,8 +183,19 @@ function ExpenseForm({
   }
 
   return (
-    <form action={planningRecurring ? createRecurringTransaction : createExpense} className="form form-grid modal-form finance-create-form" data-recurring={planningRecurring ? "true" : "false"} onSubmit={handleSubmit}>
+    <form action={planningRecurring ? createRecurringTransaction : createExpense} className="form form-grid modal-form finance-create-form" data-recurring={planningRecurring ? "true" : "false"} data-expense-panel={expensePanel} onSubmit={handleSubmit}>
       <input type="hidden" name="returnTo" value={returnTo} />
+      {expensePanel === "document" ? (
+        <div className="task-create-subhead full-span finance-document-subhead">
+          <button className="icon-button" type="button" aria-label="Zurück" title="Zurück" onClick={() => setExpensePanel("main")}>
+            <ArrowLeft size={18} aria-hidden="true" />
+          </button>
+          <div>
+            <strong>Beleg / Dokument</strong>
+          </div>
+          <span aria-hidden="true" />
+        </div>
+      ) : null}
       {planningRecurring ? (
         <div className="task-create-subhead full-span finance-recurring-subhead">
           <button className="icon-button" type="button" aria-label="Zurück" title="Zurück" onClick={() => setPlanningRecurring(false)}>
@@ -194,27 +207,37 @@ function ExpenseForm({
           <span aria-hidden="true" />
         </div>
       ) : null}
-      <fieldset className="fieldset modal-form-section full-span" id="create-expense-core">
-        <legend>{planningRecurring ? "Details" : "Buchung"}</legend>
-        {!planningRecurring ? (
-          <div className="finance-kind-toggle" role="radiogroup" aria-label="Art der Buchung">
-            <label><input name="kind" type="radio" value="EXPENSE" checked={expenseKind === "EXPENSE"} onChange={() => setExpenseKind("EXPENSE")} />Ausgabe</label>
-            <label><input name="kind" type="radio" value="INCOME" checked={expenseKind === "INCOME"} onChange={() => setExpenseKind("INCOME")} />Einnahme</label>
+      <fieldset className="fieldset modal-form-section full-span finance-create-core" id="create-expense-core" hidden={expensePanel !== "main" || planningRecurring}>
+        <legend>Buchung</legend>
+        <div className="form-grid finance-create-grid">
+          {planningRecurring ? <input type="hidden" name="title" value="" /> : null}
+          <div className="finance-create-quick-grid full-span" hidden={!showMainExpenseFields}>
+            {!planningRecurring ? (
+              <div className="finance-kind-toggle finance-kind-compact" role="radiogroup" aria-label="Art der Buchung">
+                <label><input name="kind" type="radio" value="EXPENSE" checked={expenseKind === "EXPENSE"} onChange={() => setExpenseKind("EXPENSE")} />Ausgabe</label>
+                <label><input name="kind" type="radio" value="INCOME" checked={expenseKind === "INCOME"} onChange={() => setExpenseKind("INCOME")} />Einnahme</label>
+              </div>
+            ) : (
+              <input type="hidden" name="kind" value={expenseKind} />
+            )}
+            <label>Betrag *<input name="amount" inputMode="decimal" placeholder="0,00 EUR" required /></label>
+            <label>Datum<input name="date" type="date" defaultValue={today} required /></label>
+            <label>Zahlungsart<input name="paymentMethod" list="payment-methods" placeholder="Karte" /></label>
           </div>
-        ) : (
-          <input type="hidden" name="kind" value={expenseKind} />
-        )}
-        <div className="form-grid">
-          {planningRecurring ? <label className="full-span">Titel<input name="title" required placeholder="z. B. Fitnessstudio" /></label> : null}
-          <label className="full-span">Beschreibung *<input name="description" placeholder="z. B. Supermarkt, Restaurant ..." required={!planningRecurring} /></label>
-          <label>Betrag *<input name="amount" inputMode="decimal" placeholder="0,00 EUR" required /></label>
-          <label>Datum<input name="date" type="date" defaultValue={today} required /></label>
-          <SearchableSelect name="categoryId" label="Kategorie" options={categories} emptyLabel="Keine Kategorie" placeholder="Kategorie auswählen" quickAddLabel="+ Neue Kategorie hinzufügen" quickAddAction={quickCreateExpenseCategory} />
-          <label>Zahlungsart<input name="paymentMethod" list="payment-methods" placeholder="Karte" /></label>
+          <label className="full-span" hidden={!showMainExpenseFields}>Beschreibung *<input name="description" placeholder="z. B. Supermarkt, Restaurant ..." required={!planningRecurring} /></label>
+          <div hidden={!showMainExpenseFields}>
+            <SearchableSelect name="categoryId" label="Kategorie" options={categories} emptyLabel="Keine Kategorie" placeholder="Kategorie auswählen" quickAddLabel="+ Neue Kategorie hinzufügen" quickAddAction={quickCreateExpenseCategory} />
+          </div>
+          <div hidden={!showMainExpenseFields}>
+            <SearchableSelect name="labelId" label="Label / Projekt" options={labels} emptyLabel="Kein Label" placeholder="Label auswählen" quickAddLabel="+ Neues Label hinzufügen" quickAddAction={quickCreateExpenseLabel} />
+          </div>
+          <label hidden={!showMainExpenseFields}>Geschäft / Anbieter<input name="store" placeholder="Rewe, Lidl, Amazon ..." /></label>
+          {!planningRecurring ? <label hidden={!showMainExpenseFields}>Vertrag<select name="contractId" defaultValue=""><option value="">Kein Vertrag</option>{contracts.filter((contract) => contract.status === "ACTIVE").map((contract) => <option value={contract.id} key={contract.id}>{contract.provider} · {contract.contractType}</option>)}</select></label> : null}
+          {!planningRecurring ? <label hidden={!showMainExpenseFields}>Sichtbarkeit<select name="scope" defaultValue="PRIVATE"><option value="PRIVATE">Privat</option><option value="FAMILY">Familie</option></select></label> : null}
         </div>
       </fieldset>
       {planningRecurring ? (
-        <fieldset className="fieldset modal-form-section full-span" id="create-recurring-expense">
+        <fieldset className="fieldset modal-form-section full-span task-create-options-page finance-recurring-page" id="create-recurring-expense" hidden={expensePanel !== "main"}>
           <legend>Wiederholung</legend>
           <div className="form-grid">
             <label>Startdatum<input name="startDate" type="date" defaultValue={today} required /></label>
@@ -226,35 +249,39 @@ function ExpenseForm({
           <p className="muted">Änderungen des Preises erzeugen später eine neue Preisphase. Zukünftige Buchungen werden nach den Regeln erstellt.</p>
         </fieldset>
       ) : null}
-      <details className="optional-section full-span">
-          <summary>Weitere Optionen</summary>
-          <div className="form-grid">
-            <label>Geschäft / Anbieter<input name="store" placeholder="Rewe, Lidl, Amazon ..." /></label>
-            <SearchableSelect name="labelId" label="Label / Projekt" options={labels} emptyLabel="Kein Label" placeholder="Label suchen oder auswählen" quickAddLabel="+ Neues Label hinzufügen" quickAddAction={quickCreateExpenseLabel} />
-            {!planningRecurring ? <label>Vertrag<select name="contractId" defaultValue=""><option value="">Kein Vertrag</option>{contracts.filter((contract) => contract.status === "ACTIVE").map((contract) => <option value={contract.id} key={contract.id}>{contract.provider} · {contract.contractType}</option>)}</select></label> : null}
-            {!planningRecurring ? <label>Sichtbarkeit<select name="scope" defaultValue="PRIVATE"><option value="PRIVATE">Privat</option><option value="FAMILY">Familie</option></select></label> : null}
-          </div>
-        </details>
       {planningRecurring ? <input type="hidden" name="scope" value="PRIVATE" /> : null}
       <PaymentMethods />
       {!planningRecurring ? (
-        <button className="flow-link full-span" type="button" onClick={() => setPlanningRecurring(true)}>
-          <Repeat2 size={18} aria-hidden="true" />
-          <span>Als wiederkehrende Buchung planen</span>
-          <ChevronRight size={18} aria-hidden="true" />
-        </button>
+        <div className="finance-create-actions full-span" hidden={expensePanel !== "main"}>
+          <button className="flow-link" type="button" onClick={() => { setExpensePanel("main"); setPlanningRecurring(true); }}>
+            <Repeat2 size={18} aria-hidden="true" />
+            <span>Wiederkehrend planen</span>
+            <ChevronRight size={18} aria-hidden="true" />
+          </button>
+          <button className="flow-link" type="button" onClick={() => setExpensePanel("document")}>
+            <FileText size={18} aria-hidden="true" />
+            <span>Beleg verknüpfen</span>
+            <ChevronRight size={18} aria-hidden="true" />
+          </button>
+        </div>
       ) : null}
-      {!planningRecurring ? <details className="optional-section full-span" id="create-expense-document">
-        <summary>Beleg / Dokument verknüpfen</summary>
+      {!planningRecurring ? <fieldset className="fieldset modal-form-section full-span task-create-options-page finance-document-page" id="create-expense-document" hidden={expensePanel !== "document"}>
+        <legend>Beleg / Dokument</legend>
         <div className="form-grid">
           <label>Dokumenttitel<input name="documentTitle" placeholder="Rechnung, Beleg, Nachweis ..." /></label>
           <label>HTTPS-Link<input name="documentUrl" type="url" placeholder="https://drive.google.com/..." /></label>
           <DocumentFilePicker roots={documentRoots} />
         </div>
-      </details> : null}
+      </fieldset> : null}
       <div className="modal-submit-row modal-footer">
-        {planningRecurring ? <button className="button secondary" type="button" onClick={() => setPlanningRecurring(false)}>Zurück</button> : null}
-        <button className="button full-span" type="submit">{planningRecurring ? "Serie speichern" : "Buchung speichern"}</button>
+        {expensePanel === "document" ? (
+          <button className="button full-span" type="button" onClick={() => setExpensePanel("main")}>Übernehmen</button>
+        ) : (
+          <>
+            {planningRecurring ? <button className="button secondary" type="button" onClick={() => setPlanningRecurring(false)}>Zurück</button> : null}
+            <button className="button full-span" type="submit">{planningRecurring ? "Serie speichern" : "Buchung speichern"}</button>
+          </>
+        )}
       </div>
     </form>
   );
@@ -505,18 +532,14 @@ function ContractForm({
   today: string;
   onSubmit: () => void;
 }) {
+  const [panel, setPanel] = useState<"main" | "auto" | "term" | "document">("main");
+  const day = new Date(`${today}T00:00:00`).getDate();
+
   return (
-    <form action={createContract} className="form form-grid modal-form" onSubmit={onSubmit}>
+    <form action={createContract} className="form form-grid modal-form task-create-form contract-create-form" data-task-view={panel === "main" ? "details" : panel} onSubmit={onSubmit}>
       <input type="hidden" name="priceValidFrom" value={today} />
       <input type="hidden" name="priceChangeMode" value="NEW_PHASE" />
-      <nav className="modal-section-tabs full-span" aria-label="Formularbereiche">
-        <a href="#create-contract-core">Vertrag</a>
-        <a href="#create-contract-cost">Kosten</a>
-        <a href="#create-contract-auto">Automatik</a>
-        <a href="#create-contract-term">Laufzeit</a>
-        <a href="#create-contract-document">Dokument</a>
-      </nav>
-      <fieldset className="fieldset modal-form-section full-span" id="create-contract-core">
+      <fieldset className="fieldset modal-form-section full-span task-create-core" id="create-contract-core" hidden={panel !== "main"}>
         <legend>Vertrag</legend>
         <div className="form-grid">
           <label>Anbieter<input name="provider" required /></label>
@@ -526,7 +549,7 @@ function ContractForm({
           <label>Sichtbarkeit<select name="scope" defaultValue="FAMILY"><option value="FAMILY">Familie</option><option value="PRIVATE">Privat</option></select></label>
         </div>
       </fieldset>
-      <fieldset className="fieldset modal-form-section full-span" id="create-contract-cost">
+      <fieldset className="fieldset modal-form-section full-span" id="create-contract-cost" hidden={panel !== "main"}>
         <legend>Kosten & Abbuchung</legend>
         <div className="form-grid">
           <label>Kosten in EUR<input name="cost" inputMode="decimal" placeholder="29,99" required /></label>
@@ -536,17 +559,44 @@ function ContractForm({
           </label>
         </div>
       </fieldset>
-      <fieldset className="fieldset modal-form-section full-span" id="create-contract-auto">
+      <div className="contract-flow-links full-span" hidden={panel !== "main"}>
+        <button className="flow-link" type="button" onClick={() => setPanel("auto")}>
+          <Repeat2 size={17} aria-hidden="true" />
+          <span>Automatische Ausgabe</span>
+          <ChevronRight size={17} aria-hidden="true" />
+        </button>
+        <button className="flow-link" type="button" onClick={() => setPanel("term")}>
+          <ScrollText size={17} aria-hidden="true" />
+          <span>Laufzeit & Kündigung</span>
+          <ChevronRight size={17} aria-hidden="true" />
+        </button>
+        <button className="flow-link" type="button" onClick={() => setPanel("document")}>
+          <FileText size={17} aria-hidden="true" />
+          <span>Beleg / Dokument</span>
+          <ChevronRight size={17} aria-hidden="true" />
+        </button>
+      </div>
+      <label className="full-span" hidden={panel !== "main"}>Notizen<textarea name="description" /></label>
+
+      <fieldset className="fieldset modal-form-section full-span task-create-options-page" id="create-contract-auto" hidden={panel !== "auto"}>
         <legend>Automatische Ausgabe</legend>
+        <button className="flow-link contract-flow-back" type="button" onClick={() => setPanel("main")}>
+          <ArrowLeft size={17} aria-hidden="true" />
+          <span>Zurück zum Vertrag</span>
+        </button>
         <div className="form-grid">
           <label className="checkbox-field full-span"><input name="autoCreateExpenses" type="checkbox" /> Automatisch als Ausgabe eintragen</label>
-          <label>Einzugstag<input name="expensePaymentDay" type="number" min="1" max="31" defaultValue={new Date(`${today}T00:00:00`).getDate()} /></label>
+          <label>Einzugstag<input name="expensePaymentDay" type="number" min="1" max="31" defaultValue={day} /></label>
           <SearchableSelect name="expenseCategoryId" label="Ausgaben-Kategorie" options={categories} emptyLabel="Keine Kategorie" placeholder="Kategorie suchen oder auswählen" />
           <SearchableSelect name="expenseLabelId" label="Label / Projekt" options={labels} emptyLabel="Kein Label" placeholder="Label suchen oder auswählen" />
         </div>
       </fieldset>
-      <fieldset className="fieldset modal-form-section full-span" id="create-contract-term">
+      <fieldset className="fieldset modal-form-section full-span task-create-options-page" id="create-contract-term" hidden={panel !== "term"}>
         <legend>Laufzeit & Kündigung</legend>
+        <button className="flow-link contract-flow-back" type="button" onClick={() => setPanel("main")}>
+          <ArrowLeft size={17} aria-hidden="true" />
+          <span>Zurück zum Vertrag</span>
+        </button>
         <div className="form-grid">
           <label>Ende/Laufzeit bis<input name="endDate" type="date" /></label>
           <label>Kündigung spätestens am<input name="cancellationDeadline" type="date" /></label>
@@ -563,15 +613,18 @@ function ContractForm({
         </div>
         <p className="muted">Bei automatischer Verlängerung ist &quot;Ende/Laufzeit bis&quot; der nächste Vertrags- oder Verlängerungstermin. Die App rollt die Kündigungsfrist danach automatisch weiter.</p>
       </fieldset>
-      <label className="full-span">Notizen<textarea name="description" /></label>
-      <details className="optional-section full-span" id="create-contract-document">
-        <summary>Beleg / Dokument verknüpfen</summary>
+      <fieldset className="fieldset modal-form-section full-span task-create-options-page" id="create-contract-document" hidden={panel !== "document"}>
+        <legend>Beleg / Dokument</legend>
+        <button className="flow-link contract-flow-back" type="button" onClick={() => setPanel("main")}>
+          <ArrowLeft size={17} aria-hidden="true" />
+          <span>Zurück zum Vertrag</span>
+        </button>
         <div className="form-grid">
           <label>Dokumenttitel<input name="documentTitle" placeholder="Vertrag, Rechnung, Nachweis ..." /></label>
           <label>HTTPS-Link<input name="documentUrl" type="url" placeholder="https://drive.google.com/..." /></label>
           <DocumentFilePicker roots={documentRoots} />
         </div>
-      </details>
+      </fieldset>
       <div className="modal-submit-row modal-footer">
         <button className="button full-span" type="submit">Speichern</button>
       </div>
@@ -584,7 +637,7 @@ function DocumentForm({ documentRoots, onSubmit }: { documentRoots: CreateModalP
   const linkSelected = source === "link";
 
   return (
-    <div className="form form-grid modal-form">
+    <div className="form form-grid modal-form document-create-form">
       <section className="fieldset modal-form-section full-span">
         <h3>Quelle</h3>
         <div className="document-source-choice" role="group" aria-label="Dokumentquelle wählen">
@@ -599,7 +652,7 @@ function DocumentForm({ documentRoots, onSubmit }: { documentRoots: CreateModalP
         </div>
       </section>
       {!linkSelected ? (
-        <form action={createLocalDocumentReference} className="form form-grid modal-form full-span" onSubmit={onSubmit}>
+        <form action={createLocalDocumentReference} className="form form-grid modal-form full-span document-create-source-form" onSubmit={onSubmit}>
           <fieldset className="fieldset modal-form-section full-span">
             <legend>Datei</legend>
             <DocumentFilePicker roots={documentRoots} />
@@ -626,7 +679,7 @@ function DocumentForm({ documentRoots, onSubmit }: { documentRoots: CreateModalP
         </form>
       ) : null}
       {linkSelected ? (
-        <form action={createDocumentReference} className="form form-grid modal-form full-span" onSubmit={onSubmit}>
+        <form action={createDocumentReference} className="form form-grid modal-form full-span document-create-source-form" onSubmit={onSubmit}>
           <fieldset className="fieldset modal-form-section full-span">
             <legend>Dokument</legend>
             <div className="form-grid">
