@@ -52,10 +52,7 @@ export default async function ExpensePlanningPage({ searchParams }: PlanningPage
     <div className="finance-planning-page">
       <FinanceTransitionMarker view="planning" />
       <div className="task-page-head finance-page-head">
-        <PageHeader title="Planungsanalyse" />
-        <div className="planning-head-actions">
-          <Link className="button secondary" href="/ausgaben">Zur Finanzübersicht</Link>
-        </div>
+        <PageHeader title="Finanzen" />
       </div>
 
       <nav className="finance-primary-tabs" aria-label="Finanzbereich">

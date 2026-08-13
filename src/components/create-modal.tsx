@@ -101,8 +101,9 @@ export function CreateModal({ categories, labels, contracts, members, cars, docu
         ) : null}
         wide={formStarted}
         labelledById="create-modal-title"
+        panelClassName={formStarted && selectedType === "contract" ? "contract-create-sheet" : undefined}
       >
-              <div className="create-dialog-body">
+              <div className={formStarted && selectedType === "contract" ? "create-dialog-body contract-create-dialog-body" : "create-dialog-body"}>
                 {allowedTypes.length > 1 && !formStarted ? (
                   <div className="create-type-grid">
                     {allowedTypes.map((item) => (
@@ -283,6 +284,7 @@ function ExpenseForm({
           </>
         )}
       </div>
+      {expensePanel === "document" ? <div className="document-line-art" aria-hidden="true" /> : null}
     </form>
   );
 }
@@ -307,16 +309,28 @@ function FuelForm({
   onSubmit: () => void;
 }) {
   const [bookExpense, setBookExpense] = useState(Boolean(settings?.autoCreateExpense));
+  const [fuelPanel, setFuelPanel] = useState<"main" | "document">("main");
   if (cars.length === 0) {
     return <div className="empty">Noch kein aktives Auto vorhanden. Admins können Autos im Kilometer-Setup anlegen.</div>;
   }
 
   return (
-    <form action={createFuelEntry} className="form form-grid modal-form fuel-create-form" onSubmit={onSubmit}>
+    <form action={createFuelEntry} className="form form-grid modal-form finance-create-form fuel-create-form" data-fuel-panel={fuelPanel} onSubmit={onSubmit}>
       <input type="hidden" name="returnTo" value={returnTo} />
-      <fieldset className="fieldset modal-form-section full-span" id="create-fuel-stop">
+      {fuelPanel === "document" ? (
+        <div className="task-create-subhead full-span fuel-create-subhead">
+          <button className="icon-button" type="button" aria-label="Zurück" title="Zurück" onClick={() => setFuelPanel("main")}>
+            <ArrowLeft size={18} aria-hidden="true" />
+          </button>
+          <div>
+            <strong>Beleg / Dokument</strong>
+          </div>
+          <span aria-hidden="true" />
+        </div>
+      ) : null}
+      <fieldset className="fieldset modal-form-section full-span finance-create-core fuel-create-core" id="create-fuel-stop" hidden={fuelPanel !== "main"}>
         <legend>Tankstopp</legend>
-        <div className="form-grid">
+        <div className="form-grid finance-create-grid fuel-create-grid">
           <label>
             Auto
             <select name="carId" defaultValue={cars[0]?.id ?? ""} required>
@@ -324,27 +338,23 @@ function FuelForm({
             </select>
           </label>
           <label>Datum<input name="date" type="date" defaultValue={today} required /></label>
-          <label>Kilometerstand<input name="odometerKm" type="number" inputMode="numeric" min="0" required /></label>
+          <div className="fuel-measure-row full-span">
+            <label>Kilometerstand<input name="odometerKm" type="number" inputMode="numeric" min="0" required /></label>
+            <label>Liter<input name="liters" inputMode="decimal" placeholder="45,34" required /></label>
+          </div>
+          <div className="fuel-booking-row full-span">
+            <label>Betrag in EUR<input name="cost" inputMode="decimal" placeholder="71,01" required /></label>
+            <div className="finance-kind-toggle finance-kind-compact fuel-expense-segment" role="radiogroup" aria-label="Tankstopp als Ausgabe buchen">
+              <label><input name="createExpenseFromFuel" type="radio" value="off" checked={!bookExpense} onChange={() => setBookExpense(false)} />Nur Tank</label>
+              <label><input name="createExpenseFromFuel" type="radio" value="on" checked={bookExpense} onChange={() => setBookExpense(true)} />Ausgabe</label>
+            </div>
+          </div>
+          <label className="full-span">Bemerkung<input name="note" placeholder="Urlaub, bezahlt von ..., Werkstatt ..." /></label>
         </div>
       </fieldset>
-      <fieldset className="fieldset modal-form-section full-span" id="create-fuel-cost">
-        <legend>Verbrauch & Kosten</legend>
-        <div className="form-grid">
-          <label>Liter<input name="liters" inputMode="decimal" placeholder="45,34" required /></label>
-          <label>Betrag in EUR<input name="cost" inputMode="decimal" placeholder="71,01" required /></label>
-          <label>Bemerkung<input name="note" placeholder="Urlaub, bezahlt von ..., Werkstatt ..." /></label>
-        </div>
-      </fieldset>
-      <fieldset className="fieldset modal-form-section full-span" id="create-fuel-expense">
+      <fieldset className="fieldset modal-form-section full-span fuel-expense-page" id="create-fuel-expense" hidden={fuelPanel !== "main"}>
         <legend>Ausgabe</legend>
-        <label className="checkbox-field full-span">
-          <input name="createExpenseFromFuel" type="checkbox" checked={bookExpense} onChange={(event) => setBookExpense(event.currentTarget.checked)} />
-          Als Ausgabe buchen
-        </label>
-      </fieldset>
-      {bookExpense ? (
-        <fieldset className="fieldset modal-form-section full-span">
-          <legend>Ausgaben-Details</legend>
+        {bookExpense ? (
           <div className="form-grid">
             <SearchableSelect name="expenseCategoryId" label="Kategorie" options={categories} defaultValue={settings?.defaultCategoryId} emptyLabel="Keine Kategorie" placeholder="Kategorie suchen oder auswählen" />
             <SearchableSelect name="expenseLabelId" label="Label / Projekt" options={labels} defaultValue={settings?.defaultLabelId} emptyLabel="Kein Label" placeholder="Label suchen oder auswählen" />
@@ -352,20 +362,34 @@ function FuelForm({
             <label>Laden<input name="expenseStore" defaultValue={settings?.defaultStore ?? ""} placeholder="Tankstelle oder Händler" /></label>
             <label className="full-span">Beschreibung<input name="expenseDescription" defaultValue={settings?.defaultDescription ?? ""} /></label>
           </div>
-          <details className="optional-section full-span">
-            <summary>Beleg / Dokument verknüpfen</summary>
-            <div className="form-grid">
-              <label>Dokumenttitel<input name="documentTitle" placeholder="Rechnung, Beleg, Nachweis ..." /></label>
-              <label>HTTPS-Link<input name="documentUrl" type="url" placeholder="https://drive.google.com/..." /></label>
-              <DocumentFilePicker roots={documentRoots} />
-            </div>
-          </details>
-          <PaymentMethods />
-        </fieldset>
-      ) : null}
-      <div className="modal-submit-row modal-footer">
-        <button className="button full-span" type="submit">Speichern</button>
+        ) : null}
+      </fieldset>
+      {bookExpense ? <fieldset className="fieldset modal-form-section full-span task-create-options-page finance-document-page fuel-document-page" id="create-fuel-document" hidden={fuelPanel !== "document"}>
+        <legend>Beleg / Dokument</legend>
+        <div className="form-grid">
+          <label>Dokumenttitel<input name="documentTitle" placeholder="Rechnung, Beleg, Nachweis ..." /></label>
+          <label>HTTPS-Link<input name="documentUrl" type="url" placeholder="https://drive.google.com/..." /></label>
+          <DocumentFilePicker roots={documentRoots} />
+        </div>
+      </fieldset> : null}
+      <PaymentMethods />
+      <div className="finance-create-actions fuel-create-actions full-span" hidden={fuelPanel !== "main"}>
+        {bookExpense ? (
+          <button className="flow-link" type="button" onClick={() => setFuelPanel("document")}>
+            <FileText size={18} aria-hidden="true" />
+            <span>Beleg verknüpfen</span>
+            <ChevronRight size={18} aria-hidden="true" />
+          </button>
+        ) : null}
       </div>
+      <div className="modal-submit-row modal-footer">
+        {fuelPanel === "main" ? (
+          <button className="button full-span" type="submit">Tankstopp speichern</button>
+        ) : (
+          <button className="button full-span" type="button" onClick={() => setFuelPanel("main")}>Übernehmen</button>
+        )}
+      </div>
+      {fuelPanel === "document" ? <div className="document-line-art" aria-hidden="true" /> : null}
     </form>
   );
 }
@@ -534,32 +558,43 @@ function ContractForm({
 }) {
   const [panel, setPanel] = useState<"main" | "auto" | "term" | "document">("main");
   const day = new Date(`${today}T00:00:00`).getDate();
+  const panelTitle = panel === "auto" ? "Automatische Ausgabe" : panel === "term" ? "Laufzeit & Kündigung" : panel === "document" ? "Beleg / Dokument" : null;
 
   return (
-    <form action={createContract} className="form form-grid modal-form task-create-form contract-create-form" data-task-view={panel === "main" ? "details" : panel} onSubmit={onSubmit}>
+    <form action={createContract} className="form form-grid modal-form task-create-form finance-create-form contract-create-form" data-task-view={panel === "main" ? "details" : panel} data-contract-panel={panel} onSubmit={onSubmit}>
       <input type="hidden" name="priceValidFrom" value={today} />
       <input type="hidden" name="priceChangeMode" value="NEW_PHASE" />
-      <fieldset className="fieldset modal-form-section full-span task-create-core" id="create-contract-core" hidden={panel !== "main"}>
+      {panelTitle ? (
+        <div className="task-create-subhead full-span contract-create-subhead">
+          <button className="icon-button" type="button" aria-label="Zurück" title="Zurück" onClick={() => setPanel("main")}>
+            <ArrowLeft size={18} aria-hidden="true" />
+          </button>
+          <div>
+            <strong>{panelTitle}</strong>
+          </div>
+          <span aria-hidden="true" />
+        </div>
+      ) : null}
+      <fieldset className="fieldset modal-form-section full-span task-create-core contract-create-core" id="create-contract-core" hidden={panel !== "main"}>
         <legend>Vertrag</legend>
-        <div className="form-grid">
-          <label>Anbieter<input name="provider" required /></label>
-          <label>Vertragsart<input name="contractType" placeholder="Mobilfunk, Versicherung, Abo ..." required /></label>
-          <label>Startdatum<input name="startDate" type="date" defaultValue={today} required /></label>
-          <label>Status<select name="status" defaultValue="ACTIVE"><option value="ACTIVE">Aktiv</option><option value="DRAFT">Entwurf</option><option value="CANCELLED">Gekündigt</option><option value="EXPIRED">Ausgelaufen</option></select></label>
-          <label>Sichtbarkeit<select name="scope" defaultValue="FAMILY"><option value="FAMILY">Familie</option><option value="PRIVATE">Privat</option></select></label>
+        <div className="form-grid contract-create-grid">
+          <label className="full-span">Anbieter *<input name="provider" placeholder="Telekom, Allianz, Netflix ..." required /></label>
+          <label className="full-span">Vertragsart *<input name="contractType" placeholder="Mobilfunk, Versicherung, Abo ..." required /></label>
+          <div className="contract-date-cost-row full-span">
+            <label>Startdatum<input name="startDate" type="date" defaultValue={today} required /></label>
+            <label>Kosten in EUR *<input name="cost" inputMode="decimal" placeholder="29,99" required /></label>
+          </div>
+          <div className="contract-rhythm-status-row full-span">
+            <label>
+              Zahlungsrhythmus
+              <select name="billingInterval" defaultValue="MONTHLY"><option value="MONTHLY">Monatlich</option><option value="YEARLY">Jährlich</option><option value="QUARTERLY">Quartalsweise</option><option value="ONCE">Einmalig</option><option value="OTHER">Sonstiges</option></select>
+            </label>
+            <label>Status<select name="status" defaultValue="ACTIVE"><option value="ACTIVE">Aktiv</option><option value="DRAFT">Entwurf</option><option value="CANCELLED">Gekündigt</option><option value="EXPIRED">Ausgelaufen</option></select></label>
+          </div>
+          <label className="full-span">Sichtbarkeit<select name="scope" defaultValue="FAMILY"><option value="FAMILY">Familie</option><option value="PRIVATE">Privat</option></select></label>
         </div>
       </fieldset>
-      <fieldset className="fieldset modal-form-section full-span" id="create-contract-cost" hidden={panel !== "main"}>
-        <legend>Kosten & Abbuchung</legend>
-        <div className="form-grid">
-          <label>Kosten in EUR<input name="cost" inputMode="decimal" placeholder="29,99" required /></label>
-          <label>
-            Zahlungsrhythmus
-            <select name="billingInterval" defaultValue="MONTHLY"><option value="MONTHLY">Monatlich</option><option value="YEARLY">Jährlich</option><option value="QUARTERLY">Quartalsweise</option><option value="ONCE">Einmalig</option><option value="OTHER">Sonstiges</option></select>
-          </label>
-        </div>
-      </fieldset>
-      <div className="contract-flow-links full-span" hidden={panel !== "main"}>
+      <div className="finance-create-actions contract-flow-links full-span" hidden={panel !== "main"}>
         <button className="flow-link" type="button" onClick={() => setPanel("auto")}>
           <Repeat2 size={17} aria-hidden="true" />
           <span>Automatische Ausgabe</span>
@@ -578,12 +613,8 @@ function ContractForm({
       </div>
       <label className="full-span" hidden={panel !== "main"}>Notizen<textarea name="description" /></label>
 
-      <fieldset className="fieldset modal-form-section full-span task-create-options-page" id="create-contract-auto" hidden={panel !== "auto"}>
+      <fieldset className="fieldset modal-form-section full-span task-create-options-page contract-auto-page" id="create-contract-auto" hidden={panel !== "auto"}>
         <legend>Automatische Ausgabe</legend>
-        <button className="flow-link contract-flow-back" type="button" onClick={() => setPanel("main")}>
-          <ArrowLeft size={17} aria-hidden="true" />
-          <span>Zurück zum Vertrag</span>
-        </button>
         <div className="form-grid">
           <label className="checkbox-field full-span"><input name="autoCreateExpenses" type="checkbox" /> Automatisch als Ausgabe eintragen</label>
           <label>Einzugstag<input name="expensePaymentDay" type="number" min="1" max="31" defaultValue={day} /></label>
@@ -591,12 +622,8 @@ function ContractForm({
           <SearchableSelect name="expenseLabelId" label="Label / Projekt" options={labels} emptyLabel="Kein Label" placeholder="Label suchen oder auswählen" />
         </div>
       </fieldset>
-      <fieldset className="fieldset modal-form-section full-span task-create-options-page" id="create-contract-term" hidden={panel !== "term"}>
+      <fieldset className="fieldset modal-form-section full-span task-create-options-page contract-term-page" id="create-contract-term" hidden={panel !== "term"}>
         <legend>Laufzeit & Kündigung</legend>
-        <button className="flow-link contract-flow-back" type="button" onClick={() => setPanel("main")}>
-          <ArrowLeft size={17} aria-hidden="true" />
-          <span>Zurück zum Vertrag</span>
-        </button>
         <div className="form-grid">
           <label>Ende/Laufzeit bis<input name="endDate" type="date" /></label>
           <label>Kündigung spätestens am<input name="cancellationDeadline" type="date" /></label>
@@ -613,20 +640,22 @@ function ContractForm({
         </div>
         <p className="muted">Bei automatischer Verlängerung ist &quot;Ende/Laufzeit bis&quot; der nächste Vertrags- oder Verlängerungstermin. Die App rollt die Kündigungsfrist danach automatisch weiter.</p>
       </fieldset>
-      <fieldset className="fieldset modal-form-section full-span task-create-options-page" id="create-contract-document" hidden={panel !== "document"}>
+      <fieldset className="fieldset modal-form-section full-span task-create-options-page finance-document-page contract-document-page" id="create-contract-document" hidden={panel !== "document"}>
         <legend>Beleg / Dokument</legend>
-        <button className="flow-link contract-flow-back" type="button" onClick={() => setPanel("main")}>
-          <ArrowLeft size={17} aria-hidden="true" />
-          <span>Zurück zum Vertrag</span>
-        </button>
         <div className="form-grid">
           <label>Dokumenttitel<input name="documentTitle" placeholder="Vertrag, Rechnung, Nachweis ..." /></label>
           <label>HTTPS-Link<input name="documentUrl" type="url" placeholder="https://drive.google.com/..." /></label>
           <DocumentFilePicker roots={documentRoots} />
         </div>
       </fieldset>
+      {panel === "auto" ? <div className="contract-auto-line-art" aria-hidden="true" /> : null}
+      {panel === "document" ? <div className="document-line-art" aria-hidden="true" /> : null}
       <div className="modal-submit-row modal-footer">
-        <button className="button full-span" type="submit">Speichern</button>
+        {panel === "main" ? (
+          <button className="button full-span" type="submit">Vertrag speichern</button>
+        ) : (
+          <button className="button full-span" type="button" onClick={() => setPanel("main")}>Übernehmen</button>
+        )}
       </div>
     </form>
   );
@@ -739,6 +768,7 @@ function BottomSheet({
   leadingAction,
   wide = false,
   labelledById,
+  panelClassName,
   children
 }: {
   open: boolean;
@@ -748,6 +778,7 @@ function BottomSheet({
   leadingAction?: ReactNode;
   wide?: boolean;
   labelledById: string;
+  panelClassName?: string;
   children: ReactNode;
 }) {
   const [closing, setClosing] = useState(false);
@@ -765,7 +796,7 @@ function BottomSheet({
   return (
     <ModalPortal>
       <div className={closing ? "modal-backdrop is-closing" : "modal-backdrop"} role="presentation">
-        <section className={wide ? "modal-panel create-dialog create-from-fab action-modal-wide" : "modal-panel create-dialog create-from-fab"} role="dialog" aria-modal="true" aria-labelledby={labelledById}>
+        <section className={["modal-panel create-dialog create-from-fab", wide ? "action-modal-wide" : null, panelClassName].filter(Boolean).join(" ")} role="dialog" aria-modal="true" aria-labelledby={labelledById}>
           {leadingAction}
           <button className="icon-button modal-close-button" type="button" aria-label="Schließen" title="Schließen" onClick={closeSheet}>
             <X size={20} />

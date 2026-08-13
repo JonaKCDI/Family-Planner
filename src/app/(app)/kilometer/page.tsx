@@ -11,11 +11,11 @@ import {
   updateFuelEntry
 } from "@/lib/actions";
 import Link from "next/link";
+import { CalendarCheck, Droplets, Fuel, Pencil, Route } from "lucide-react";
 import { requireSession } from "@/lib/auth";
 import { formatDate, formatMoney } from "@/lib/format";
 import {
   addFuelDerivedFields,
-  calculateFuelStats,
   calculateFuelStatsFromDerived,
   formatDecimal,
   formatEuroInputFromCents,
@@ -28,6 +28,7 @@ import { isFamilyAdmin } from "@/lib/permissions";
 import { getExpenseLabels, getFuelEntriesForCar, getFuelExpenseSettings, getVisibleCars, getVisibleCategories } from "@/lib/queries";
 import { ActionModal } from "@/components/action-modal";
 import { AutosaveForm } from "@/components/autosave-form";
+import { ConfirmSubmitButton } from "@/components/confirm-submit-button";
 import { ExcelProgressPanel } from "@/components/excel-progress-panel";
 import { MileageToolbar } from "@/components/mileage-toolbar";
 import { PeriodNavLink } from "@/components/period-nav-link";
@@ -75,12 +76,12 @@ export default async function MileagePage({ searchParams }: MileagePageProps) {
     .filter((entry) => !query || normalizeSearch(entry.note).includes(query) || String(entry.odometerKm).includes(query));
   const view = getMileageView(params.view);
   const stats = calculateFuelStatsFromDerived(selectedEntries);
-  const allTimeStats = calculateFuelStats(entries);
-  const monthlyRows = buildMonthlyRows(derivedEntries);
+  const monthlyRows = buildMonthlyRows(selectedEntries);
   const recentEntries = selectedEntries.slice(0, 6);
   const returnTo = getMileageHref(params, {});
   const activeFilterChips = buildMileageActiveFilterChips(params, range);
 
+  const comparison = buildMileageComparison(derivedEntries, range, query);
   return (
     <>
       <div className="task-page-head finance-page-head mileage-page-head">
@@ -107,21 +108,20 @@ export default async function MileagePage({ searchParams }: MileagePageProps) {
           <>
             <div className="period-navigator mileage-navigator">
               <MileagePeriodNavigator params={params} range={range} currentMonthKey={currentMonthKey} />
-              <div className="period-tools mileage-period-tools">
-                <PeriodNavLink className="button period-primary-action" href={getMileageHref(params, { month: currentMonthKey, year: undefined, from: undefined, to: undefined })}>Aktuell</PeriodNavLink>
-                <CarPicker cars={activeCars} selectedCarId={selectedCar.id} params={params} />
-                <ActionModal title="Kilometer-Setup" trigger="Setup" modalId="kilometer-setup" triggerClassName="button secondary mileage-setup-action" panelClassName="mileage-setup-sheet" wide>
-                  <MileageSetupPanel
-                    selectedCar={selectedCar}
-                    activeCars={activeCars}
-                    allCars={allCars}
-                    categories={categories}
-                    labels={labels}
-                    fuelExpenseSettings={fuelExpenseSettings}
-                    isAdmin={isAdmin}
-                  />
-                </ActionModal>
-              </div>
+            </div>
+            <div className="overview-actions secondary-filter-actions mileage-secondary-actions">
+              <CarPicker cars={activeCars} selectedCarId={selectedCar.id} params={params} />
+              <ActionModal title="Kilometer-Setup" trigger="Setup" modalId="kilometer-setup" triggerClassName="button secondary mileage-setup-action" panelClassName="mileage-setup-sheet" wide>
+                <MileageSetupPanel
+                  selectedCar={selectedCar}
+                  activeCars={activeCars}
+                  allCars={allCars}
+                  categories={categories}
+                  labels={labels}
+                  fuelExpenseSettings={fuelExpenseSettings}
+                  isAdmin={isAdmin}
+                />
+              </ActionModal>
             </div>
             {activeFilterChips.length > 0 ? (
               <div className="active-filter-row" aria-label="Aktive Filter">
@@ -158,7 +158,7 @@ export default async function MileagePage({ searchParams }: MileagePageProps) {
         <>
           {view === "overview" ? (
             <section className="finance-overview-page mileage-overview-page spacing-top">
-              <MileageSummaryPanel stats={stats} allTimeStats={allTimeStats} />
+              <MileageSummaryPanel comparison={comparison} stats={stats} />
 
               <section className="panel finance-overview-snapshot mileage-overview-snapshot">
                 <div className="section-head compact-section-head">
@@ -168,7 +168,7 @@ export default async function MileagePage({ searchParams }: MileagePageProps) {
                   </div>
                   <Link className="button secondary" href={getMileageHref(params, { view: "entries" })} scroll={false}>Alle</Link>
                 </div>
-                <FuelEntryList entries={recentEntries} selectedCarId={selectedCar.id} returnTo={returnTo} />
+                <FuelEntryList entries={recentEntries} selectedCarId={selectedCar.id} selectedCarName={selectedCar.name} returnTo={returnTo} />
               </section>
 
               <Link className="finance-inline-analysis-link" href={getMileageHref(params, { view: "analysis" })} scroll={false}>Verbrauchsanalyse ansehen <span aria-hidden="true">→</span></Link>
@@ -183,7 +183,7 @@ export default async function MileagePage({ searchParams }: MileagePageProps) {
                   <p className="muted">{formatDate(range.from)} bis {formatDate(range.to)} · {selectedEntries.length} Einträge</p>
                 </div>
               </div>
-              <FuelEntryList entries={selectedEntries} selectedCarId={selectedCar.id} returnTo={returnTo} />
+              <FuelEntryList entries={selectedEntries} selectedCarId={selectedCar.id} selectedCarName={selectedCar.name} returnTo={returnTo} />
             </section>
           ) : null}
 
@@ -195,17 +195,17 @@ export default async function MileagePage({ searchParams }: MileagePageProps) {
                   <p className="muted">Monatswerte für Verbrauch, Kilometer und Kosten.</p>
                 </div>
               </div>
-              <MileageSummaryPanel stats={stats} allTimeStats={allTimeStats} compact />
+              <MileageSummaryPanel comparison={comparison} stats={stats} compact />
               {monthlyRows.length === 0 ? <EmptyState>Noch keine Daten vorhanden.</EmptyState> : (
                 <div className="mini-table mileage-analysis-table">
                   <div className="mini-table-head"><span>Monat</span><span>km</span><span>Liter</span><span>Kosten</span><span>Ø</span></div>
                   {monthlyRows.map((row) => (
-                    <div className="mini-table-row" key={row.label}>
-                      <span>{row.label}</span>
-                      <span>{formatKilometers(row.drivenKm)}</span>
-                      <span>{formatLiters(row.litersMilli)} l</span>
-                      <span>{formatMoney(row.costCents)}</span>
-                      <strong>{formatDecimal(row.averageLitersPer100Km)} l</strong>
+                    <div className="mini-table-row mileage-analysis-row" key={row.label}>
+                      <span data-label="Monat">{row.label}</span>
+                      <span data-label="km"><b>{formatKilometers(row.drivenKm)}</b></span>
+                      <span data-label="Liter"><b>{formatLiters(row.litersMilli)} l</b></span>
+                      <span data-label="Kosten"><b>{formatMoney(row.costCents)}</b></span>
+                      <strong data-label="Ø">{formatDecimal(row.averageLitersPer100Km)} l</strong>
                     </div>
                   ))}
                 </div>
@@ -219,20 +219,40 @@ export default async function MileagePage({ searchParams }: MileagePageProps) {
 }
 
 function MileageSummaryPanel({
+  comparison,
   stats,
-  allTimeStats,
   compact = false
 }: {
+  comparison: ReturnType<typeof buildMileageComparison>;
   stats: ReturnType<typeof calculateFuelStatsFromDerived>;
-  allTimeStats: ReturnType<typeof calculateFuelStats>;
   compact?: boolean;
 }) {
   return (
     <section className={compact ? "finance-summary-panel mileage-summary-panel compact" : "finance-summary-panel mileage-summary-panel"} aria-label="Autoüberblick">
-      <div className="finance-summary-metric"><span>Tankkosten</span><strong>{formatMoney(stats.totalCostCents)}</strong></div>
-      <div className="finance-summary-metric"><span>Liter</span><strong>{formatLiters(stats.totalLitersMilli)} l</strong></div>
-      <div className="finance-summary-metric"><span>Gefahren</span><strong>{formatKilometers(stats.drivenKm)} km</strong><small>Letzter Stand {formatKilometers(allTimeStats.lastOdometerKm)} km</small></div>
-      <div className="finance-summary-metric"><span>Ø l/100 km</span><strong>{formatDecimal(stats.averageLitersPer100Km)} l</strong><small>Ø {formatMoney(Math.round(stats.averagePricePerLiterCents ?? 0))}/l</small></div>
+      <div className={`finance-summary-metric mileage-metric ${comparison.cost.tone}`}>
+        <div className="finance-summary-card-head"><span>Tankkosten</span><i aria-hidden="true"><Fuel size={17} /></i></div>
+        <strong>{formatMoney(stats.totalCostCents)}</strong>
+        <small>{comparison.cost.label}</small>
+        {comparison.cost.sparkWidth ? <div className="finance-summary-spark" aria-hidden="true"><b style={{ width: comparison.cost.sparkWidth }} /></div> : null}
+      </div>
+      <div className={`finance-summary-metric mileage-metric ${comparison.liters.tone}`}>
+        <div className="finance-summary-card-head"><span>Liter</span><i aria-hidden="true"><Droplets size={17} /></i></div>
+        <strong>{formatLiters(stats.totalLitersMilli)} l</strong>
+        <small>{comparison.liters.label}</small>
+        {comparison.liters.sparkWidth ? <div className="finance-summary-spark" aria-hidden="true"><b style={{ width: comparison.liters.sparkWidth }} /></div> : null}
+      </div>
+      <div className={`finance-summary-metric mileage-metric ${comparison.distance.tone}`}>
+        <div className="finance-summary-card-head"><span>Gefahren</span><i aria-hidden="true"><Route size={17} /></i></div>
+        <strong>{formatKilometers(stats.drivenKm)} km</strong>
+        <small>{comparison.distance.label}</small>
+        {comparison.distance.sparkWidth ? <div className="finance-summary-spark" aria-hidden="true"><b style={{ width: comparison.distance.sparkWidth }} /></div> : null}
+      </div>
+      <div className={`finance-summary-metric mileage-consumption-metric ${comparison.consumption.tone}`}>
+        <div className="finance-summary-card-head"><span>Ø l/100 km</span></div>
+        <strong>{formatDecimal(stats.averageLitersPer100Km)} l</strong>
+        <small>{comparison.consumption.label}</small>
+        {comparison.consumption.sparkWidth ? <div className="finance-summary-spark" aria-hidden="true"><b style={{ width: comparison.consumption.sparkWidth }} /></div> : null}
+      </div>
     </section>
   );
 }
@@ -240,10 +260,12 @@ function MileageSummaryPanel({
 function FuelEntryList({
   entries,
   selectedCarId,
+  selectedCarName,
   returnTo
 }: {
   entries: ReturnType<typeof addFuelDerivedFields>;
   selectedCarId: string;
+  selectedCarName: string;
   returnTo: string;
 }) {
   if (entries.length === 0) return <EmptyState>Noch keine Tankstopps im gewählten Zeitraum.</EmptyState>;
@@ -251,53 +273,60 @@ function FuelEntryList({
   return (
     <div className="expense-list mileage-entry-list">
       {entries.map((entry) => (
-        <details className="expense-row mileage-row" key={entry.id}>
-          <summary>
-            <span className="mileage-date">{formatDate(entry.date)}</span>
-            <span className="mileage-main">
-              <span className="mileage-odometer">{formatKilometers(entry.odometerKm)} km</span>
-              <small>{entry.note || "Ohne Bemerkung"}</small>
-            </span>
+        <article className="expense-row mileage-row" key={entry.id}>
+          <div className="mileage-row-content">
+            <div className="mileage-row-head">
+              <span className="mileage-date">{formatDate(entry.date)}</span>
+              <span className="mileage-main">
+                <span className="mileage-odometer">{formatKilometers(entry.odometerKm)} km</span>
+                <small>{entry.note || "Ohne Bemerkung"}</small>
+              </span>
+            </div>
             <span className="mileage-values" aria-label="Tankdaten">
               <span className="mileage-value"><small>Liter</small><b>{formatLiters(entry.litersMilli)} l</b></span>
               <span className="mileage-value"><small>Verbrauch</small><b>{formatDecimal(entry.litersPer100Km)} l/100 km</b></span>
               <span className="mileage-value"><small>Gefahren</small><b>{entry.drivenKm === null ? "-" : `${formatKilometers(entry.drivenKm)} km`}</b></span>
               <span className="mileage-value"><small>Preis</small><b>{formatMoney(Math.round(entry.pricePerLiterCents ?? 0))}/l</b></span>
             </span>
-            <strong className="mileage-cost">{formatMoney(entry.costCents)}</strong>
-          </summary>
-          <div className="expense-detail mileage-detail-sheet">
-            <div className="mileage-detail-grid">
-              <span><small>Gefahren</small><b>{entry.drivenKm === null ? "Erster Eintrag" : `${formatKilometers(entry.drivenKm)} km`}</b></span>
-              <span><small>Verbrauch</small><b>{formatDecimal(entry.litersPer100Km)} l/100 km</b></span>
-              <span><small>Tankmenge</small><b>{formatLiters(entry.litersMilli)} l</b></span>
-              <span><small>Preis je Liter</small><b>{formatMoney(Math.round(entry.pricePerLiterCents ?? 0))}/l</b></span>
-            </div>
-            <div className="entry-actions">
-              <form action={deleteFuelEntry}>
-                <input type="hidden" name="id" value={entry.id} />
-                <input type="hidden" name="carId" value={selectedCarId} />
-                <input type="hidden" name="returnTo" value={returnTo} />
-                <button className="button secondary danger-subtle" type="submit">Löschen</button>
-              </form>
-              <ActionModal title="Tankstopp bearbeiten" trigger="Bearbeiten" modalId={`fuel-entry-${entry.id}`} sheetVariant="create" panelClassName="mileage-edit-sheet" wide>
-                <AutosaveForm action={updateFuelEntry} className="form form-grid modal-form mileage-edit-form">
+            <div className="mileage-row-actions">
+              <strong className="mileage-cost">{formatMoney(entry.costCents)}</strong>
+              <ActionModal title="Tankstopp bearbeiten" trigger={<Pencil size={17} aria-hidden="true" />} triggerLabel="Tankstopp bearbeiten" triggerClassName="icon-button mileage-row-edit-button" modalId={`fuel-entry-${entry.id}`} sheetVariant="create" panelClassName="mileage-edit-sheet" wide>
+                <AutosaveForm action={updateFuelEntry} className="form form-grid modal-form finance-create-form fuel-create-form mileage-edit-form" data-fuel-panel="main">
                   <input type="hidden" name="id" value={entry.id} />
                   <input type="hidden" name="carId" value={selectedCarId} />
                   <input type="hidden" name="returnTo" value={returnTo} />
-                  <label>Datum<input name="date" type="date" defaultValue={toDateInputValue(entry.date)} required /></label>
-                  <label>Kilometerstand<input name="odometerKm" type="number" inputMode="numeric" min="0" defaultValue={entry.odometerKm} required /></label>
-                  <label>Liter<input name="liters" inputMode="decimal" defaultValue={formatLitersInput(entry.litersMilli)} required /></label>
-                  <label>Betrag in EUR<input name="cost" inputMode="decimal" defaultValue={formatEuroInputFromCents(entry.costCents)} required /></label>
-                  <label className="full-span">Bemerkung<input name="note" defaultValue={entry.note} /></label>
+                  <fieldset className="fieldset modal-form-section full-span finance-create-core fuel-create-core">
+                    <legend>Tankstopp</legend>
+                    <div className="form-grid finance-create-grid fuel-create-grid">
+                      <label>Auto<input value={selectedCarName} readOnly /></label>
+                      <label>Datum<input name="date" type="date" defaultValue={toDateInputValue(entry.date)} required /></label>
+                      <div className="fuel-measure-row full-span">
+                        <label>Kilometerstand<input name="odometerKm" type="number" inputMode="numeric" min="0" defaultValue={entry.odometerKm} required /></label>
+                        <label>Liter<input name="liters" inputMode="decimal" defaultValue={formatLitersInput(entry.litersMilli)} required /></label>
+                      </div>
+                      <div className="fuel-booking-row full-span">
+                        <label>Betrag in EUR<input name="cost" inputMode="decimal" defaultValue={formatEuroInputFromCents(entry.costCents)} required /></label>
+                        <div className="finance-kind-toggle finance-kind-compact fuel-expense-segment fuel-edit-expense-hint" aria-label="Ausgabenverknüpfung">
+                          <span>Ausgabe wird mit aktualisiert</span>
+                        </div>
+                      </div>
+                      <label className="full-span">Bemerkung<input name="note" defaultValue={entry.note} placeholder="Urlaub, bezahlt von ..., Werkstatt ..." /></label>
+                    </div>
+                  </fieldset>
                   <div className="modal-submit-row modal-footer">
-                    <button className="button full-span autosave-submit" type="submit">Speichern</button>
+                    <button className="button full-span autosave-submit" type="submit">Tankstopp speichern</button>
                   </div>
                 </AutosaveForm>
+                <form action={deleteFuelEntry} className="mileage-edit-delete-form">
+                  <input type="hidden" name="id" value={entry.id} />
+                  <input type="hidden" name="carId" value={selectedCarId} />
+                  <input type="hidden" name="returnTo" value={returnTo} />
+                  <ConfirmSubmitButton title="Tankstopp löschen?" message="Der Tankstopp wird dauerhaft entfernt. Eine verknüpfte Ausgabe bleibt davon unberührt.">Löschen</ConfirmSubmitButton>
+                </form>
               </ActionModal>
             </div>
           </div>
-        </details>
+        </article>
       ))}
     </div>
   );
@@ -319,6 +348,10 @@ function MileagePeriodNavigator({
   const nextHref = isYear ? buildMileageYearNavigationHref(params, currentYear, 1) : buildMileageMonthNavigationHref(params, monthKey, 1);
   const title = isYear ? String(currentYear) : range.mode === "custom" ? "Freier Zeitraum" : formatMonthKeyLabel(monthKey);
   const detail = isYear ? "Jahresansicht" : range.mode === "custom" ? `${formatDate(range.from)} bis ${formatDate(range.to)}` : "Monatsansicht";
+  const todayHref = isYear
+    ? getMileageHref(params, { year: String(Number(currentMonthKey.slice(0, 4))), month: undefined, from: undefined, to: undefined })
+    : getMileageHref(params, { month: currentMonthKey, year: undefined, from: undefined, to: undefined });
+  const todayLabel = isYear ? "Aktuelles Jahr anzeigen" : "Aktuellen Monat anzeigen";
 
   return (
     <div className="period-nav-main">
@@ -331,6 +364,9 @@ function MileagePeriodNavigator({
       </div>
       <PeriodNavLink className="period-nav-button" href={nextHref} aria-label={isYear ? "Nächstes Jahr" : "Nächster Monat"} title={isYear ? "Nächstes Jahr" : "Nächster Monat"}>
         <span aria-hidden="true">&rsaquo;</span>
+      </PeriodNavLink>
+      <PeriodNavLink className="period-nav-button period-current-icon" href={todayHref} aria-label={todayLabel} title={todayLabel}>
+        <CalendarCheck size={18} aria-hidden="true" />
       </PeriodNavLink>
       <div className="period-mode-toggle" role="list" aria-label="Zeitraum-Modus">
         <PeriodNavLink role="listitem" className={!isYear && range.mode !== "custom" ? "active" : ""} href={getMileageHref(params, { month: monthKey, year: undefined, from: undefined, to: undefined })}>Monat</PeriodNavLink>
@@ -531,6 +567,104 @@ function buildMonthlyRows(entries: ReturnType<typeof addFuelDerivedFields>) {
     }))
     .sort((a, b) => b.label.localeCompare(a.label))
     .slice(0, 12);
+}
+
+function buildMileageComparison(entries: ReturnType<typeof addFuelDerivedFields>, range: ReturnType<typeof getRange>, query: string) {
+  const selectedMonthKeys = monthKeysBetween(range.from, range.to);
+  const selectedMonthCount = Math.max(1, selectedMonthKeys.length);
+  const neighborKeys = [
+    ...Array.from({ length: 3 }, (_, index) => addMonthsToKey(selectedMonthKeys[0] ?? getMonthKey(), -3 + index)),
+    ...Array.from({ length: 3 }, (_, index) => addMonthsToKey(selectedMonthKeys.at(-1) ?? getMonthKey(), index + 1))
+  ];
+  const neighborKeySet = new Set(neighborKeys);
+  const neighborEntries = entries
+    .filter((entry) => neighborKeySet.has(getMonthKey(new Date(entry.date))))
+    .filter((entry) => !query || normalizeSearch(entry.note).includes(query) || String(entry.odometerKm).includes(query));
+  const neighborRows = buildMonthlyRows(neighborEntries);
+  const neighborMonthCount = Math.max(1, neighborRows.length);
+  const neighborStats = calculateFuelStatsFromDerived(neighborEntries);
+  const selectedStats = calculateFuelStatsFromDerived(
+    entries
+      .filter((entry) => isInRange(entry.date, range.from, range.to))
+      .filter((entry) => !query || normalizeSearch(entry.note).includes(query) || String(entry.odometerKm).includes(query))
+  );
+
+  return {
+    cost: compareMetric(
+      selectedStats.totalCostCents / 100 / selectedMonthCount,
+      neighborStats.totalCostCents / 100 / neighborMonthCount,
+      maxNeighborValue(neighborRows, (row) => row.costCents / 100),
+      "lower",
+      "Kosten"
+    ),
+    liters: compareMetric(
+      selectedStats.totalLitersMilli / 1000 / selectedMonthCount,
+      neighborStats.totalLitersMilli / 1000 / neighborMonthCount,
+      maxNeighborValue(neighborRows, (row) => row.litersMilli / 1000),
+      "lower",
+      "Liter"
+    ),
+    distance: compareMetric(
+      selectedStats.drivenKm / selectedMonthCount,
+      neighborStats.drivenKm / neighborMonthCount,
+      maxNeighborValue(neighborRows, (row) => row.drivenKm),
+      "higher",
+      "Kilometer"
+    ),
+    consumption: compareMetric(
+      selectedStats.averageLitersPer100Km,
+      neighborStats.averageLitersPer100Km,
+      maxNeighborValue(neighborRows, (row) => row.averageLitersPer100Km),
+      "lower",
+      "Verbrauch"
+    )
+  };
+}
+
+function compareMetric(value: number | null, baseline: number | null, scaleMax: number | null, direction: "lower" | "higher", label: string) {
+  if (value === null || baseline === null || !Number.isFinite(value) || !Number.isFinite(baseline) || baseline <= 0) {
+    return { tone: "tone-neutral", label: `${label}: kein Umfeldvergleich`, sparkWidth: null };
+  }
+  const delta = (value - baseline) / baseline;
+  const sparkWidth = scaleMax !== null && Number.isFinite(scaleMax) && scaleMax > 0 ? percentWidth(value, scaleMax) : null;
+  if (Math.abs(delta) < 0.05) return { tone: "tone-neutral", label: `${label}: nah am Umfeld`, sparkWidth };
+  const better = direction === "lower" ? delta < 0 : delta > 0;
+  return {
+    tone: better ? "tone-positive" : "tone-negative",
+    label: `${label}: ${formatPercent(Math.abs(delta))} ${better ? "besser" : "schlechter"} als Umfeld`,
+    sparkWidth
+  };
+}
+
+function maxNeighborValue<T>(rows: T[], getValue: (row: T) => number | null) {
+  const values = rows.map(getValue).filter((value): value is number => value !== null && Number.isFinite(value) && value > 0);
+  return values.length > 0 ? Math.max(...values) : null;
+}
+
+function formatPercent(value: number) {
+  return new Intl.NumberFormat("de-DE", { maximumFractionDigits: 0 }).format(value * 100) + " %";
+}
+
+function monthKeysBetween(from: Date, to: Date) {
+  const keys: string[] = [];
+  const cursor = new Date(from.getFullYear(), from.getMonth(), 1);
+  const end = new Date(to.getFullYear(), to.getMonth(), 1);
+  while (cursor <= end) {
+    keys.push(getMonthKey(cursor));
+    cursor.setMonth(cursor.getMonth() + 1);
+  }
+  return keys;
+}
+
+function addMonthsToKey(monthKey: string, delta: number) {
+  const parts = splitMonthKey(monthKey) ?? splitMonthKey(getMonthKey())!;
+  return getMonthKey(new Date(parts.year, Number(parts.month) - 1 + delta, 1));
+}
+
+function percentWidth(value: number | null, max: number) {
+  if (value === null || !Number.isFinite(value) || value <= 0) return "0%";
+  const percent = Math.max(6, Math.min(100, (Math.abs(value) / Math.max(1, max)) * 100));
+  return `${percent}%`;
 }
 
 function getRange(params: MileagePageParams, currentMonthKey: string) {

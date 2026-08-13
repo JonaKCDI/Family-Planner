@@ -20,6 +20,7 @@ import {
 import { formatDate, formatMoney, toDateInputValue } from "@/lib/format";
 import type { getExpenseLabels, getRecurringTransactions, getVisibleCategories } from "@/lib/queries";
 import { AutosaveForm } from "@/components/autosave-form";
+import { ConfirmSubmitButton } from "@/components/confirm-submit-button";
 import { ExcelProgressPanel } from "@/components/excel-progress-panel";
 import { InlineEditPanel } from "@/components/inline-edit-panel";
 import { SearchableSelect } from "@/components/searchable-select";
@@ -133,7 +134,7 @@ export function ExpenseSetupPanel({ exportYear, categories, labels, allLabels, r
                 <form action={deleteCategory}>
                   <input type="hidden" name="id" value={category.id} />
                   <input type="hidden" name="returnTo" value={returnTo} />
-                  <button className="button secondary danger-subtle" type="submit">Kategorie lÃ¶schen</button>
+                  <ConfirmSubmitButton title="Kategorie löschen?" message="Die Kategorie wird nur gelöscht, wenn sie nicht mehr verwendet wird.">Kategorie löschen</ConfirmSubmitButton>
                 </form>
               </div>
             </div>
@@ -177,7 +178,7 @@ export function ExpenseSetupPanel({ exportYear, categories, labels, allLabels, r
                 <form action={deleteExpenseLabel}>
                   <input type="hidden" name="id" value={label.id} />
                   <input type="hidden" name="returnTo" value={returnTo} />
-                  <button className="button secondary danger-subtle" type="submit">Löschen</button>
+                  <ConfirmSubmitButton title="Label löschen?" message="Das Label wird nur gelöscht, wenn es nicht mehr verwendet wird.">Löschen</ConfirmSubmitButton>
                 </form>
               </div>
             </div>
@@ -291,7 +292,7 @@ export function RecurringTransactionsPanel({ recurringTransactions, categories, 
                   </form>
                   <form action={softDeleteRecurringTransaction}>
                     <input type="hidden" name="id" value={series.id} />
-                    <button className="button secondary danger-subtle" type="submit">Entfernen</button>
+                    <ConfirmSubmitButton title="Serie entfernen?" message="Die Serie wird beendet und erzeugt keine neuen Buchungen mehr.">Entfernen</ConfirmSubmitButton>
                   </form>
                 </div>
               </details>
@@ -399,7 +400,7 @@ export function ExpenseCategorySetupPanel({ categories, returnTo = "/ausgaben/se
               <form action={deleteCategory}>
                 <input type="hidden" name="id" value={category.id} />
                 <input type="hidden" name="returnTo" value={returnTo} />
-                <button className="button secondary danger-subtle" type="submit">Kategorie löschen</button>
+                <ConfirmSubmitButton title="Kategorie löschen?" message="Die Kategorie wird nur gelöscht, wenn sie nicht mehr verwendet wird.">Kategorie löschen</ConfirmSubmitButton>
               </form>
             </div>
           </div>
@@ -446,7 +447,7 @@ export function ExpenseLabelSetupPanel({ allLabels, returnTo = "/ausgaben/setup/
               <form action={deleteExpenseLabel}>
                 <input type="hidden" name="id" value={label.id} />
                 <input type="hidden" name="returnTo" value={returnTo} />
-                <button className="button secondary danger-subtle" type="submit">Löschen</button>
+                <ConfirmSubmitButton title="Label löschen?" message="Das Label wird nur gelöscht, wenn es nicht mehr verwendet wird.">Löschen</ConfirmSubmitButton>
               </form>
             </div>
           </div>

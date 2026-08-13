@@ -2832,11 +2832,6 @@ body {
   }
 
   .mileage-secondary-actions {
-    grid-column: 2;
-    grid-row: 1;
-    flex-wrap: nowrap;
-    align-self: stretch;
-    align-items: stretch;
     margin: 0;
   }
 
@@ -6428,6 +6423,7 @@ body { font-family: var(--app-font-family); }
 /* Finance package 1+4: overview rows, filter facets, and booking sheets. */
 .finance-page-head {
   margin-bottom: .75rem;
+  min-height: 44px;
 }
 
 .finance-toolbar {
@@ -10575,8 +10571,19 @@ body.modal-scroll-locked .fab-button {
 }
 
 .finance-planning-page {
-  display: grid;
-  gap: .9rem;
+  display: block;
+}
+
+.finance-planning-page > .finance-page-head {
+  height: 44px;
+}
+
+.finance-planning-page > .filter-system,
+.finance-planning-page > .finance-summary-panel,
+.finance-planning-page > .planning-quality-note,
+.finance-planning-page > .planning-data-note,
+.finance-planning-page > .planning-panel {
+  margin-top: .9rem;
 }
 
 .planning-head-actions {
@@ -11079,7 +11086,7 @@ html[data-finance-direction="neutral"] .finance-planning-page > .planning-panel 
 
 .finance-primary-tabs a.active,
 .finance-analysis-subtabs a.active {
-  animation: finance-tab-settle .18s ease-out both;
+  animation: none;
 }
 
 @keyframes modal-sheet-rise-in {
@@ -11302,6 +11309,21 @@ html[data-finance-direction="neutral"] .finance-planning-page > .planning-panel 
   margin: 0;
 }
 
+.mileage-consumption-metric::after {
+  content: "";
+  position: absolute;
+  top: .68rem;
+  right: .72rem;
+  width: 30px;
+  height: 30px;
+  border-radius: 999px;
+  background:
+    radial-gradient(circle at center, transparent 44%, var(--summary-tone) 46% 54%, transparent 56%),
+    linear-gradient(130deg, transparent 48%, var(--summary-tone) 49% 53%, transparent 54%);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--summary-tone) 18%, transparent);
+  opacity: .86;
+}
+
 .mileage-overview-snapshot,
 .mileage-entry-section,
 .mileage-analysis-page {
@@ -11310,12 +11332,216 @@ html[data-finance-direction="neutral"] .finance-planning-page > .planning-panel 
 }
 
 .mileage-entry-list {
-  gap: .45rem;
+  gap: .55rem;
 }
 
 .mileage-entry-list .mileage-row {
   border-radius: 16px;
-  box-shadow: 0 1px 3px rgba(24, 33, 43, .04);
+  border-color: #d7e4e5;
+  background: linear-gradient(180deg, #fff 0%, #fbfdfd 100%);
+  box-shadow: 0 2px 8px rgba(24, 33, 43, .045);
+  overflow: hidden;
+}
+
+.mileage-row-content {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "head actions"
+    "values values";
+  gap: .55rem .7rem;
+  align-items: center;
+  padding: .78rem .82rem;
+}
+
+.mileage-row-head {
+  grid-area: head;
+  display: grid;
+  grid-template-columns: minmax(6rem, auto) minmax(0, 1fr);
+  gap: .7rem;
+  align-items: center;
+  min-width: 0;
+}
+
+.mileage-date {
+  color: var(--muted);
+  font-size: .82rem;
+  font-weight: 820;
+}
+
+.mileage-main {
+  display: grid;
+  gap: .16rem;
+  min-width: 0;
+}
+
+.mileage-odometer {
+  color: var(--accent-dark);
+  font-weight: 880;
+}
+
+.mileage-main small {
+  color: var(--muted);
+  font-size: .78rem;
+  font-weight: 700;
+}
+
+.mileage-values {
+  grid-area: values;
+  grid-column: 1 / -1;
+  grid-row: 2;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: .36rem;
+}
+
+.mileage-value {
+  display: grid;
+  gap: .08rem;
+  min-width: 0;
+  border: 1px solid #e0e8ea;
+  border-radius: 10px;
+  background: #fff;
+  padding: .38rem .44rem;
+}
+
+.mileage-value small {
+  color: var(--muted);
+  font-size: .66rem;
+  font-weight: 820;
+}
+
+.mileage-value b {
+  color: #25323a;
+  font-size: .78rem;
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mileage-cost {
+  color: #98621d;
+  font-variant-numeric: tabular-nums;
+}
+
+.mileage-row-edit-button {
+  width: 38px;
+  height: 38px;
+  min-width: 38px;
+  border-color: #d9e5e6;
+  background: #f8fbfb;
+  color: var(--accent-dark);
+  box-shadow: none;
+}
+
+.mileage-row-edit-button:hover {
+  border-color: color-mix(in srgb, var(--accent) 34%, #d9e5e6);
+  background: color-mix(in srgb, var(--accent) 8%, #fff);
+}
+
+.mileage-row-actions {
+  grid-area: actions;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: .7rem;
+  min-width: max-content;
+}
+
+.mileage-edit-delete-form {
+  display: flex;
+  justify-content: center;
+  border-top: 1px solid var(--line);
+  margin-top: .15rem;
+  padding: .75rem 0 0;
+}
+
+.confirm-sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  display: grid;
+  place-items: end center;
+  padding: 1rem;
+  background: rgba(15, 23, 32, .18);
+  backdrop-filter: blur(8px);
+  animation: modal-backdrop-fade-in .16s ease-out both;
+}
+
+.confirm-sheet {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: .75rem;
+  width: min(420px, 100%);
+  border: 1px solid rgba(215, 226, 230, .95);
+  border-radius: 24px;
+  background: rgba(255, 255, 255, .96);
+  box-shadow: 0 24px 80px rgba(17, 25, 33, .24);
+  padding: .95rem;
+  animation: modal-sheet-rise-in .18s cubic-bezier(.2, .8, .2, 1) both;
+}
+
+.confirm-sheet-icon {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 999px;
+  background: #fff1f1;
+  color: #a63a3a;
+}
+
+.confirm-sheet-copy {
+  min-width: 0;
+}
+
+.confirm-sheet-copy h2 {
+  margin: 0;
+  color: var(--foreground);
+  font-size: 1rem;
+  font-weight: 860;
+}
+
+.confirm-sheet-copy p {
+  margin: .22rem 0 0;
+  color: var(--muted);
+  font-size: .86rem;
+  line-height: 1.35;
+}
+
+.confirm-sheet-actions {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: .55rem;
+}
+
+.mileage-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: .5rem;
+}
+
+.mileage-detail-grid span {
+  display: grid;
+  gap: .12rem;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+  padding: .55rem .6rem;
+}
+
+.mileage-detail-grid small {
+  color: var(--muted);
+  font-size: .72rem;
+  font-weight: 820;
+}
+
+.mileage-detail-grid b {
+  color: var(--foreground);
+  font-size: .9rem;
+  font-variant-numeric: tabular-nums;
 }
 
 .mileage-detail-sheet {
@@ -11325,6 +11551,36 @@ html[data-finance-direction="neutral"] .finance-planning-page > .planning-panel 
 
 .mileage-analysis-table {
   margin-top: 0;
+  border: 0;
+  gap: .45rem;
+  overflow: visible;
+}
+
+.mileage-analysis-table .mini-table-head {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #f8fbfb;
+}
+
+.mileage-analysis-row {
+  border: 1px solid #dce6e8;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 1px 5px rgba(24, 33, 43, .035);
+}
+
+.mileage-analysis-row + .mileage-analysis-row {
+  border-top: 1px solid #dce6e8;
+}
+
+.mileage-analysis-row span {
+  display: grid;
+  gap: .18rem;
+}
+
+.mileage-analysis-row b {
+  font-size: .82rem;
+  font-variant-numeric: tabular-nums;
 }
 
 .mileage-filter-sheet .modal-body,
@@ -11384,7 +11640,218 @@ html[data-finance-direction="neutral"] .finance-planning-page > .planning-panel 
 }
 
 .fuel-create-form {
-  gap: .58rem;
+  gap: .44rem;
+  min-height: 0;
+  align-content: start;
+}
+
+.fuel-create-form .fuel-create-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.fuel-create-subhead {
+  margin-bottom: .05rem;
+}
+
+.fuel-document-page,
+.contract-document-page {
+  animation: task-sheet-page-in .22s cubic-bezier(.2, .85, .25, 1) both;
+}
+
+.document-line-art {
+  position: relative;
+  justify-self: center;
+  width: min(74vw, 420px);
+  aspect-ratio: 2.05;
+  flex: 0 0 auto;
+  margin: clamp(1.1rem, 3.6dvh, 1.9rem) auto .2rem;
+  border: 2px solid rgba(8, 123, 128, .16);
+  border-radius: 20px;
+  opacity: .82;
+  background:
+    linear-gradient(rgba(8, 123, 128, .16), rgba(8, 123, 128, .16)) 15% 29% / 24% 2px no-repeat,
+    linear-gradient(rgba(8, 123, 128, .12), rgba(8, 123, 128, .12)) 15% 45% / 68% 2px no-repeat,
+    linear-gradient(rgba(8, 123, 128, .105), rgba(8, 123, 128, .105)) 15% 58% / 58% 2px no-repeat,
+    linear-gradient(rgba(8, 123, 128, .09), rgba(8, 123, 128, .09)) 15% 71% / 64% 2px no-repeat;
+  box-shadow:
+    18px 18px 0 -10px rgba(8, 123, 128, .045),
+    0 18px 36px rgba(20, 30, 38, .035);
+}
+
+.document-line-art::before {
+  content: "";
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 16%;
+  aspect-ratio: 1;
+  border-bottom: 2px solid rgba(8, 123, 128, .15);
+  border-left: 2px solid rgba(8, 123, 128, .15);
+  border-bottom-left-radius: 16px;
+  background:
+    linear-gradient(135deg, rgba(8, 123, 128, .04), rgba(8, 123, 128, .015));
+  clip-path: polygon(100% 0, 100% 100%, 0 0);
+}
+
+.document-line-art::after {
+  content: "";
+  position: absolute;
+  left: 15%;
+  bottom: 13%;
+  width: 42%;
+  height: 2px;
+  border-radius: 999px;
+  background: rgba(8, 123, 128, .08);
+}
+
+.fuel-expense-page .form-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: .55rem;
+}
+
+.fuel-measure-row,
+.fuel-booking-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: .5rem;
+  align-items: end;
+  min-width: 0;
+}
+
+.fuel-measure-row > *,
+.fuel-booking-row > * {
+  min-width: 0;
+}
+
+.fuel-expense-segment {
+  align-self: end;
+}
+
+.fuel-edit-expense-hint {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  border: 1px solid #dce6e8;
+  border-radius: 12px;
+  background: #f8fbfb;
+  color: var(--muted);
+  padding: .45rem .6rem;
+  text-align: center;
+  font-size: .78rem;
+  font-weight: 820;
+  line-height: 1.2;
+}
+
+.fuel-create-actions {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.contract-create-form {
+  gap: .48rem;
+  min-height: 0;
+  align-content: start;
+}
+
+.contract-create-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: .5rem;
+}
+
+.contract-create-subhead {
+  margin-bottom: .05rem;
+}
+
+.modal-panel.create-dialog .contract-create-core label,
+.modal-panel.create-dialog .contract-create-core label:not(.full-span) {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  min-height: 0;
+  border-top: 0;
+  gap: .24rem;
+  padding-top: 0;
+  color: var(--muted);
+  font-size: .8rem;
+  font-weight: 760;
+  line-height: 1.15;
+}
+
+.modal-panel.create-dialog .contract-create-core label:not(.full-span) + label:not(.full-span) {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.modal-panel.create-dialog .contract-create-core input,
+.modal-panel.create-dialog .contract-create-core select,
+.modal-panel.create-dialog .contract-create-core textarea {
+  min-height: 40px;
+  padding: .5rem .62rem;
+  font-size: .92rem;
+  font-weight: 500;
+}
+
+.contract-date-cost-row,
+.contract-rhythm-status-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: .5rem;
+  align-items: end;
+  min-width: 0;
+}
+
+.contract-date-cost-row > *,
+.contract-rhythm-status-row > * {
+  min-width: 0;
+}
+
+.contract-flow-links {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.contract-create-form .modal-form-section {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 0;
+}
+
+.contract-create-form .modal-form-section + .modal-form-section {
+  border-top: 1px solid var(--line);
+  padding-top: .72rem;
+}
+
+.contract-create-form .modal-form-section legend {
+  margin-bottom: .42rem;
+  color: var(--accent-dark);
+  font-size: .9rem;
+  font-weight: 840;
+}
+
+.modal-panel.create-dialog .create-dialog-body:has(.contract-create-form) {
+  overflow-y: auto !important;
+  padding-bottom: .75rem !important;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
+.modal-panel.create-dialog .create-dialog-body:has(.contract-create-form) > .contract-create-form {
+  height: auto !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  overflow: visible !important;
+}
+
+.modal-panel.create-dialog .contract-create-form > .modal-submit-row {
+  margin-top: auto;
+}
+
+.modal-panel.create-dialog .contract-create-form[data-contract-panel="auto"] > .modal-submit-row,
+.modal-panel.create-dialog .contract-create-form[data-contract-panel="term"] > .modal-submit-row,
+.modal-panel.create-dialog .contract-create-form[data-contract-panel="document"] > .modal-submit-row {
+  position: relative !important;
+  bottom: auto;
+  margin-bottom: 0;
 }
 
 .fuel-create-form .modal-form-section {
@@ -11414,6 +11881,37 @@ html[data-finance-direction="neutral"] .finance-planning-page > .planning-panel 
   padding: .65rem 0 0;
 }
 
+.modal-panel.create-dialog .create-dialog-body:has(.fuel-create-form) {
+  overflow-y: auto !important;
+  padding-bottom: .75rem !important;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
+.modal-panel.create-dialog .create-dialog-body:has(.fuel-create-form) > .fuel-create-form {
+  height: auto !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  overflow: visible !important;
+}
+
+.modal-panel.create-dialog .fuel-create-form > .modal-submit-row {
+  margin-top: auto;
+}
+
+.modal-panel.create-dialog .fuel-create-form[data-fuel-panel="document"] > .modal-submit-row {
+  position: relative !important;
+  bottom: auto;
+  margin-bottom: 0;
+}
+
+.modal-panel.create-dialog .finance-create-form[data-expense-panel="document"] > .modal-submit-row,
+.modal-panel.create-dialog .contract-create-form[data-task-view="document"] > .modal-submit-row {
+  position: relative !important;
+  bottom: auto;
+  margin-bottom: 0;
+}
+
 @media (max-width: 700px) {
   .mileage-page-head {
     align-items: center;
@@ -11441,8 +11939,137 @@ html[data-finance-direction="neutral"] .finance-planning-page > .planning-panel 
     padding: .78rem;
   }
 
+  .mileage-row-content {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "head actions"
+      "values values";
+    gap: .38rem .55rem;
+  }
+
+  .mileage-row-head {
+    grid-template-columns: minmax(0, 1fr);
+    gap: .12rem;
+  }
+
+  .mileage-date {
+    font-size: .82rem;
+  }
+
+  .mileage-odometer,
+  .mileage-main small {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .mileage-values {
+    grid-column: 1 / -1;
+    grid-row: auto;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    margin-top: .12rem;
+  }
+
+  .mileage-value {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: baseline;
+  }
+
+  .mileage-cost {
+    font-size: 1rem;
+  }
+
+  .mileage-row-actions {
+    gap: .46rem;
+  }
+
+  .mileage-detail-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .confirm-sheet-backdrop {
+    align-items: end;
+    padding: .8rem;
+  }
+
+  .confirm-sheet {
+    border-radius: 22px;
+  }
+
+  .mileage-entry-list .mileage-row .mileage-row-content {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "head actions"
+      "values values";
+  }
+
+  .mileage-entry-list .mileage-row .mileage-row-head {
+    grid-area: head;
+  }
+
+  .mileage-entry-list .mileage-row .mileage-values {
+    grid-area: values;
+    grid-column: auto;
+    grid-row: auto;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .mileage-entry-list .mileage-row .mileage-row-actions {
+    grid-area: actions;
+  }
+
   .mileage-analysis-table {
-    overflow-x: auto;
+    overflow: visible;
+  }
+
+  .mileage-analysis-table .mini-table-head {
+    display: grid;
+    grid-template-columns: minmax(4.7rem, 1fr) minmax(3.8rem, .78fr) minmax(4.6rem, .9fr) minmax(5rem, 1fr) minmax(3.2rem, .62fr);
+    gap: .42rem;
+    padding: .56rem .62rem;
+    font-size: .74rem;
+  }
+
+  .mileage-analysis-row {
+    display: grid;
+    grid-template-columns: minmax(4.7rem, 1fr) minmax(3.8rem, .78fr) minmax(4.6rem, .9fr) minmax(5rem, 1fr) minmax(3.2rem, .62fr);
+    align-items: center;
+    gap: .42rem;
+    min-width: 0;
+    padding: .62rem;
+  }
+
+  .mileage-analysis-row > span:first-child {
+    display: block;
+    border-bottom: 0;
+    padding-bottom: 0;
+    color: var(--accent-dark);
+    font-size: .86rem;
+    font-weight: 880;
+  }
+
+  .mileage-analysis-row > span:not(:first-child),
+  .mileage-analysis-row > strong {
+    display: block;
+    min-width: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    padding: 0;
+  }
+
+  .mileage-analysis-row > strong {
+    color: #16776f;
+    font-size: .86rem;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .mileage-analysis-row b {
+    display: block;
+    font-size: .86rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .modal-panel.mileage-filter-sheet {
@@ -11492,8 +12119,72 @@ html[data-finance-direction="neutral"] .finance-planning-page > .planning-panel 
     gap: .48rem;
   }
 
-.fuel-create-form .modal-form-section + .modal-form-section {
+  .fuel-create-form .fuel-create-grid,
+  .contract-create-grid,
+  .fuel-expense-page .form-grid {
+    gap: .42rem .48rem;
+  }
+
+  .fuel-measure-row,
+  .fuel-booking-row,
+  .contract-date-cost-row,
+  .contract-rhythm-status-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: .36rem;
+  }
+
+  .document-line-art {
+    width: min(76vw, 360px);
+    margin-top: clamp(.9rem, 2.8dvh, 1.45rem);
+  }
+
+  .fuel-create-form .modal-form-section + .modal-form-section {
     padding-top: .6rem;
+  }
+}
+
+/* Tankstopp rows use wrapper elements now; reset older direct-grid rules. */
+.mileage-entry-list .mileage-row .mileage-row-head > .mileage-date,
+.mileage-entry-list .mileage-row .mileage-row-head > .mileage-main {
+  grid-area: auto;
+  grid-column: auto;
+  grid-row: auto;
+}
+
+.mileage-entry-list .mileage-row .mileage-row-head {
+  display: grid;
+  grid-template-columns: minmax(6.2rem, auto) minmax(0, 1fr);
+  align-items: center;
+  gap: .7rem;
+  min-width: 0;
+}
+
+.mileage-entry-list .mileage-row .mileage-main {
+  min-width: 0;
+}
+
+.mileage-entry-list .mileage-row .mileage-odometer,
+.mileage-entry-list .mileage-row .mileage-main small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 700px) {
+  .mileage-entry-list .mileage-row .mileage-row-head {
+    grid-template-columns: minmax(0, 1fr);
+    gap: .08rem;
+  }
+
+  .mileage-entry-list .mileage-row .mileage-date {
+    font-size: .82rem;
+    line-height: 1.15;
+  }
+
+  .mileage-entry-list .mileage-row .mileage-odometer {
+    font-size: 1rem;
+    line-height: 1.15;
   }
 }
 
@@ -12465,13 +13156,13 @@ a.document-row-trigger {
     padding-bottom: calc(1rem + env(safe-area-inset-bottom)) !important;
   }
 
-  .modal-panel.create-dialog:has(.finance-create-form) {
+  .modal-panel.create-dialog:has(:is(.finance-create-form, .contract-create-form)) {
     height: min(92dvh, 760px) !important;
     max-height: calc(100dvh - .5rem - env(safe-area-inset-top)) !important;
     grid-template-rows: auto auto minmax(0, 1fr) !important;
   }
 
-  .modal-panel.create-dialog:has(.finance-create-form) .create-dialog-body {
+  .modal-panel.create-dialog:has(:is(.finance-create-form, .contract-create-form)) .create-dialog-body {
     min-height: 0 !important;
     max-height: none !important;
     overflow-y: auto !important;
@@ -12480,14 +13171,14 @@ a.document-row-trigger {
     -webkit-overflow-scrolling: touch;
   }
 
-  .modal-panel.create-dialog:has(.finance-create-form) .finance-create-form {
+  .modal-panel.create-dialog:has(:is(.finance-create-form, .contract-create-form)) :is(.finance-create-form, .contract-create-form) {
     height: auto !important;
     min-height: 0 !important;
     max-height: none !important;
     overflow: visible !important;
   }
 
-  .modal-panel.create-dialog:has(.finance-create-form) .finance-create-form > .modal-submit-row {
+  .modal-panel.create-dialog:has(:is(.finance-create-form, .contract-create-form)) :is(.finance-create-form, .contract-create-form) > .modal-submit-row {
     position: sticky !important;
     bottom: 0 !important;
     z-index: 6;
@@ -12496,4 +13187,211 @@ a.document-row-trigger {
     background: #fff !important;
     padding: .65rem 1rem calc(.75rem + env(safe-area-inset-bottom)) !important;
   }
+}
+
+/* Contract create sheet: direct overrides, no :has(), so iOS/PWA keeps the same layout. */
+.modal-panel.create-dialog.contract-create-sheet {
+  height: min(92dvh, 760px) !important;
+  max-height: calc(100dvh - .5rem - env(safe-area-inset-top)) !important;
+  grid-template-rows: auto auto minmax(0, 1fr) !important;
+}
+
+.modal-panel.create-dialog.contract-create-sheet .contract-create-dialog-body {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
+  height: 100% !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  overflow: hidden !important;
+  padding-bottom: 0 !important;
+}
+
+.modal-panel.create-dialog.contract-create-sheet .contract-create-form {
+  gap: .36rem;
+  height: 100% !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  overflow: visible !important;
+}
+
+.modal-panel.create-dialog .contract-create-form[data-contract-panel="auto"] {
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  align-content: stretch;
+}
+
+.modal-panel.create-dialog.contract-create-sheet .contract-create-form[data-contract-panel="term"],
+.modal-panel.create-dialog.contract-create-sheet .contract-create-form[data-contract-panel="document"] {
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  align-content: stretch;
+}
+
+.modal-panel.create-dialog .contract-create-form .modal-form-section {
+  padding-top: .45rem;
+}
+
+.modal-panel.create-dialog .contract-create-form legend {
+  margin-bottom: .28rem;
+}
+
+.modal-panel.create-dialog .contract-create-form .form-grid {
+  gap: .42rem .55rem;
+}
+
+.modal-panel.create-dialog .contract-create-form :is(.contract-auto-page, .contract-term-page) .form-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: end;
+  gap: .5rem .65rem;
+}
+
+.modal-panel.create-dialog .contract-create-form :is(.contract-auto-page, .contract-term-page) .form-grid > label {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) !important;
+  align-items: start;
+  min-height: 0;
+  border: 0 !important;
+  gap: .24rem;
+  padding: 0 !important;
+  color: var(--muted);
+  font-size: .8rem;
+  font-weight: 760;
+  line-height: 1.15;
+}
+
+.modal-panel.create-dialog .contract-create-form :is(.contract-auto-page, .contract-term-page) .form-grid > .full-span {
+  grid-column: 1 / -1;
+}
+
+.modal-panel.create-dialog .contract-create-form :is(.contract-auto-page, .contract-term-page) .checkbox-field {
+  min-height: 40px;
+  align-content: center;
+  border: 1px solid #d7e0e4 !important;
+  border-radius: 12px !important;
+  background: #fff !important;
+  padding: .55rem .68rem !important;
+}
+
+.modal-panel.create-dialog .contract-create-form :is(.contract-auto-page, .contract-term-page) .checkbox-field input {
+  width: 20px;
+  height: 20px;
+}
+
+.modal-panel.create-dialog .contract-create-form :is(.contract-auto-page, .contract-term-page) input,
+.modal-panel.create-dialog .contract-create-form :is(.contract-auto-page, .contract-term-page) select {
+  min-height: 40px;
+  padding: .5rem .62rem;
+  font-size: .92rem;
+}
+
+.modal-panel.create-dialog .contract-create-form .contract-auto-page .combobox-options {
+  position: static;
+  margin-top: .35rem;
+}
+
+.modal-panel.create-dialog .contract-create-form .combobox-field {
+  position: relative;
+  z-index: 1;
+  align-content: start;
+}
+
+.modal-panel.create-dialog .contract-create-form .combobox-field:focus-within {
+  z-index: 80;
+}
+
+.modal-panel.create-dialog .contract-create-form .combobox-options {
+  z-index: 90;
+  max-height: min(32dvh, 220px);
+  border-radius: 12px;
+  box-shadow: 0 14px 30px rgba(20, 30, 38, .14);
+}
+
+.modal-panel.create-dialog .contract-create-form .combobox-option {
+  min-height: 42px;
+  padding: .48rem .55rem;
+}
+
+.modal-panel.create-dialog .contract-create-form .contract-auto-page .combobox-control {
+  position: relative;
+}
+
+.modal-panel.create-dialog .contract-create-form .contract-auto-page .combobox-options {
+  position: absolute !important;
+  top: calc(100% + .35rem);
+  right: 0;
+  left: 0;
+  z-index: 120;
+  margin-top: 0 !important;
+  border-color: #d7e0e4;
+  background: #fff;
+}
+
+.modal-panel.create-dialog .contract-create-form .contract-auto-page .form-grid > .combobox-field:last-child {
+  grid-column: 1 / 2;
+}
+
+.contract-auto-line-art {
+  grid-column: 1 / -1;
+  position: relative;
+  justify-self: center;
+  align-self: stretch;
+  width: min(72vw, 420px);
+  min-height: clamp(8.5rem, 24dvh, 15rem);
+  height: 100%;
+  margin: .9rem auto .8rem;
+  opacity: .58;
+  pointer-events: none;
+}
+
+.contract-auto-line-art::before {
+  content: "";
+  position: absolute;
+  inset: 12% 4% 13%;
+  border: 2px solid rgba(8, 123, 128, .14);
+  border-radius: 22px;
+  background:
+    linear-gradient(rgba(8, 123, 128, .12), rgba(8, 123, 128, .12)) 18% 34% / 34% 2px no-repeat,
+    linear-gradient(rgba(8, 123, 128, .08), rgba(8, 123, 128, .08)) 18% 52% / 64% 2px no-repeat,
+    linear-gradient(rgba(8, 123, 128, .065), rgba(8, 123, 128, .065)) 18% 68% / 48% 2px no-repeat;
+  box-shadow: 0 12px 24px rgba(20, 30, 38, .028);
+}
+
+.contract-auto-line-art::after {
+  content: "";
+  position: absolute;
+  right: 17%;
+  bottom: 20%;
+  width: 34%;
+  height: 2px;
+  border-radius: 999px;
+  background: rgba(8, 123, 128, .08);
+}
+
+.modal-panel.create-dialog .contract-create-form[data-contract-panel="auto"] > .modal-submit-row,
+.modal-panel.create-dialog .contract-create-form[data-contract-panel="term"] > .modal-submit-row,
+.modal-panel.create-dialog .contract-create-form[data-contract-panel="document"] > .modal-submit-row {
+  position: relative !important;
+  bottom: auto !important;
+  z-index: 12;
+  align-self: end;
+  margin: 0 -1rem 0 !important;
+  border-top: 1px solid var(--line);
+  background: #fff !important;
+  padding: .65rem 1rem calc(.75rem + env(safe-area-inset-bottom)) !important;
+}
+
+.modal-panel.create-dialog.contract-create-sheet .contract-create-form[data-contract-panel="auto"] > .modal-submit-row,
+.modal-panel.create-dialog.contract-create-sheet .contract-create-form[data-contract-panel="term"] > .modal-submit-row,
+.modal-panel.create-dialog.contract-create-sheet .contract-create-form[data-contract-panel="document"] > .modal-submit-row {
+  position: absolute !important;
+  right: 0;
+  bottom: 0 !important;
+  left: 0;
+  z-index: 30;
+  margin: 0 !important;
+  padding: .65rem 1rem calc(.75rem + env(safe-area-inset-bottom)) !important;
+}
+
+.modal-panel.create-dialog.contract-create-sheet .contract-create-form[data-contract-panel="auto"],
+.modal-panel.create-dialog.contract-create-sheet .contract-create-form[data-contract-panel="term"],
+.modal-panel.create-dialog.contract-create-sheet .contract-create-form[data-contract-panel="document"] {
+  padding-bottom: calc(5.25rem + env(safe-area-inset-bottom));
 }

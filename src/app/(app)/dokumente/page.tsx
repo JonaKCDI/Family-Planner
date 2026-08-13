@@ -5,6 +5,7 @@ import { formatDate } from "@/lib/format";
 import { getVisibleDocumentRoots, getVisibleDocuments } from "@/lib/queries";
 import { ActionModal } from "@/components/action-modal";
 import { AutosaveForm } from "@/components/autosave-form";
+import { ConfirmSubmitButton } from "@/components/confirm-submit-button";
 import { DocumentFilePreview } from "@/components/document-file-preview";
 import { DocumentSummaryStrip, DocumentToolbar, type DocumentToolbarParams } from "@/components/document-toolbar";
 import { EmptyState, PageHeader, ScopeSelect } from "@/components/ui";
@@ -174,7 +175,7 @@ function DocumentReferenceRow({ document }: { document: DocumentLike }) {
           )}
           <form action={deleteDocumentReference}>
             <input type="hidden" name="id" value={document.id} />
-            <button className="button secondary" type="submit">Löschen</button>
+            <ConfirmSubmitButton title="Dokument löschen?" message="Die Referenz wird entfernt. Die Datei selbst bleibt auf dem NAS erhalten.">Löschen</ConfirmSubmitButton>
           </form>
         </div>
       </div>

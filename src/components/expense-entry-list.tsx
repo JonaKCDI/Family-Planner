@@ -8,6 +8,7 @@ import { formatDate, formatMoney, toDateInputValue } from "@/lib/format";
 import { ActionModal } from "@/components/action-modal";
 import { AutosaveForm } from "@/components/autosave-form";
 import { CategoryIcon } from "@/components/category-icon";
+import { ConfirmSubmitButton } from "@/components/confirm-submit-button";
 import { SearchableSelect, type SearchableSelectOption } from "@/components/searchable-select";
 
 export type ExpenseEntryOption = {
@@ -230,7 +231,7 @@ function ExpenseEntryRow({
             <form action={deleteExpense}>
               <input type="hidden" name="id" value={expense.id} />
               <input type="hidden" name="returnTo" value={returnTo} />
-              <button className="button danger-subtle" type="submit">Löschen</button>
+              <ConfirmSubmitButton title="Buchung löschen?" message="Diese Buchung wird dauerhaft aus deinen Ausgaben entfernt." className="button danger-subtle">Löschen</ConfirmSubmitButton>
             </form>
           </div>
         </div>
