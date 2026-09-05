@@ -226,13 +226,15 @@ describe("expense filter URLs", () => {
     })).toBe("/ausgaben?month=2026-07&view=overview");
   });
 
-  test("finance facet filters support kind, payment methods and sources", () => {
+  test("finance facet filters support kind and multiple selected values", () => {
     expect(buildExpensesHref({
       month: "2026-07",
+      category: ["food", "mobility", "food"],
+      label: ["urlaub", "familie"],
       paymentMethod: ["Karte", "Bar"],
       source: ["manual", "contract"],
       kind: "expense"
-    })).toBe("/ausgaben?month=2026-07&kind=expense&paymentMethod=Karte&paymentMethod=Bar&source=manual&source=contract");
+    })).toBe("/ausgaben?month=2026-07&label=urlaub&label=familie&category=food&category=mobility&kind=expense&paymentMethod=Karte&paymentMethod=Bar&source=manual&source=contract");
 
     expect(getCanonicalExpensesHref({
       month: "2026-07",

@@ -2,7 +2,7 @@
 
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 import { createContext, useContext, useState } from "react";
-import { Funnel, Search, X } from "lucide-react";
+import { ArrowLeft, ChevronRight, Funnel, Search, X } from "lucide-react";
 import { ModalPortal } from "@/components/modal-portal";
 
 export type ContractToolbarParams = {
@@ -27,6 +27,7 @@ const SearchCloseContext = createContext<() => void>(() => {});
 export function ContractToolbar({ params, activeFilterCount, resultCount }: ContractToolbarProps) {
   const [searchOpen, setSearchOpen] = useState(Boolean(params.q));
   const [filterOpen, setFilterOpen] = useState(false);
+  const [filterPanel, setFilterPanel] = useState<"main" | "more">("main");
 
   return (
     <div className="task-toolbar contract-toolbar" aria-label="Vertragswerkzeuge">
@@ -52,7 +53,10 @@ export function ContractToolbar({ params, activeFilterCount, resultCount }: Cont
 
       <BottomSheet
         open={filterOpen}
-        onOpenChange={setFilterOpen}
+        onOpenChange={(nextOpen) => {
+          setFilterOpen(nextOpen);
+          if (!nextOpen) setFilterPanel("main");
+        }}
         title="Verträge filtern"
         size="medium"
         footer={(
@@ -64,7 +68,16 @@ export function ContractToolbar({ params, activeFilterCount, resultCount }: Cont
       >
         <form id="contract-filter-form" className="task-filter-form contract-filter-form" action="/vertraege">
           <ContractHiddenFields params={params} exclude={["status", "scope", "autoExpense", "renewal", "attention", "sort"]} />
-          <div className="form-grid task-filter-layout">
+          {filterPanel === "more" ? (
+            <div className="task-create-subhead full-span contract-filter-subhead">
+              <button className="icon-button" type="button" aria-label="Zurück" title="Zurück" onClick={() => setFilterPanel("main")}>
+                <ArrowLeft size={18} aria-hidden="true" />
+              </button>
+              <strong>Weitere Filter</strong>
+              <span aria-hidden="true" />
+            </div>
+          ) : null}
+          <div className="form-grid task-filter-layout contract-filter-main" hidden={filterPanel !== "main"}>
             <fieldset className="fieldset">
               <legend>Status</legend>
               <label>
@@ -79,6 +92,25 @@ export function ContractToolbar({ params, activeFilterCount, resultCount }: Cont
                 </select>
               </label>
             </fieldset>
+            <fieldset className="fieldset">
+              <legend>Fristen</legend>
+              <label>
+                <span>Kündigungsfrist</span>
+                <select name="attention" defaultValue={params.attention ?? ""}>
+                  <option value="">Alle Fristen</option>
+                  <option value="soon">Bald kündbar</option>
+                  <option value="overdue">Überfällig</option>
+                  <option value="none">Ohne Frist</option>
+                </select>
+              </label>
+            </fieldset>
+            <button className="flow-link contract-more-filters-link" type="button" onClick={() => setFilterPanel("more")}>
+              <span>Weitere Filter</span>
+              <small>Sichtbarkeit, Automatik und Sortierung</small>
+              <ChevronRight size={18} aria-hidden="true" />
+            </button>
+          </div>
+          <div className="form-grid task-filter-layout contract-filter-more" hidden={filterPanel !== "more"}>
             <fieldset className="fieldset">
               <legend>Sichtbarkeit</legend>
               <label>
@@ -110,18 +142,9 @@ export function ContractToolbar({ params, activeFilterCount, resultCount }: Cont
               </label>
             </fieldset>
             <fieldset className="fieldset">
-              <legend>Fristen</legend>
+              <legend>Sortierung</legend>
               <label>
-                <span>Kündigungsfrist</span>
-                <select name="attention" defaultValue={params.attention ?? ""}>
-                  <option value="">Alle Fristen</option>
-                  <option value="soon">Bald kündbar</option>
-                  <option value="overdue">Überfällig</option>
-                  <option value="none">Ohne Frist</option>
-                </select>
-              </label>
-              <label>
-                <span>Sortierung</span>
+                <span>Sortieren nach</span>
                 <select name="sort" defaultValue={params.sort ?? "deadline"}>
                   <option value="deadline">Nächste Frist</option>
                   <option value="cost-desc">Kosten absteigend</option>

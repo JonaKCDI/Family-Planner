@@ -5,8 +5,8 @@ export type ExpenseFilterParams = {
   to?: string | null;
   year?: string | null;
   month?: string | null;
-  label?: string | null;
-  category?: string | null;
+  label?: string | string[] | null;
+  category?: string | string[] | null;
   kind?: "expense" | "income" | string | null;
   paymentMethod?: string | string[] | null;
   source?: "manual" | "contract" | "fuel" | "recurring" | string | string[] | null;
@@ -102,7 +102,7 @@ export function buildFilterHref(params: ExpenseFilterParams, values: Pick<Expens
 function normalizeExpenseParams(params: ExpenseFilterParams) {
   const next: ExpenseFilterParams = {};
   for (const key of orderedKeys) {
-    const value = key === "paymentMethod" || key === "source" ? cleanValues(params[key]) : cleanValue(singleValue(params[key]));
+    const value = key === "category" || key === "label" || key === "paymentMethod" || key === "source" ? cleanValues(params[key]) : cleanValue(singleValue(params[key]));
     if (Array.isArray(value)) {
       if (value.length > 0) (next as Record<string, string | string[]>)[key] = value;
     } else if (value) {

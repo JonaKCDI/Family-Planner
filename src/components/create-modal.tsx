@@ -662,43 +662,42 @@ function ContractForm({
 }
 
 function DocumentForm({ documentRoots, onSubmit }: { documentRoots: CreateModalProps["documentRoots"]; onSubmit: () => void }) {
-  const [source, setSource] = useState<"link" | "file">("link");
+  const [source, setSource] = useState<"link" | "file">("file");
+  const [panel, setPanel] = useState<"main" | "details">("main");
   const linkSelected = source === "link";
 
   return (
     <div className="form form-grid modal-form document-create-form">
-      <section className="fieldset modal-form-section full-span">
-        <h3>Quelle</h3>
-        <div className="document-source-choice" role="group" aria-label="Dokumentquelle wählen">
-          <button className={linkSelected ? "document-source-card active" : "document-source-card"} type="button" onClick={() => setSource("link")}>
-            HTTPS-Link speichern
-            <span>Für Drive, Synology-HTTPS, WebDAV oder andere sichere Links.</span>
-          </button>
-          <button className={!linkSelected ? "document-source-card active" : "document-source-card"} type="button" onClick={() => setSource("file")}>
-            Datei aus NAS auswählen
-            <span>Öffnet den read-only Explorer für konfigurierte Dokumentordner.</span>
-          </button>
-        </div>
-      </section>
       {!linkSelected ? (
         <form action={createLocalDocumentReference} className="form form-grid modal-form full-span document-create-source-form" onSubmit={onSubmit}>
-          <fieldset className="fieldset modal-form-section full-span">
-            <legend>Datei</legend>
+          {panel === "details" ? <DocumentDetailsSubhead onBack={() => setPanel("main")} /> : null}
+          <fieldset className="fieldset modal-form-section full-span" hidden={panel !== "main"}>
+            <legend>Dokument</legend>
             <DocumentFilePicker roots={documentRoots} />
             {documentRoots.length === 0 ? (
               <p className="muted">Ein Admin muss zuerst in den Einstellungen einen Dokumentbereich freigeben.</p>
             ) : null}
           </fieldset>
-          <fieldset className="fieldset modal-form-section full-span">
+          <button className="flow-link document-more-details-link full-span" type="button" hidden={panel !== "main"} onClick={() => setPanel("details")}>
+            <span>Weitere Angaben</span>
+            <small>Zuordnung, Sichtbarkeit und Beschreibung</small>
+            <ChevronRight size={18} aria-hidden="true" />
+          </button>
+          <button className="flow-link document-link-source-link full-span" type="button" hidden={panel !== "main"} onClick={() => { setSource("link"); setPanel("main"); }}>
+            <span>HTTPS-Link statt NAS-Datei</span>
+            <small>Für sichere Links zu Drive, WebDAV oder Synology.</small>
+            <ChevronRight size={18} aria-hidden="true" />
+          </button>
+          <fieldset className="fieldset modal-form-section full-span" hidden={panel !== "details"}>
             <legend>Zuordnung</legend>
             <div className="form-grid">
               <label>Titel optional<input name="title" placeholder="Leer lassen, um den Dateinamen zu verwenden" /></label>
               <label>Bezug<select name="linkedEntityType" defaultValue="GENERAL"><option value="GENERAL">Allgemein</option><option value="EXPENSE">Ausgabe</option><option value="TASK">Aufgabe</option><option value="CONTRACT">Vertrag</option></select></label>
               <label>Sichtbarkeit<select name="scope" defaultValue="FAMILY"><option value="FAMILY">Familie</option><option value="PRIVATE">Privat</option></select></label>
-              <label className="document-advanced-link-id">Bezugs-ID optional<input name="linkedEntityId" /></label>
+              <label className="document-advanced-link-id">Interne Bezugs-ID optional<input name="linkedEntityId" /></label>
             </div>
           </fieldset>
-          <fieldset className="fieldset modal-form-section full-span">
+          <fieldset className="fieldset modal-form-section full-span" hidden={panel !== "details"}>
             <legend>Details</legend>
             <label>Beschreibung<textarea name="description" /></label>
           </fieldset>
@@ -709,7 +708,8 @@ function DocumentForm({ documentRoots, onSubmit }: { documentRoots: CreateModalP
       ) : null}
       {linkSelected ? (
         <form action={createDocumentReference} className="form form-grid modal-form full-span document-create-source-form" onSubmit={onSubmit}>
-          <fieldset className="fieldset modal-form-section full-span">
+          {panel === "details" ? <DocumentDetailsSubhead onBack={() => setPanel("main")} /> : <DocumentDetailsSubhead title="HTTPS-Link speichern" onBack={() => setSource("file")} />}
+          <fieldset className="fieldset modal-form-section full-span" hidden={panel !== "main"}>
             <legend>Dokument</legend>
             <div className="form-grid">
               <input type="hidden" name="referenceType" value="EXTERNAL_URL" />
@@ -717,15 +717,20 @@ function DocumentForm({ documentRoots, onSubmit }: { documentRoots: CreateModalP
               <label>HTTPS-Link<input name="url" type="url" placeholder="https://drive.google.com/..." required /></label>
             </div>
           </fieldset>
-          <fieldset className="fieldset modal-form-section full-span">
+          <button className="flow-link document-more-details-link full-span" type="button" hidden={panel !== "main"} onClick={() => setPanel("details")}>
+            <span>Weitere Angaben</span>
+            <small>Zuordnung, Sichtbarkeit und Beschreibung</small>
+            <ChevronRight size={18} aria-hidden="true" />
+          </button>
+          <fieldset className="fieldset modal-form-section full-span" hidden={panel !== "details"}>
             <legend>Zuordnung</legend>
             <div className="form-grid">
               <label>Bezug<select name="linkedEntityType" defaultValue="GENERAL"><option value="GENERAL">Allgemein</option><option value="EXPENSE">Ausgabe</option><option value="TASK">Aufgabe</option><option value="CONTRACT">Vertrag</option></select></label>
               <label>Sichtbarkeit<select name="scope" defaultValue="FAMILY"><option value="FAMILY">Familie</option><option value="PRIVATE">Privat</option></select></label>
-              <label className="document-advanced-link-id">Bezugs-ID optional<input name="linkedEntityId" /></label>
+              <label className="document-advanced-link-id">Interne Bezugs-ID optional<input name="linkedEntityId" /></label>
             </div>
           </fieldset>
-          <fieldset className="fieldset modal-form-section full-span">
+          <fieldset className="fieldset modal-form-section full-span" hidden={panel !== "details"}>
             <legend>Details</legend>
             <label>Beschreibung<textarea name="description" /></label>
           </fieldset>
@@ -734,6 +739,18 @@ function DocumentForm({ documentRoots, onSubmit }: { documentRoots: CreateModalP
           </div>
         </form>
       ) : null}
+    </div>
+  );
+}
+
+function DocumentDetailsSubhead({ onBack, title = "Weitere Angaben" }: { onBack: () => void; title?: string }) {
+  return (
+    <div className="task-create-subhead full-span document-details-subhead">
+      <button className="icon-button" type="button" aria-label="Zurück" title="Zurück" onClick={onBack}>
+        <ArrowLeft size={18} aria-hidden="true" />
+      </button>
+      <strong>{title}</strong>
+      <span aria-hidden="true" />
     </div>
   );
 }

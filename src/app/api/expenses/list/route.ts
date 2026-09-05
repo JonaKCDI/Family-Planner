@@ -17,10 +17,12 @@ export async function GET(request: Request) {
 
   const expenses = await getVisibleExpenses(session.family.id, session.user.id);
   const range = getRange(params, getMonthKey(), expenses);
+  const selectedLabels = normalizeList(params.label);
+  const selectedCategories = normalizeList(params.category);
   const rangeFilteredEntries = expenses
     .filter((entry) => isInRange(entry.date, range.from, range.to))
-    .filter((entry) => !params.label || entry.labelId === params.label)
-    .filter((entry) => !params.category || entry.categoryId === params.category);
+    .filter((entry) => selectedLabels.length === 0 || (entry.labelId !== null && selectedLabels.includes(entry.labelId)))
+    .filter((entry) => selectedCategories.length === 0 || (entry.categoryId !== null && selectedCategories.includes(entry.categoryId)));
   const facetFilteredEntries = filterExpenseFacets(rangeFilteredEntries, params);
   const searchableDocuments = query
     ? await getDocumentsForLinkedEntities(session.family.id, session.user.id, "EXPENSE", facetFilteredEntries.map((entry) => entry.id))
@@ -48,8 +50,8 @@ function searchParamsToExpenseParams(searchParams: URLSearchParams): ExpenseFilt
     to: searchParams.get("to"),
     year: searchParams.get("year"),
     month: searchParams.get("month"),
-    label: searchParams.get("label"),
-    category: searchParams.get("category"),
+    label: searchParams.getAll("label"),
+    category: searchParams.getAll("category"),
     kind: searchParams.get("kind"),
     paymentMethod: searchParams.getAll("paymentMethod"),
     source: searchParams.getAll("source"),
@@ -110,7 +112,7 @@ function allExpenseRange(expenses: Awaited<ReturnType<typeof getVisibleExpenses>
 }
 
 function hasFacetFilter(params: ExpenseFilterParams) {
-  return Boolean(params.q || params.category || params.label || params.kind || normalizeList(params.paymentMethod).length > 0 || normalizeList(params.source).length > 0);
+  return Boolean(params.q || normalizeList(params.category).length > 0 || normalizeList(params.label).length > 0 || params.kind || normalizeList(params.paymentMethod).length > 0 || normalizeList(params.source).length > 0);
 }
 
 function isInRange(date: Date, from: Date, to: Date) {

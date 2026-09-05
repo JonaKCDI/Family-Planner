@@ -12467,6 +12467,136 @@ body.modal-scroll-locked .app-nav {
   padding: .75rem 1rem calc(.9rem + env(safe-area-inset-bottom)) !important;
 }
 
+.modal-panel.create-dialog .document-create-form :is(.document-more-details-link, .document-link-source-link) {
+  grid-template-columns: minmax(0, 1fr) auto !important;
+  row-gap: .12rem;
+}
+
+.modal-panel.create-dialog .document-create-form :is(.document-more-details-link, .document-link-source-link) > :is(span, small) {
+  grid-column: 1;
+  width: auto;
+}
+
+.modal-panel.create-dialog .document-create-form :is(.document-more-details-link, .document-link-source-link) > svg {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+}
+
+.filter-multi-select {
+  display: grid;
+  gap: .35rem;
+  min-width: 0;
+}
+
+.filter-multi-label {
+  color: var(--foreground);
+  font-size: .88rem;
+  font-weight: 760;
+}
+
+.filter-multi-control {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: #fff;
+}
+
+.filter-multi-trigger,
+.filter-multi-clear {
+  min-height: 44px;
+  border: 0;
+  background: transparent;
+  color: var(--foreground);
+  font: inherit;
+}
+
+.filter-multi-trigger {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: .6rem;
+  padding: .55rem .7rem;
+  text-align: left;
+}
+
+.filter-multi-trigger > span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.filter-multi-clear {
+  width: 44px;
+  border-left: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 1.25rem;
+}
+
+.filter-multi-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .3rem;
+}
+
+.filter-multi-chips button {
+  display: inline-flex;
+  align-items: center;
+  gap: .3rem;
+  min-height: 28px;
+  max-width: 100%;
+  border: 0;
+  border-radius: 999px;
+  background: #eaf3f2;
+  color: #255d57;
+  font: inherit;
+  font-size: .78rem;
+  font-weight: 700;
+  padding: .25rem .5rem;
+}
+
+.filter-multi-options {
+  display: grid;
+  gap: .4rem;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: #fff;
+  padding: .45rem;
+}
+
+.filter-multi-options > input {
+  min-height: 40px;
+  margin: 0;
+}
+
+.filter-multi-options-list {
+  display: grid;
+  max-height: 11.25rem;
+  overflow-y: auto;
+}
+
+.filter-multi-options-list button {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  min-height: 42px;
+  align-items: center;
+  gap: .6rem;
+  border: 0;
+  border-top: 1px solid var(--line);
+  background: transparent;
+  color: var(--foreground);
+  font: inherit;
+  padding: .45rem .35rem;
+  text-align: left;
+}
+
+.filter-multi-options-list button.selected {
+  color: #255d57;
+  font-weight: 760;
+}
+
 @media (max-width: 700px) {
   .modal-panel.create-dialog .document-source-choice,
   .modal-panel.create-dialog .document-picker-summary {
@@ -13394,4 +13524,174 @@ a.document-row-trigger {
 .modal-panel.create-dialog.contract-create-sheet .contract-create-form[data-contract-panel="term"],
 .modal-panel.create-dialog.contract-create-sheet .contract-create-form[data-contract-panel="document"] {
   padding-bottom: calc(5.25rem + env(safe-area-inset-bottom));
+}
+
+/* Non-task sheets: keep the first view focused enough for an iPhone without
+   changing the approved Aufgaben sheet contract. */
+@media (max-width: 900px) {
+  .finance-filter-main,
+  .finance-filter-more {
+    display: grid;
+    align-content: start;
+    align-self: start;
+    gap: .7rem;
+  }
+
+  .finance-filter-mode {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .finance-filter-mode button {
+    min-height: 48px;
+    border: 0;
+    border-right: 1px solid var(--line);
+    background: transparent;
+    color: var(--muted);
+    font: inherit;
+    font-size: .84rem;
+    font-weight: 760;
+    line-height: 1.12;
+  }
+
+  .finance-filter-mode button:last-child {
+    border-right: 0;
+  }
+
+  .finance-filter-mode button.active {
+    border-radius: 10px;
+    background: var(--accent);
+    color: #fff;
+  }
+
+  .finance-filter-form .finance-kind-segments {
+    min-height: 48px;
+  }
+
+  .finance-filter-form .finance-kind-segments label {
+    position: relative;
+    min-height: 48px !important;
+    padding: .55rem .25rem !important;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .finance-filter-form .finance-kind-segments label input {
+    position: absolute !important;
+    width: 1px !important;
+    min-width: 1px !important;
+    height: 1px !important;
+    min-height: 1px !important;
+    margin: 0 !important;
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .finance-filter-subhead,
+  .contract-filter-subhead,
+  .document-details-subhead {
+    min-height: 34px;
+    margin: -.15rem 0 .1rem;
+  }
+
+  .finance-more-filters-link,
+  .contract-more-filters-link,
+  .document-more-details-link,
+  .document-link-source-link {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    min-height: 58px;
+    text-align: left;
+  }
+
+  .finance-more-filters-link > span,
+  .contract-more-filters-link > span,
+  .document-more-details-link > span,
+  .document-link-source-link > span {
+    grid-column: 1;
+    font-weight: 790;
+  }
+
+  .finance-more-filters-link > small,
+  .contract-more-filters-link > small,
+  .document-more-details-link > small,
+  .document-link-source-link > small {
+    grid-column: 1;
+    color: var(--muted);
+    font-size: .78rem;
+    line-height: 1.2;
+  }
+
+  .finance-more-filters-link > svg,
+  .contract-more-filters-link > svg,
+  .document-more-details-link > svg,
+  .document-link-source-link > svg {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    align-self: center;
+  }
+
+  .contract-filter-main,
+  .contract-filter-more {
+    align-content: start;
+    align-self: start;
+    gap: .68rem;
+  }
+
+  .modal-panel.create-dialog .document-create-form {
+    gap: .55rem;
+  }
+
+  .modal-panel.create-dialog .document-create-form .document-source-choice {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: .5rem;
+  }
+
+  .modal-panel.create-dialog .document-create-form .document-source-card {
+    min-height: 64px;
+    padding: .72rem .8rem;
+    font-size: .88rem;
+    line-height: 1.16;
+  }
+
+  .modal-panel.create-dialog .document-create-form .document-source-card span {
+    display: none;
+  }
+
+  .modal-panel.create-dialog .document-create-form .document-more-details-link {
+    grid-template-columns: minmax(0, 1fr) auto !important;
+  }
+
+  .modal-panel.create-dialog .document-create-form .document-link-source-link {
+    grid-template-columns: minmax(0, 1fr) auto !important;
+  }
+
+  .modal-panel.create-dialog .document-create-form .document-more-details-link > :is(span, small) {
+    grid-column: 1;
+    width: auto;
+  }
+
+  .modal-panel.create-dialog .document-create-form .document-link-source-link > :is(span, small) {
+    grid-column: 1;
+    width: auto;
+  }
+
+  .modal-panel.create-dialog .document-create-form .document-more-details-link > svg {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+  }
+
+  .modal-panel.create-dialog .document-create-form .document-link-source-link > svg {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+  }
+
+  .modal-panel.create-dialog .document-create-form .modal-submit-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .modal-panel.create-dialog .document-create-form .modal-submit-row:has(.button.secondary) {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }

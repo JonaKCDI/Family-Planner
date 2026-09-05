@@ -61,10 +61,12 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
   const currentYear = Number(currentMonthKey.slice(0, 4));
   const years = [...new Set([currentYear, ...expenses.map((entry) => new Date(entry.date).getFullYear())])].sort((a, b) => b - a);
   const range = getRange(params, currentMonthKey, expenses);
+  const selectedLabels = normalizeList(params.label);
+  const selectedCategories = normalizeList(params.category);
   const rangeFilteredEntries = expenses
     .filter((entry) => isInRange(entry.date, range.from, range.to))
-    .filter((entry) => !params.label || entry.labelId === params.label)
-    .filter((entry) => !params.category || entry.categoryId === params.category);
+    .filter((entry) => selectedLabels.length === 0 || (entry.labelId !== null && selectedLabels.includes(entry.labelId)))
+    .filter((entry) => selectedCategories.length === 0 || (entry.categoryId !== null && selectedCategories.includes(entry.categoryId)));
   const facetFilteredEntries = filterExpenseFacets(rangeFilteredEntries, params);
   const searchableDocuments = query
     ? await getDocumentsForLinkedEntities(session.family.id, session.user.id, "EXPENSE", facetFilteredEntries.map((entry) => entry.id))
@@ -1048,8 +1050,8 @@ function FilterHiddenFields({
       {includePeriod && params.month ? <input type="hidden" name="month" value={params.month} /> : null}
       {includePeriod && params.from ? <input type="hidden" name="from" value={params.from} /> : null}
       {includePeriod && params.to ? <input type="hidden" name="to" value={params.to} /> : null}
-      {includeFacets && params.label ? <input type="hidden" name="label" value={params.label} /> : null}
-      {includeFacets && params.category ? <input type="hidden" name="category" value={params.category} /> : null}
+      {includeFacets ? normalizeList(params.label).map((value) => <input type="hidden" name="label" value={value} key={`label-${value}`} />) : null}
+      {includeFacets ? normalizeList(params.category).map((value) => <input type="hidden" name="category" value={value} key={`category-${value}`} />) : null}
       {includeFacets && params.kind ? <input type="hidden" name="kind" value={params.kind} /> : null}
       {includeFacets ? normalizeList(params.paymentMethod).map((value) => <input type="hidden" name="paymentMethod" value={value} key={`payment-${value}`} />) : null}
       {includeFacets ? normalizeList(params.source).map((value) => <input type="hidden" name="source" value={value} key={`source-${value}`} />) : null}
@@ -1169,8 +1171,8 @@ function ExpenseSortControl({
 
 function countActiveFinanceFilters(params: Awaited<ExpensesPageProps["searchParams"]>) {
   return [
-    Boolean(params.category),
-    Boolean(params.label),
+    normalizeList(params.category).length > 0,
+    normalizeList(params.label).length > 0,
     Boolean(params.kind),
     normalizeList(params.paymentMethod).length > 0,
     normalizeList(params.source).length > 0
@@ -1178,9 +1180,11 @@ function countActiveFinanceFilters(params: Awaited<ExpensesPageProps["searchPara
 }
 
 function buildAnalyticsScopeEntries(entries: ExpenseLike[], params: Awaited<ExpensesPageProps["searchParams"]>, query: string) {
+  const selectedLabels = normalizeList(params.label);
+  const selectedCategories = normalizeList(params.category);
   const facetEntries = entries
-    .filter((entry) => !params.label || entry.labelId === params.label)
-    .filter((entry) => !params.category || entry.categoryId === params.category);
+    .filter((entry) => selectedLabels.length === 0 || (entry.labelId !== null && selectedLabels.includes(entry.labelId)))
+    .filter((entry) => selectedCategories.length === 0 || (entry.categoryId !== null && selectedCategories.includes(entry.categoryId)));
   return filterExpenseFacets(facetEntries, params)
     .filter((entry) => !query || matchesExpenseSearch(entry, query, { documents: [] }));
 }
@@ -1263,10 +1267,12 @@ function buildMonthKeyFromDate(date: Date, monthOffset: number) {
 }
 
 function buildComparableEntries(entries: ExpenseLike[], params: Awaited<ExpensesPageProps["searchParams"]>, range: { from: Date; to: Date }, query: string) {
+  const selectedLabels = normalizeList(params.label);
+  const selectedCategories = normalizeList(params.category);
   const rangeEntries = entries
     .filter((entry) => isInRange(entry.date, range.from, range.to))
-    .filter((entry) => !params.label || entry.labelId === params.label)
-    .filter((entry) => !params.category || entry.categoryId === params.category);
+    .filter((entry) => selectedLabels.length === 0 || (entry.labelId !== null && selectedLabels.includes(entry.labelId)))
+    .filter((entry) => selectedCategories.length === 0 || (entry.categoryId !== null && selectedCategories.includes(entry.categoryId)));
   return filterExpenseFacets(rangeEntries, params)
     .filter((entry) => !query || matchesExpenseSearch(entry, query, { documents: [] }));
 }
@@ -1314,7 +1320,7 @@ function allExpenseRange(expenses: ExpenseLike[]) {
 }
 
 function hasFacetFilter(params: Awaited<ExpensesPageProps["searchParams"]>) {
-  return Boolean(params.q || params.category || params.label || params.kind || normalizeList(params.paymentMethod).length > 0 || normalizeList(params.source).length > 0);
+  return Boolean(params.q || normalizeList(params.category).length > 0 || normalizeList(params.label).length > 0 || params.kind || normalizeList(params.paymentMethod).length > 0 || normalizeList(params.source).length > 0);
 }
 
 function isInRange(date: Date, from: Date, to: Date) {
@@ -1598,10 +1604,10 @@ function chartMetricLabel(metric: ExpenseChartMetric) {
 }
 
 function getAnalysisFocusTitle(params: Awaited<ExpensesPageProps["searchParams"]>, categories: CategoryLike[], labels: LabelLike[]) {
-  const categoryName = params.category ? categories.find((category) => category.id === params.category)?.name : null;
-  if (categoryName) return `Kategorie: ${categoryName}`;
-  const labelName = params.label ? labels.find((label) => label.id === params.label)?.name : null;
-  if (labelName) return `Label: ${labelName}`;
+  const categoryNames = normalizeList(params.category).map((id) => categories.find((category) => category.id === id)?.name).filter((name): name is string => Boolean(name));
+  if (categoryNames.length) return `Kategorie: ${categoryNames.join(", ")}`;
+  const labelNames = normalizeList(params.label).map((id) => labels.find((label) => label.id === id)?.name).filter((name): name is string => Boolean(name));
+  if (labelNames.length) return `Label: ${labelNames.join(", ")}`;
   return null;
 }
 
@@ -1663,16 +1669,16 @@ function buildActiveFilterChips(
 ) {
   const chips: { label: string; clear: Partial<Awaited<ExpensesPageProps["searchParams"]>> }[] = [];
   if (params.q) chips.push({ label: `Suche: ${params.q}`, clear: { q: undefined } });
-  if (params.category) {
+  for (const categoryId of normalizeList(params.category)) {
     chips.push({
-      label: `Kategorie: ${categories.find((category) => category.id === params.category)?.name ?? "Gewählt"}`,
-      clear: { category: undefined }
+      label: `Kategorie: ${categories.find((category) => category.id === categoryId)?.name ?? "Gewählt"}`,
+      clear: { category: normalizeList(params.category).filter((item) => item !== categoryId) }
     });
   }
-  if (params.label) {
+  for (const labelId of normalizeList(params.label)) {
     chips.push({
-      label: `Label: ${labels.find((label) => label.id === params.label)?.name ?? "Gewählt"}`,
-      clear: { label: undefined }
+      label: `Label: ${labels.find((label) => label.id === labelId)?.name ?? "Gewählt"}`,
+      clear: { label: normalizeList(params.label).filter((item) => item !== labelId) }
     });
   }
   if (params.kind === "expense") chips.push({ label: "Art: Ausgaben", clear: { kind: undefined } });
