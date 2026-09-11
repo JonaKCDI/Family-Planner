@@ -1,4 +1,7 @@
 import Link from "next/link";
+import { ArrowLeft, ChevronRight, FolderLock, KeyRound, LockKeyhole, Server, ShieldCheck, Users } from "lucide-react";
+import { SettingsDocumentAccess } from "@/components/settings-document-access";
+import { SettingsDisclosure } from "@/components/settings-disclosure";
 import type { FamilyRole } from "@prisma/client";
 import { archiveDocumentRoot, changeOwnPassword, createDocumentRoot, createUser, resetMemberPassword, restoreDocumentRoot, setAdminRecoveryKey } from "@/lib/actions";
 import { db } from "@/lib/db";
@@ -22,7 +25,7 @@ export const settingsSections = [
   },
   {
     id: "wiederherstellung",
-    title: "Notfall-Wiederherstellung",
+    title: "Wiederherstellung",
     description: "Notfallschlüssel für ausgesperrte Admin-Konten verwalten.",
     adminOnly: true
   },
@@ -76,43 +79,51 @@ export async function loadSettingsContext(session: {
   };
 }
 
-export function SettingsOverview({ isAdmin }: { isAdmin: boolean }) {
-  return (
-    <div className="settings-overview-grid">
-      {settingsSections.map((section) => {
-        const locked = section.adminOnly && !isAdmin;
-        const content = (
-          <>
-            <span className="settings-card-kicker">{section.adminOnly ? "Admin" : "Persönlich"}</span>
-            <strong>{section.title}</strong>
-            <span>{section.description}</span>
-          </>
-        );
+const sectionIcons = { konto: LockKeyhole, mitglieder: Users, wiederherstellung: KeyRound, dokumentbereiche: FolderLock, synology: Server };
 
-        return locked ? (
-          <article className="settings-overview-card disabled" key={section.id}>
-            {content}
-            <em>Nur Admins</em>
-          </article>
-        ) : (
-          <Link className="settings-overview-card" href={`/einstellungen/${section.id}`} key={section.id}>
-            {content}
-            <em>Öffnen</em>
-          </Link>
-        );
-      })}
-    </div>
+export function SettingsOverview({ context, name, familyName }: { context: SettingsContext; name: string; familyName: string }) {
+  const summaries = {
+    konto: "Passwort & Sicherheit",
+    mitglieder: `${context.members.length} Familienmitglieder`,
+    wiederherstellung: context.recoveryKey ? "Notfallschlüssel eingerichtet" : "Notfallschlüssel einrichten",
+    dokumentbereiche: `${context.documentRoots.filter((root) => !root.archivedAt).length} aktive Bereiche · Ordner & Zugriff`,
+    synology: "Verbindung, Speicher & Betrieb"
+  };
+  return (
+    <>
+      <Link href="/einstellungen/konto" className="settings-profile">
+        <span className="settings-avatar" aria-hidden="true">{name.slice(0, 1).toLocaleUpperCase("de")}</span>
+        <span className="settings-profile-copy"><strong>{name}</strong><span>{familyName} · {context.isAdmin ? "Admin" : "Mitglied"}</span></span>
+        <ChevronRight size={18} aria-hidden="true" />
+      </Link>
+      <div className="settings-groups">
+        {[{ title: "Persönlich", ids: ["konto"] }, { title: "Familie & Zugriff", ids: ["mitglieder", "dokumentbereiche"] }, { title: "Sicherheit & Betrieb", ids: ["wiederherstellung", "synology"] }].map((group) => (
+          <section className="settings-group" key={group.title}>
+            <h2>{group.title}</h2>
+            <div className="settings-list">
+              {settingsSections.filter((section) => group.ids.includes(section.id)).map((section) => {
+                const Icon = sectionIcons[section.id];
+                const locked = section.adminOnly && !context.isAdmin;
+                const content = <><span className={`settings-row-icon tone-${section.id}`}><Icon size={20} strokeWidth={1.8} aria-hidden="true" /></span><span className="settings-row-copy"><strong>{section.id === "wiederherstellung" ? "Wiederherstellung" : section.title}</strong><span>{locked ? "Von euren Admins verwaltet" : summaries[section.id]}</span></span>{locked ? <LockKeyhole size={16} aria-label="Nur Admins" /> : <ChevronRight size={17} aria-hidden="true" />}</>;
+                return locked ? <div className="settings-nav-row is-locked" key={section.id}>{content}</div> : <Link className="settings-nav-row" id={section.id} href={`/einstellungen/${section.id}`} key={section.id}>{content}</Link>;
+              })}
+            </div>
+          </section>
+        ))}
+      </div>
+      <p className="settings-footnote"><ShieldCheck size={15} aria-hidden="true" />{context.isAdmin ? "Du verwaltest die Einstellungen eurer Familie." : "Familieneinstellungen werden von euren Admins verwaltet."}</p>
+    </>
   );
 }
 
 export function SettingsBackLink() {
-  return <Link className="settings-back-link" href="/einstellungen">← Einstellungen</Link>;
+  return <Link className="settings-back-link" href="/einstellungen"><ArrowLeft size={17} aria-hidden="true" /> Einstellungen</Link>;
 }
 
 export function SettingsInfo({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <details className="settings-info">
-      <summary aria-label={`Info: ${title}`} title={title}>i</summary>
+      <summary aria-label={`Info: ${title}`} title={title}>Hinweise</summary>
       <div>
         <strong>{title}</strong>
         <div>{children}</div>
@@ -149,20 +160,22 @@ export function MemberSettings({ context, currentUserId }: { context: SettingsCo
     <section className="panel settings-detail-panel">
       <div className="settings-detail-head">
         <div>
-          <h2 className="section-title">Mitglieder</h2>
-          <p className="muted">Aktive Mitglieder und Passwort-Resets.</p>
+          <h2 className="section-title">Eure Familie</h2>
+          <p className="muted">Konten und Rollen auf einen Blick.</p>
         </div>
         <SettingsInfo title="Mitgliederverwaltung">
           <p>Neue Mitglieder bekommen eigene Kategorien. Passwort-Resets beenden die bestehenden Sitzungen des betroffenen Kontos. Admins ändern ihr eigenes Passwort im Bereich Konto.</p>
         </SettingsInfo>
       </div>
       {context.isAdmin ? (
+        <SettingsDisclosure title="Mitglied hinzufügen">
         <form action={createUser} className="form form-grid settings-form-card">
           <label>Name<input name="name" required /></label>
           <label>Start-Passwort<input name="password" type="password" minLength={8} required /></label>
           <label>Rolle<select name="role" defaultValue="MEMBER"><option value="MEMBER">Mitglied</option><option value="ADMIN">Admin</option></select></label>
           <button className="button full-span" type="submit">Mitglied anlegen</button>
         </form>
+        </SettingsDisclosure>
       ) : (
         <EmptyState>Nur Admins können neue Familienmitglieder anlegen.</EmptyState>
       )}
@@ -174,7 +187,7 @@ export function MemberSettings({ context, currentUserId }: { context: SettingsCo
               <div className="row">
                 <div>
                   <strong>{member.user.name}</strong>
-                  <span className="muted">{member.userId === currentUserId ? "Dein Konto" : member.status}</span>
+                  <span className="muted">{member.userId === currentUserId ? "Dein Konto" : member.status === "ACTIVE" ? "Aktiv" : "Eingeladen"}</span>
                 </div>
                 <span className="badge">{member.role === "ADMIN" ? "Admin" : "Mitglied"}</span>
               </div>
@@ -202,13 +215,13 @@ export function RecoverySettings({ context, params }: { context: SettingsContext
     <section className="panel settings-detail-panel">
       <div className="settings-detail-head">
         <div>
-          <h2 className="section-title">Notfall-Wiederherstellung</h2>
+          <h2 className="section-title">Notfallschlüssel</h2>
           <p className="muted">Status: {context.recoveryKey ? "eingerichtet" : "nicht eingerichtet"}</p>
         </div>
         <SettingsInfo title="Wie der Notfallschlüssel funktioniert">
           <ol>
             <li>Der Schlüssel wird nur als Hash gespeichert.</li>
-            <li>Im Notfall öffnest du `/admin-recovery` und setzt ein neues Admin-Passwort.</li>
+            <li>Im Notfall öffnest du <code>/admin-recovery</code> und setzt ein neues Admin-Passwort.</li>
             <li>Nach einer Wiederherstellung solltest du den Schlüssel hier ersetzen.</li>
           </ol>
         </SettingsInfo>
@@ -216,6 +229,7 @@ export function RecoverySettings({ context, params }: { context: SettingsContext
       {params.recovery === "changed" ? <p className="badge spacing-bottom">Notfallschlüssel wurde gespeichert.</p> : null}
       {context.isAdmin ? (
         <form action={setAdminRecoveryKey} className="form settings-form-card">
+          <p className="muted">Verwende mindestens 20 Zeichen und bewahre den Schlüssel sicher außerhalb der App auf.</p>
           <label>Notfallschlüssel<input name="recoveryKey" type="password" autoComplete="new-password" minLength={20} required /></label>
           <label>Notfallschlüssel wiederholen<input name="confirmRecoveryKey" type="password" autoComplete="new-password" minLength={20} required /></label>
           <button className="button" type="submit">{context.recoveryKey ? "Notfallschlüssel ersetzen" : "Notfallschlüssel speichern"}</button>
@@ -236,33 +250,19 @@ export function DocumentRootSettings({ context }: { context: SettingsContext }) 
           <p className="muted">NAS-Ordner und Sichtbarkeit in der App.</p>
         </div>
         <SettingsInfo title="Dokumentbereiche sicher einrichten">
-          <p>Der Pfad ist der Container-Pfad, zum Beispiel `{context.documentBasePath}`. Auf Synology sollte nur ein schmaler Dokumentordner read-only gemountet werden, nicht `/volume1`.</p>
+          <p>Der Pfad ist der Container-Pfad, zum Beispiel <code>{context.documentBasePath}</code>. Auf Synology sollte nur ein schmaler Dokumentordner read-only gemountet werden, nicht <code>/volume1</code>.</p>
         </SettingsInfo>
       </div>
       {context.isAdmin ? (
         <>
+          <SettingsDisclosure title="Dokumentbereich hinzufügen">
           <form action={createDocumentRoot} className="form form-grid document-root-form settings-form-card">
             <label>Name<input name="name" placeholder="Familie, Finanzen, Versicherungen ..." required /></label>
             <label>Dokumentenpfad<input name="basePath" defaultValue={context.documentBasePath} required /></label>
-            <label>
-              Zugriff
-              <select name="accessMode" defaultValue="FAMILY">
-                <option value="FAMILY">Alle Familienmitglieder</option>
-                <option value="ADMIN">Nur Admins</option>
-                <option value="USERS">Ausgewählte Nutzer</option>
-              </select>
-            </label>
-            <fieldset className="fieldset full-span document-user-access">
-              <legend>Nutzer für &quot;Ausgewählte Nutzer&quot;</legend>
-              {context.members.map((member) => (
-                <label className="checkbox-field" key={member.id}>
-                  <input name="userId" type="checkbox" value={member.userId} />
-                  {member.user.name}
-                </label>
-              ))}
-            </fieldset>
+            <SettingsDocumentAccess members={context.members.map((member) => ({ id: member.userId, name: member.user.name }))} />
             <div className="modal-submit-row"><button className="button" type="submit">Bereich speichern</button></div>
           </form>
+          </SettingsDisclosure>
           <div className="document-root-list">
             {context.documentRoots.length === 0 ? <EmptyState>Noch kein Dokumentbereich eingerichtet.</EmptyState> : null}
             {context.documentRoots.map((root) => (
@@ -300,12 +300,12 @@ export function SynologySettings({ context }: { context: SettingsContext }) {
     <section className="panel settings-detail-panel">
       <div className="settings-detail-head">
         <div>
-          <h2 className="section-title">Synology & Betrieb</h2>
+          <h2 className="section-title">Aktuelle Konfiguration</h2>
           <p className="muted">Deployment-Werte und NAS-Mounts prüfen.</p>
         </div>
         <SettingsInfo title="Betriebs-Checkliste">
           <ol>
-            <li>`APP_URL` muss zur finalen HTTPS-Adresse passen.</li>
+            <li><code>APP_URL</code> muss zur finalen HTTPS-Adresse passen.</li>
             <li>Excel-, Mileage-, Dokument- und Backup-Ordner sollten dauerhaft auf Synology gemountet sein.</li>
             <li>Dokumente read-only und möglichst schmal mounten.</li>
             <li>Nach Env-Änderungen Container neu erstellen oder neu starten.</li>

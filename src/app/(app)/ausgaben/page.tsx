@@ -1,18 +1,14 @@
-﻿import { mergeDuplicateExpenses } from "@/lib/actions";
+import { mergeDuplicateExpenses } from "@/lib/actions";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { requireSession } from "@/lib/auth";
 import { ensureDueContractExpenses } from "@/lib/contract-auto-expenses";
 import {
   buildCategoryRows,
-  buildDonutSegments,
   buildExpenseTrendChart,
   buildLabelRows,
   buildPeriodRows,
-  findDominantDonutSegment,
-  formatDonutPercent,
   sumByKind,
-  type DonutSegment,
   type ExpenseChartDimension,
   type ExpenseChartMetric,
   type ExpenseTrendChart,
@@ -25,10 +21,9 @@ import { formatDate, formatMoney } from "@/lib/format";
 import { buildExpensesHref, buildMonthNavigationHref, buildPeriodHref, buildYearNavigationHref, getCanonicalExpensesHref, getMonthKey, getRawExpensesHref, type ExpenseFilterParams } from "@/lib/expense-filter-url";
 import { expenseSource, filterExpenseFacets, normalizeList, sourceLabel } from "@/lib/expense-filters";
 import { formatMonthKeyLabel } from "@/lib/month-options";
-import { getDocumentsForLinkedEntities, getExpenseLabels, getRecurringTransactions, getVisibleCategories, getVisibleContracts, getVisibleExpenses } from "@/lib/queries";
+import { getVisibleDocumentRoots, getDocumentsForLinkedEntities, getExpenseLabels, getVisibleCategories, getVisibleContracts, getVisibleExpenses } from "@/lib/queries";
 import { ActionModal } from "@/components/action-modal";
 import { ArrowDownRight, ArrowRight, ArrowUpRight, BanknoteArrowUp, CalendarCheck, ListFilter, ReceiptText, Scale, WalletCards } from "lucide-react";
-import { RecurringTransactionsPanel } from "@/components/expense-setup-panel";
 import { ExpenseEntryList } from "@/components/expense-entry-list";
 import { FinanceToolbar } from "@/components/finance-toolbar";
 import { FinanceTransitionMarker } from "@/components/finance-transition-marker";
@@ -48,14 +43,14 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
   const canonicalHref = getCanonicalExpensesHref(params);
   if (canonicalHref !== getRawExpensesHref(params)) redirect(canonicalHref);
   await ensureDueContractExpenses(session.family.id, session.user.id);
-  const [expenses, categories, labels, allLabels, contracts, recurringTransactions] = await Promise.all([
+  const [expenses, categories, labels, allLabels, contracts] = await Promise.all([
     getVisibleExpenses(session.family.id, session.user.id),
     getVisibleCategories(session.family.id, session.user.id, "EXPENSE"),
     getExpenseLabels(session.family.id, session.user.id),
     getExpenseLabels(session.family.id, session.user.id, { includeArchived: true }),
-    getVisibleContracts(session.family.id, session.user.id),
-    getRecurringTransactions(session.family.id, session.user.id)
+    getVisibleContracts(session.family.id, session.user.id)
   ]);
+  const documentRoots = (await getVisibleDocumentRoots(session.family.id, session.user.id, session.role)).map(({ id, name }) => ({ id, name }));
   const query = normalizeSearch(params.q);
   const currentMonthKey = getMonthKey();
   const currentYear = Number(currentMonthKey.slice(0, 4));
@@ -95,9 +90,6 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
   const chartMetric: ExpenseChartMetric = "spending";
   const chartTop = 5;
   const chartMonths = 6;
-  const analysisRows = categoryAnalysisRows;
-  const donutSegments = buildDonutSegments(analysisRows, { maxSegments: 5 });
-  const dominantSegment = findDominantDonutSegment(donutSegments);
   const trendBaseEntries = buildAnalyticsScopeEntries(expenses, params, query);
   const expenseTrendChart = buildExpenseTrendChart(trendBaseEntries, {
     dimension: chartDimension,
@@ -106,7 +98,6 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
     topN: chartTop,
     endDate: range.to
   });
-  const trendDominance = findDominantTrendSeries(expenseTrendChart);
   const comparisonRange = getComparisonRange(params, range);
   const comparisonEntries = buildComparableEntries(expenses, params, comparisonRange, query);
   const comparison = buildPeriodComparison(selectedEntries, comparisonEntries, categories, range, comparisonRange);
@@ -162,7 +153,7 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
       <nav className="finance-primary-tabs" id="finanzansichten" aria-label="Finanzbereich">
         <Link className={!isAnalysisArea ? "active" : ""} href={financeViewHref(params, "overview")} scroll={false}>Übersicht</Link>
         <Link className={isAnalysisArea ? "active" : ""} href={financeViewHref(params, "categories")} scroll={false}>Analyse</Link>
-        <Link href="/ausgaben/planung" scroll={false}>Planung</Link>
+        <Link href="/ausgaben/planung" scroll={false}>Prognose</Link>
       </nav>
 
       <section className="filter-system" aria-label="Ausgabenfilter">
@@ -170,9 +161,7 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
           <PeriodNavigator params={params} range={range} currentMonthKey={currentMonthKey} />
         </div>
         <div className="overview-actions secondary-filter-actions expense-secondary-actions">
-          <ActionModal title="Serien verwalten" trigger="Serien" modalId="ausgaben-serien" wide>
-            <RecurringTransactionsPanel recurringTransactions={recurringTransactions} categories={categories} labels={labels} />
-          </ActionModal>
+          <Link className="button secondary" href="/ausgaben/setup/serien">Serien</Link>
           <Link className="button secondary" href="/ausgaben/setup">Setup</Link>
         </div>
         {activeFilterChips.length > 0 ? (
@@ -275,7 +264,7 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
           {initialEntries.length === 0 ? (
             <EmptyState>Noch keine Einträge im gewählten Zeitraum.</EmptyState>
           ) : (
-            <ExpenseEntryList
+            <ExpenseEntryList documentRoots={documentRoots}
               initialEntries={expenseListEntries}
               totalCount={expenseListEntries.length}
               duplicateCounts={{}}
@@ -308,7 +297,7 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
         ) : (
           <>
             <DuplicateReviewPanel groups={duplicateGroups} returnTo={returnTo} />
-            <ExpenseEntryList
+            <ExpenseEntryList documentRoots={documentRoots}
               initialEntries={expenseListEntries}
               totalCount={selectedEntries.length}
               duplicateCounts={duplicateCounts}
@@ -327,6 +316,13 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
 
       {view === "categories" ? (
       <section className="analysis-tabs spacing-top" id="kategorien">
+        <section className="panel finance-chart-widget" aria-labelledby="category-trend-title">
+          <div className="finance-chart-widget-head">
+            <h2 id="category-trend-title">Ausgabenverlauf</h2>
+            <span>{chartMonths} Monate · Top {chartTop}</span>
+          </div>
+          <ExpenseTrendChartView chart={expenseTrendChart} params={params} dimension={chartDimension} metric={chartMetric} />
+        </section>
         <section className="panel finance-category-page">
           <div className="section-head compact-section-head">
             <div>
@@ -359,46 +355,7 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
               </a>
             ))}
           </div>
-          <details className="finance-chart-disclosure">
-            <summary>Diagramme anzeigen</summary>
-            <div className="finance-chart-disclosure-body">
-              <div className="analysis-chart-status">
-                <strong>Diagramme</strong>
-                <span>Kategorien · Ausgaben · Top {chartTop} · {chartMonths} Monate</span>
-              </div>
-              {dominantSegment ? (
-                <div className="chart-dominance-note">
-                  <strong>{dominantSegment.name} dominiert diesen Zeitraum mit {formatMoney(dominantSegment.value)}.</strong>
-                  <span>Die übrigen Kategorien ergeben zusammen {formatMoney(dominantSegment.remainingValue)}. Deshalb ist ein Kreisdiagramm hier wenig aussagekräftig.</span>
-                </div>
-              ) : null}
-              <div className="analysis-overview">
-                <div className="pie-card">
-                  <div>
-                    <h3>Kategorien</h3>
-                    <p className="muted">Anteile im gewählten Zeitraum.</p>
-                  </div>
-                  {dominantSegment ? null : <DonutChart segments={donutSegments} />}
-                  <div className="pie-legend modern-chart-legend">
-                    {donutSegments.length === 0 ? <span><i />Keine Ausgaben im Zeitraum</span> : null}
-                    {donutSegments.map((segment) => (
-                      <a href={analysisLegendHref(params, chartDimension, analysisRows, segment)} className="chart-legend-row" key={segment.name}>
-                        <span><i style={{ background: segment.color }} />{segment.name}</span>
-                        <strong>{formatMoney(segment.value)} · {formatDonutPercent(segment.percent)}</strong>
-                      </a>
-                    ))}
-                  </div>
-                </div>
-              </div>
-              {trendDominance ? (
-                <div className="chart-dominance-note">
-                  <strong>{trendDominance.name} dominiert den {chartMonths}-Monats-Verlauf mit {formatMoney(trendDominance.total)}.</strong>
-                  <span>Die übrigen sichtbaren Reihen ergeben zusammen {formatMoney(trendDominance.remainingValue)}. Der Verlauf ist deshalb vor allem als Ausreißer-Hinweis zu lesen.</span>
-                </div>
-              ) : null}
-              <ExpenseTrendChartView chart={expenseTrendChart} params={params} dimension={chartDimension} metric={chartMetric} />
-            </div>
-          </details>
+
         </section>
       </section>
       ) : null}
@@ -473,45 +430,6 @@ function financeViewHref(params: Awaited<ExpensesPageProps["searchParams"]>, vie
   return `${buildExpensesHref(params, { view })}#finanzansichten`;
 }
 
-function DonutChart({ segments }: { segments: DonutSegment[] }) {
-  const total = segments.reduce((sum, segment) => sum + segment.value, 0);
-  if (segments.length === 0) {
-    return (
-      <div className="donut-chart empty-donut" aria-label="Keine Ausgaben für das Diagramm">
-        <svg viewBox="0 0 120 120" role="img">
-          <circle cx="60" cy="60" r="42" fill="none" stroke="currentColor" strokeWidth="18" />
-          <text x="60" y="57" textAnchor="middle">0</text>
-          <text x="60" y="73" textAnchor="middle">EUR</text>
-        </svg>
-      </div>
-    );
-  }
-  return (
-    <div className="donut-chart" aria-label={`Ausgabenanteile gesamt ${formatMoney(total)}`}>
-      <svg viewBox="0 0 120 120" role="img">
-        <circle className="donut-track" cx="60" cy="60" r="42" fill="none" strokeWidth="18" />
-        {segments.map((segment) => (
-          <circle
-            className="donut-segment"
-            cx="60"
-            cy="60"
-            fill="none"
-            key={segment.name}
-            r="42"
-            stroke={segment.color}
-            strokeDasharray={segment.strokeDasharray}
-            strokeDashoffset={segment.strokeDashoffset}
-            strokeLinecap="round"
-            strokeWidth="18"
-          />
-        ))}
-        <text x="60" y="56" textAnchor="middle">Gesamt</text>
-        <text x="60" y="73" textAnchor="middle">{formatCompactMoney(total)}</text>
-      </svg>
-    </div>
-  );
-}
-
 function ExpenseTrendChartView({
   chart,
   params,
@@ -526,14 +444,14 @@ function ExpenseTrendChartView({
   if (chart.series.length === 0) return <EmptyState>Noch keine Daten für das Zeitdiagramm.</EmptyState>;
   const canBeNegative = metric === "saldo";
   const minValue = canBeNegative ? -chart.maxValue : 0;
-  const maxValue = chart.maxValue;
+  const maxValue = chart.maxValue * 1.1;
   const valueRange = Math.max(1, maxValue - minValue);
-  const width = 320;
-  const height = 148;
-  const padX = 18;
-  const padTop = 18;
+  const width = 360;
+  const height = 210;
+  const padX = 54;
+  const padTop = 24;
   const padBottom = 30;
-  const plotWidth = width - padX * 2;
+  const plotWidth = 282;
   const plotHeight = height - padTop - padBottom;
   const zeroY = padTop + ((maxValue - 0) / valueRange) * plotHeight;
 
@@ -547,30 +465,32 @@ function ExpenseTrendChartView({
   }
 
   return (
-    <div className="finance-trend-chart" role="img" aria-label={`${chartMetricLabel(metric)} nach ${dimension === "label" ? "Labels" : "Kategorien"}`}>
-      <svg viewBox={`0 0 ${width} ${height}`} aria-hidden="true">
-        <line className="finance-chart-grid-line" x1={padX} x2={width - padX} y1={zeroY} y2={zeroY} />
-        {[0.25, 0.5, 0.75].map((step) => {
-          const gridY = padTop + step * plotHeight;
-          return <line className="finance-chart-grid-line muted-line" x1={padX} x2={width - padX} y1={gridY} y2={gridY} key={step} />;
+    <div className="finance-trend-chart">
+      <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`${chartMetricLabel(metric)} nach ${dimension === "label" ? "Labels" : "Kategorien"}`}>
+        {[0, 0.5, 1].map((fraction) => {
+          const value = minValue + valueRange * fraction;
+          return <g key={fraction}>
+            <line className="finance-chart-grid-line" x1={padX} x2="340" y1={y(value)} y2={y(value)} />
+            <text className="finance-chart-axis" x="48" y={y(value) + 4} textAnchor="end">{new Intl.NumberFormat("de-DE", { notation: "compact", maximumFractionDigits: 1 }).format(value / 100)} €</text>
+          </g>;
         })}
+        {canBeNegative && <line x1={padX} x2="340" y1={zeroY} y2={zeroY} stroke="#a6b5ae" strokeDasharray="2 3" />}
         {chart.series.map((series) => {
           const points = series.points.map((point, index) => `${x(index).toFixed(1)},${y(point.value).toFixed(1)}`).join(" ");
           return <polyline className="finance-chart-line" fill="none" points={points} stroke={series.color} key={series.name} />;
         })}
         {chart.series.flatMap((series) => series.points.map((point, index) => (
-          <circle className="finance-chart-dot" cx={x(index)} cy={y(point.value)} fill={series.color} key={`${series.name}-${point.period}`} r="2.7" />
+          <circle className="finance-chart-dot" cx={x(index)} cy={y(point.value)} fill={series.color} key={`${series.name}-${point.period}`} r="2.5"><title>{`${series.name} · ${formatMonthShort(point.period)}: ${formatMoney(point.value)}`}</title></circle>
         )))}
-        {chart.periods.map((period, index) => (
-          <text className="finance-chart-axis" x={x(index)} y={height - 8} textAnchor="middle" key={period}>{formatMonthShort(period)}</text>
+        {chart.periods.map((period, index) => (index === 0 || index === Math.floor((chart.periods.length - 1) / 2) || index === chart.periods.length - 1) && (
+          <text className="finance-chart-axis" x={x(index)} y={height - 8} textAnchor="middle" key={period}>{`${period.slice(5)}.${period.slice(0, 4)}`}</text>
         ))}
       </svg>
-      <div className="finance-trend-legend">
-        {chart.series.slice(0, 4).map((series) => (
+      <div className="finance-trend-legend" style={{ gridTemplateColumns: `repeat(${Math.ceil(chart.series.length / 2)}, minmax(0, 1fr))` }}>
+        {chart.series.map((series) => (
           <a href={trendSeriesHref(params, dimension, series.id)} key={series.name}>
             <i style={{ background: series.color }} aria-hidden="true" />
             <span>{series.name}</span>
-            <strong>{formatMoney(series.points.reduce((sum, point) => sum + point.value, 0))}</strong>
           </a>
         ))}
       </div>
@@ -578,36 +498,11 @@ function ExpenseTrendChartView({
   );
 }
 
-function findDominantTrendSeries(chart: ExpenseTrendChart) {
-  if (chart.series.length < 2) return null;
-  const totals = chart.series.map((series) => ({
-    name: series.name,
-    total: series.points.reduce((sum, point) => sum + Math.abs(point.value), 0)
-  })).sort((a, b) => b.total - a.total);
-  const total = totals.reduce((sum, series) => sum + series.total, 0);
-  const [first] = totals;
-  if (!first || total <= 0 || (first.total / total) * 100 < 85) return null;
-  return {
-    ...first,
-    remainingValue: Math.max(0, total - first.total)
-  };
-}
-
 function trendSeriesHref(params: Awaited<ExpensesPageProps["searchParams"]>, dimension: ExpenseChartDimension, id?: string) {
   if (!id) return buildExpensesHref(params, { view: "entries" });
   return dimension === "label"
     ? buildExpensesHref(params, { label: id, category: undefined, view: "entries" })
     : buildExpensesHref(params, { category: id, label: undefined, view: "entries" });
-}
-
-function analysisLegendHref(
-  params: Awaited<ExpensesPageProps["searchParams"]>,
-  dimension: ExpenseChartDimension,
-  rows: Array<{ id?: string; name: string }>,
-  segment: DonutSegment
-) {
-  const row = rows.find((item) => item.name === segment.name);
-  return analysisRowHref(params, dimension, row?.id);
 }
 
 function analysisRowHref(params: Awaited<ExpensesPageProps["searchParams"]>, dimension: ExpenseChartDimension, id?: string) {
@@ -1287,7 +1182,9 @@ function buildExpenseListLoadUrl(params: Awaited<ExpensesPageProps["searchParams
   const search = new URLSearchParams();
   for (const key of ["from", "to", "year", "month", "label", "category", "kind", "q", "sort"] as const) {
     const value = params[key];
-    if (value) search.set(key, value);
+    if (Array.isArray(value)) {
+      for (const item of value) search.append(key, item);
+    } else if (value) search.set(key, value);
   }
   for (const value of normalizeList(params.paymentMethod)) search.append("paymentMethod", value);
   for (const value of normalizeList(params.source)) search.append("source", value);
@@ -1715,4 +1612,5 @@ function isUsefulFilterValue(value: string | null | undefined) {
 type ExpenseLike = Awaited<ReturnType<typeof getVisibleExpenses>>[number];
 type CategoryLike = Awaited<ReturnType<typeof getVisibleCategories>>[number];
 type LabelLike = Awaited<ReturnType<typeof getExpenseLabels>>[number];
+
 

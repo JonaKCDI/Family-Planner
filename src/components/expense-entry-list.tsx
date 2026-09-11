@@ -1,5 +1,8 @@
 "use client";
 
+import { PaymentMethodField } from "@/components/payment-method-field";
+
+import { DocumentFilePicker } from "@/components/document-file-picker";
 import { Car } from "lucide-react";
 import { useState } from "react";
 import { createExpense, deleteExpense, quickCreateExpenseCategory, quickCreateExpenseLabel, updateExpense } from "@/lib/actions";
@@ -30,6 +33,7 @@ type ExpenseEntryListProps = {
   duplicateCounts?: Record<string, number>;
   categories: ExpenseEntryOption[];
   labels: ExpenseEntryOption[];
+  documentRoots: { id: string; name: string }[];
   contracts: ExpenseEntryContractOption[];
   initialDocumentsByExpense: Record<string, ExpenseDocumentItem[]>;
   loadUrl: string;
@@ -43,6 +47,7 @@ export function ExpenseEntryList({
   duplicateCounts = {},
   categories,
   labels,
+  documentRoots,
   contracts,
   initialDocumentsByExpense,
   loadUrl,
@@ -99,6 +104,7 @@ export function ExpenseEntryList({
           duplicateCount={duplicateCounts[expense.id] ?? 0}
           categories={categories}
           labels={labels}
+          documentRoots={documentRoots}
           contracts={contracts}
           returnTo={returnTo}
           key={expense.id}
@@ -119,6 +125,7 @@ function ExpenseEntryRow({
   duplicateCount,
   categories,
   labels,
+  documentRoots,
   contracts,
   returnTo
 }: {
@@ -127,6 +134,7 @@ function ExpenseEntryRow({
   duplicateCount: number;
   categories: ExpenseEntryOption[];
   labels: ExpenseEntryOption[];
+  documentRoots: { id: string; name: string }[];
   contracts: ExpenseEntryContractOption[];
   returnTo: string;
 }) {
@@ -214,6 +222,7 @@ function ExpenseEntryRow({
           expense={expense}
           categories={categoryOptions}
           labels={labelOptions}
+          documentRoots={documentRoots}
           contracts={contracts}
           primaryDocument={mode === "edit" ? primaryDocument : undefined}
           returnTo={returnTo}
@@ -245,6 +254,7 @@ function ExpenseMutationForm({
   expense,
   categories,
   labels,
+  documentRoots,
   contracts,
   primaryDocument,
   returnTo,
@@ -256,6 +266,7 @@ function ExpenseMutationForm({
   expense: ExpenseListItem;
   categories: SearchableSelectOption[];
   labels: SearchableSelectOption[];
+  documentRoots: { id: string; name: string }[];
   contracts: ExpenseEntryContractOption[];
   primaryDocument?: ExpenseDocumentItem;
   returnTo: string;
@@ -278,7 +289,7 @@ function ExpenseMutationForm({
           <label>Betrag in EUR<input name="amount" inputMode="decimal" defaultValue={formatEuroInput(expense.amountCents)} required /></label>
           <label>Datum<input name="date" type="date" defaultValue={toDateInputValue(expense.date)} required /></label>
           <SearchableSelect name="categoryId" label="Kategorie" options={categories} defaultValue={expense.categoryId} emptyLabel="Keine Kategorie" placeholder="Kategorie suchen oder auswählen" quickAddLabel="+ Neue Kategorie hinzufügen" quickAddAction={quickCreateExpenseCategory} />
-          <label>Zahlungsart<input name="paymentMethod" list="payment-methods" defaultValue={expense.paymentMethod} /></label>
+          <PaymentMethodField defaultValue={expense.paymentMethod} />
         </div>
       </fieldset>
       <details className="optional-section full-span" open>
@@ -296,15 +307,16 @@ function ExpenseMutationForm({
           <label>Sichtbarkeit<select name="scope" defaultValue="PRIVATE"><option value="PRIVATE">Privat</option><option value="FAMILY">Familie</option></select></label>
         </div>
       </details>
-      <PaymentMethods />
       <details className="optional-section full-span" open={Boolean(primaryDocument)}>
-        <summary>Beleg / Drive-Link hinzufügen</summary>
+        <summary>Beleg / Dokument</summary>
         <input type="hidden" name="documentId" value={primaryDocument?.id ?? ""} />
+          {primaryDocument && !primaryDocument.url ? <p className="muted full-span">Verknüpfte NAS-Datei: {primaryDocument.title}. Weitere Belege können hinzugefügt werden.</p> : null}
         <div className="form-grid">
-          <label>Dokumenttitel<input name="documentTitle" defaultValue={primaryDocument?.title ?? ""} placeholder="Rechnung, Beleg, Nachweis ..." /></label>
-          <label>Drive-Link<input name="documentUrl" type="url" defaultValue={primaryDocument?.url ?? ""} placeholder="https://drive.google.com/..." /></label>
+          <label>Dokumenttitel<input name="documentTitle" defaultValue={primaryDocument?.url ? primaryDocument.title : ""} placeholder="Rechnung, Beleg, Nachweis ..." /></label>
+          <label>HTTPS-Link<input name="documentUrl" type="url" defaultValue={primaryDocument?.url ?? ""} placeholder="https://drive.google.com/..." /></label>
         </div>
       </details>
+      <DocumentFilePicker roots={documentRoots} />
       <div className="modal-submit-row modal-footer">
         <button className="button secondary" type="button" onClick={onBack}>Zurück</button>
         <button className="button autosave-submit" type="submit">{submitLabel}</button>
@@ -329,18 +341,6 @@ function FuelEntryTag({ expense, variant }: { expense: ExpenseListItem; variant:
   );
 }
 
-function PaymentMethods() {
-  return (
-    <datalist id="payment-methods">
-      <option value="Karte" />
-      <option value="Bar" />
-      <option value="Überweisung" />
-      <option value="Lastschrift" />
-      <option value="PayPal" />
-      <option value="Apple Pay" />
-    </datalist>
-  );
-}
 
 function formatEuroInput(amountCents: number) {
   if (amountCents === 0) return "";

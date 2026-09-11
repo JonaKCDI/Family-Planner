@@ -1,4 +1,6 @@
-﻿"use client";
+"use client";
+
+import { PaymentMethodField } from "@/components/payment-method-field";
 
 import type { ButtonHTMLAttributes, FormEvent, ReactNode } from "react";
 import { useMemo, useRef, useState } from "react";
@@ -223,7 +225,7 @@ function ExpenseForm({
             )}
             <label>Betrag *<input name="amount" inputMode="decimal" placeholder="0,00 EUR" required /></label>
             <label>Datum<input name="date" type="date" defaultValue={today} required /></label>
-            <label>Zahlungsart<input name="paymentMethod" list="payment-methods" placeholder="Karte" /></label>
+            <PaymentMethodField />
           </div>
           <label className="full-span" hidden={!showMainExpenseFields}>Beschreibung *<input name="description" placeholder="z. B. Supermarkt, Restaurant ..." required={!planningRecurring} /></label>
           <div hidden={!showMainExpenseFields}>
@@ -242,7 +244,7 @@ function ExpenseForm({
           <legend>Wiederholung</legend>
           <div className="form-grid">
             <label>Startdatum<input name="startDate" type="date" defaultValue={today} required /></label>
-            <label>Zahlungsrhythmus<select name="billingInterval" defaultValue="MONTHLY"><option value="MONTHLY">Monatlich</option><option value="QUARTERLY">Vierteljährlich</option><option value="YEARLY">Jährlich</option><option value="ONCE">Einmalig</option><option value="OTHER">Sonstiges</option></select></label>
+            <label>Zahlungsrhythmus<select name="billingInterval" defaultValue="MONTHLY"><option value="MONTHLY">Monatlich</option><option value="QUARTERLY">Quartalsweise</option><option value="YEARLY">Jährlich</option></select></label>
             <label>Enddatum optional<input name="endDate" type="date" /></label>
             <label>Preis gilt ab<input name="priceValidFrom" type="date" defaultValue={today} /></label>
             <input type="hidden" name="status" value="ACTIVE" />
@@ -251,7 +253,6 @@ function ExpenseForm({
         </fieldset>
       ) : null}
       {planningRecurring ? <input type="hidden" name="scope" value="PRIVATE" /> : null}
-      <PaymentMethods />
       {!planningRecurring ? (
         <div className="finance-create-actions full-span" hidden={expensePanel !== "main"}>
           <button className="flow-link" type="button" onClick={() => { setExpensePanel("main"); setPlanningRecurring(true); }}>
@@ -356,9 +357,9 @@ function FuelForm({
         <legend>Ausgabe</legend>
         {bookExpense ? (
           <div className="form-grid">
-            <SearchableSelect name="expenseCategoryId" label="Kategorie" options={categories} defaultValue={settings?.defaultCategoryId} emptyLabel="Keine Kategorie" placeholder="Kategorie suchen oder auswählen" />
-            <SearchableSelect name="expenseLabelId" label="Label / Projekt" options={labels} defaultValue={settings?.defaultLabelId} emptyLabel="Kein Label" placeholder="Label suchen oder auswählen" />
-            <label>Bezahlart<input name="expensePaymentMethod" list="payment-methods" defaultValue={settings?.defaultPaymentMethod ?? ""} placeholder="Karte, Bar, Überweisung ..." /></label>
+            <SearchableSelect name="expenseCategoryId" label="Kategorie" options={categories} defaultValue={settings?.defaultCategoryId} emptyLabel="Keine Kategorie" placeholder="Kategorie suchen oder auswählen" quickAddLabel="+ Neue Kategorie hinzufügen" quickAddAction={quickCreateExpenseCategory} />
+            <SearchableSelect name="expenseLabelId" label="Label / Projekt" options={labels} defaultValue={settings?.defaultLabelId} emptyLabel="Kein Label" placeholder="Label suchen oder auswählen" quickAddLabel="+ Neues Label hinzufügen" quickAddAction={quickCreateExpenseLabel} />
+            <PaymentMethodField name="expensePaymentMethod" defaultValue={settings?.defaultPaymentMethod ?? ""} />
             <label>Laden<input name="expenseStore" defaultValue={settings?.defaultStore ?? ""} placeholder="Tankstelle oder Händler" /></label>
             <label className="full-span">Beschreibung<input name="expenseDescription" defaultValue={settings?.defaultDescription ?? ""} /></label>
           </div>
@@ -372,7 +373,6 @@ function FuelForm({
           <DocumentFilePicker roots={documentRoots} />
         </div>
       </fieldset> : null}
-      <PaymentMethods />
       <div className="finance-create-actions fuel-create-actions full-span" hidden={fuelPanel !== "main"}>
         {bookExpense ? (
           <button className="flow-link" type="button" onClick={() => setFuelPanel("document")}>
@@ -618,8 +618,8 @@ function ContractForm({
         <div className="form-grid">
           <label className="checkbox-field full-span"><input name="autoCreateExpenses" type="checkbox" /> Automatisch als Ausgabe eintragen</label>
           <label>Einzugstag<input name="expensePaymentDay" type="number" min="1" max="31" defaultValue={day} /></label>
-          <SearchableSelect name="expenseCategoryId" label="Ausgaben-Kategorie" options={categories} emptyLabel="Keine Kategorie" placeholder="Kategorie suchen oder auswählen" />
-          <SearchableSelect name="expenseLabelId" label="Label / Projekt" options={labels} emptyLabel="Kein Label" placeholder="Label suchen oder auswählen" />
+          <SearchableSelect name="expenseCategoryId" label="Ausgaben-Kategorie" options={categories} emptyLabel="Keine Kategorie" placeholder="Kategorie suchen oder auswählen" quickAddLabel="+ Neue Kategorie hinzufügen" quickAddAction={quickCreateExpenseCategory} />
+          <SearchableSelect name="expenseLabelId" label="Label / Projekt" options={labels} emptyLabel="Kein Label" placeholder="Label suchen oder auswählen" quickAddLabel="+ Neues Label hinzufügen" quickAddAction={quickCreateExpenseLabel} />
         </div>
       </fieldset>
       <fieldset className="fieldset modal-form-section full-span task-create-options-page contract-term-page" id="create-contract-term" hidden={panel !== "term"}>
@@ -828,18 +828,5 @@ function BottomSheet({
         </section>
       </div>
     </ModalPortal>
-  );
-}
-
-function PaymentMethods() {
-  return (
-    <datalist id="payment-methods">
-      <option value="Karte" />
-      <option value="Bar" />
-      <option value="Überweisung" />
-      <option value="Lastschrift" />
-      <option value="PayPal" />
-      <option value="Apple Pay" />
-    </datalist>
   );
 }

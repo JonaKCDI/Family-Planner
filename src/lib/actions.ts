@@ -868,6 +868,7 @@ export async function createCategory(formData: FormData) {
       name,
       color: chooseCategoryColor(name, existingCategories, submittedColor),
       icon: normalizeCategoryIcon(formData.get("icon")),
+      excludeFromForecast: type === "EXPENSE" && formData.get("excludeFromForecast") === "on",
       monthlyBudgetCents: parseOptionalEuroInputToCents(formData.get("monthlyBudget")),
       scope: type === "EXPENSE" ? "PRIVATE" : scopeValue(formData)
     }
@@ -923,12 +924,15 @@ export async function updateCategory(formData: FormData) {
       color,
       icon,
       monthlyBudgetCents: parseOptionalEuroInputToCents(formData.get("monthlyBudget")),
+      ...(formData.has("forecastExclusionPresent") ? { excludeFromForecast: formData.get("excludeFromForecast") === "on" } : {}),
       scope: scopeValue(formData)
     }
   });
 
   revalidatePath("/ausgaben");
   revalidatePath("/dashboard");
+  revalidatePath("/ausgaben/planung", "layout");
+  revalidatePath("/ausgaben/setup", "layout");
   redirectToReturnToIfPresent(formData);
 }
 
@@ -2003,6 +2007,27 @@ async function syncLinkedDocumentFromForm(
   const documentId = optionalText(formData, "documentId");
   const title = optionalText(formData, "documentTitle");
   const url = optionalText(formData, "documentUrl");
+
+  if (optionalText(formData, "documentRootId") || optionalText(formData, "documentRelativePath")) {
+    const session = await requireSession();
+    await createLinkedDocumentIfPresent(formData, { ...data, role: session.role });
+    return;
+  }
+
+  // Existing NAS references are independent of the optional HTTPS editor.
+  if (documentId) {
+    const existing = await db.documentReference.findFirst({
+      where: { id: documentId, familyId: data.familyId, ownerUserId: data.ownerUserId,
+        linkedEntityType: data.linkedEntityType, linkedEntityId: data.linkedEntityId }
+    });
+    if (existing?.referenceType === "LOCAL_FILE") {
+      if (title || url) {
+        const session = await requireSession();
+        await createLinkedDocumentIfPresent(formData, { ...data, role: session.role });
+      }
+      return;
+    }
+  }
 
   if (!title && !url) {
     if (documentId) {

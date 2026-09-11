@@ -31,7 +31,7 @@ export default async function SettingsSectionPage({ params, searchParams }: Sett
   return (
     <>
       <SettingsBackLink />
-      <PageHeader title={sectionMeta.title} description={sectionMeta.description} />
+      <PageHeader title={sectionMeta.title} />
       {sectionId === "konto" ? <AccountSettings params={query} /> : null}
       {sectionId === "mitglieder" ? <MemberSettings context={context} currentUserId={session.user.id} /> : null}
       {sectionId === "wiederherstellung" ? <RecoverySettings context={context} params={query} /> : null}

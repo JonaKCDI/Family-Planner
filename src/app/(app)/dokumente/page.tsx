@@ -8,6 +8,7 @@ import { AutosaveForm } from "@/components/autosave-form";
 import { ConfirmSubmitButton } from "@/components/confirm-submit-button";
 import { DocumentFilePreview } from "@/components/document-file-preview";
 import { DocumentSummaryStrip, DocumentToolbar, type DocumentToolbarParams } from "@/components/document-toolbar";
+import { DocumentRootSelect } from "@/components/document-root-select";
 import { EmptyState, PageHeader, ScopeSelect } from "@/components/ui";
 import { CalendarDays, Download, ExternalLink, FileText, Folder, HardDrive, Link as LinkIcon, Lock, Pencil, Save, Tag, UserRound } from "lucide-react";
 
@@ -92,14 +93,12 @@ export default async function DocumentsPage({ searchParams }: DocumentsPageProps
             <div className="document-explorer-toolbar">
               <div className="document-root-switcher" aria-label="Dokumentbereich">
                 <span>Bereich</span>
-                <div>
-                  {roots.map((root) => (
-                    <a className={selectedRoot?.id === root.id ? "active" : ""} href={documentHref(params, { root: root.id, path: "" })} key={root.id}>{root.name}</a>
-                  ))}
-                </div>
+                <DocumentRootSelect
+                  selectedId={selectedRoot?.id ?? ""}
+                  options={roots.map((root) => ({ id: root.id, name: root.name, href: documentHref(params, { root: root.id, path: "" }) }))}
+                />
               </div>
               {selectedRoot ? <Breadcrumbs params={params} rootId={selectedRoot.id} rootName={selectedRoot.name} path={selectedPath} /> : null}
-              <span className="document-explorer-count">{explorerEntries.length} Einträge</span>
             </div>
             <div className="document-priority-list document-file-list">
               {explorerEntries.length === 0 ? (

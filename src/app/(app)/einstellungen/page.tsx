@@ -8,8 +8,8 @@ export default async function SettingsPage() {
 
   return (
     <>
-      <PageHeader title="Einstellungen" description="Wähle zuerst einen Bereich. Änderungen passieren auf der jeweiligen Unterseite." />
-      <SettingsOverview isAdmin={context.isAdmin} />
+      <PageHeader title="Einstellungen" description="Dein Konto. Eure Familie." />
+      <SettingsOverview context={context} name={session.user.name} familyName={session.family.name} />
     </>
   );
 }

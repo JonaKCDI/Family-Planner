@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ArrowLeft, ChevronRight, FileSpreadsheet, Plus, Shapes, Tags, Merge, Repeat } from "lucide-react";
 import { getMonthKey } from "@/lib/expense-filter-url";
 import { getExpenseLabels, getRecurringTransactions, getVisibleCategories, getVisibleExpenses } from "@/lib/queries";
 import { AutoSubmitSelect } from "@/components/auto-submit-select";
@@ -59,20 +60,23 @@ export async function loadFinanceSetupContext(session: {
 }
 
 export function FinanceSetupOverview() {
+  const icons = { sicherung: FileSpreadsheet, anlegen: Plus, kategorien: Shapes, labels: Tags, zusammenfuehren: Merge, serien: Repeat };
+  const descriptions = { sicherung: "Export und Import", anlegen: "Kategorien und Labels hinzufügen", kategorien: "Icons, Budgets und Prognose", labels: "Projekte und Zuordnung", zusammenfuehren: "Doppelte Einträge ordnen", serien: "Wiederkehrende Buchungen" };
   return (
-    <div className="settings-overview-grid finance-setup-overview-grid">
-      {financeSetupSections.map((section) => (
-        <Link className="settings-overview-card" href={`/ausgaben/setup/${section.id}`} key={section.id}>
-          <strong>{section.title}</strong>
-          <em>Öffnen</em>
+    <div className="finance-setup-nav">
+      {financeSetupSections.map((section) => { const Icon = icons[section.id]; return (
+        <Link className="finance-setup-nav-row" href={`/ausgaben/setup/${section.id}`} key={section.id}>
+          <span className={`finance-setup-nav-icon tone-${section.id}`}><Icon size={20} aria-hidden="true" /></span>
+          <span><strong>{section.title}</strong><small>{descriptions[section.id]}</small></span>
+          <ChevronRight size={17} aria-hidden="true" />
         </Link>
-      ))}
+      ); })}
     </div>
   );
 }
 
 export function FinanceSetupBackLink({ href = "/ausgaben/setup", label = "Finanz-Setup" }: { href?: string; label?: string }) {
-  return <Link className="settings-back-link" href={href}>← {label}</Link>;
+  return <Link className="finance-setup-back" href={href} aria-label={`Zurück zu ${label}`} title={`Zurück zu ${label}`}><ArrowLeft size={22} aria-hidden="true" /></Link>;
 }
 
 export function FinanceSetupYearSelect({

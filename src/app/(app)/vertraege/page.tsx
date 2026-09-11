@@ -1,9 +1,11 @@
+import { DocumentFilePicker } from "@/components/document-file-picker";
+import { quickCreateExpenseCategory, quickCreateExpenseLabel } from "@/lib/actions";
 import { updateContract } from "@/lib/actions";
 import { requireSession } from "@/lib/auth";
 import { ensureDueContractExpenses } from "@/lib/contract-auto-expenses";
 import { getContractNextCancellationDate, toAnnualCancellationInputValue } from "@/lib/contracts";
 import { formatDate, formatMoney, toDateInputValue } from "@/lib/format";
-import { getDocumentsForLinkedEntities, getExpenseLabels, getVisibleCategories, getVisibleContractPayments, getVisibleContractsWithExpenseDetails } from "@/lib/queries";
+import { getVisibleDocumentRoots, getDocumentsForLinkedEntities, getExpenseLabels, getVisibleCategories, getVisibleContractPayments, getVisibleContractsWithExpenseDetails } from "@/lib/queries";
 import { ActionModal } from "@/components/action-modal";
 import { AutosaveForm } from "@/components/autosave-form";
 import { ContractPayments } from "@/components/contract-payments";
@@ -36,6 +38,7 @@ export default async function ContractsPage({ searchParams }: ContractsPageProps
     getVisibleCategories(session.family.id, session.user.id, "EXPENSE"),
     getExpenseLabels(session.family.id, session.user.id)
   ]);
+  const documentRoots = (await getVisibleDocumentRoots(session.family.id, session.user.id, session.role)).map(({ id, name }) => ({ id, name }));
   const enrichedContracts = contracts.map((contract) => enrichContract(contract));
   const searchedContracts = enrichedContracts
     .filter((contract) => !query || matchesContract(contract.contract, query))
@@ -167,7 +170,7 @@ export default async function ContractsPage({ searchParams }: ContractsPageProps
                         <h3>{contract.provider}</h3>
                         <p>{contract.contractType}</p>
                       </div>
-                      <ContractEditModal
+                      <ContractEditModal documentRoots={documentRoots}
                         contract={contract}
                         categories={categories}
                         labels={labels}
@@ -269,8 +272,10 @@ function ContractEditModal({
   categories,
   labels,
   primaryDocument,
+  documentRoots,
   currentPricePhase
 }: {
+  documentRoots: { id: string; name: string }[];
   contract: ContractLike;
   categories: Awaited<ReturnType<typeof getVisibleCategories>>;
   labels: Awaited<ReturnType<typeof getExpenseLabels>>;
@@ -335,8 +340,8 @@ function ContractEditModal({
           <div className="form-grid">
             <label className="checkbox-field full-span"><input name="autoCreateExpenses" type="checkbox" defaultChecked={contract.autoCreateExpenses} /> Automatisch als Ausgabe eintragen</label>
             <label>Einzugstag<input name="expensePaymentDay" type="number" min="1" max="31" defaultValue={contract.expensePaymentDay ?? new Date(contract.startDate).getDate()} /></label>
-            <SearchableSelect name="expenseCategoryId" label="Ausgaben-Kategorie" options={categories} defaultValue={contract.expenseCategoryId} emptyLabel="Keine Kategorie" placeholder="Kategorie suchen oder auswählen" />
-            <SearchableSelect name="expenseLabelId" label="Label / Projekt" options={labels} defaultValue={contract.expenseLabelId} emptyLabel="Kein Label" placeholder="Label suchen oder auswählen" />
+            <SearchableSelect name="expenseCategoryId" label="Ausgaben-Kategorie" options={categories} defaultValue={contract.expenseCategoryId} emptyLabel="Keine Kategorie" placeholder="Kategorie suchen oder auswählen" quickAddLabel="+ Neue Kategorie hinzufügen" quickAddAction={quickCreateExpenseCategory} />
+            <SearchableSelect name="expenseLabelId" label="Label / Projekt" options={labels} defaultValue={contract.expenseLabelId} emptyLabel="Kein Label" placeholder="Label suchen oder auswählen" quickAddLabel="+ Neues Label hinzufügen" quickAddAction={quickCreateExpenseLabel} />
           </div>
         </fieldset>
 
@@ -360,12 +365,14 @@ function ContractEditModal({
         </fieldset>
 
         <label className="full-span">Notizen<textarea name="description" defaultValue={contract.description ?? ""} /></label>
+        <DocumentFilePicker roots={documentRoots} />
         <details className="optional-section full-span" open={Boolean(primaryDocument)}>
           <summary>Beleg / Drive-Link hinzufügen</summary>
           <input type="hidden" name="documentId" value={primaryDocument?.id ?? ""} />
+          {primaryDocument && !primaryDocument.url ? <p className="muted full-span">Verknüpfte NAS-Datei: {primaryDocument.title}. Weitere Belege können hinzugefügt werden.</p> : null}
           <div className="form-grid">
-            <label>Dokumenttitel<input name="documentTitle" defaultValue={primaryDocument?.title ?? ""} placeholder="Vertrag, Rechnung, Nachweis ..." /></label>
-            <label>Drive-Link<input name="documentUrl" type="url" defaultValue={primaryDocument?.url ?? ""} placeholder="https://drive.google.com/..." /></label>
+            <label>Dokumenttitel<input name="documentTitle" defaultValue={primaryDocument?.url ? primaryDocument.title : ""} placeholder="Vertrag, Rechnung, Nachweis ..." /></label>
+            <label>HTTPS-Link<input name="documentUrl" type="url" defaultValue={primaryDocument?.url ?? ""} placeholder="https://drive.google.com/..." /></label>
           </div>
         </details>
         <div className="modal-submit-row full-span">

@@ -36,8 +36,7 @@ export default async function ExpenseSetupSectionPage({ params, searchParams }: 
 
   return (
     <div className="expense-setup-page-layout">
-      <FinanceSetupBackLink />
-      <PageHeader title={sectionMeta.title} />
+      <header className="finance-setup-head"><FinanceSetupBackLink /><PageHeader title={sectionMeta.title} /></header>
       {sectionId === "sicherung" ? <FinanceSetupYearSelect selectedYear={context.selectedYear} sectionId={sectionId} years={context.years} /> : null}
       {sectionId === "sicherung" ? <ExpenseExcelSetupPanel exportYear={context.selectedYear} returnTo={returnTo} /> : null}
       {sectionId === "anlegen" ? <ExpenseCreateSetupPanel returnTo={returnTo} /> : null}

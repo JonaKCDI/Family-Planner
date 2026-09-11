@@ -1,0 +1,97 @@
+/* Settings are intentionally scoped: the Aufgaben design remains the shared reference. */
+.settings-space { --settings-accent: #17666a; max-width: 1040px; margin-inline: auto; width: 100%; }
+.settings-transition { animation: settings-enter 260ms cubic-bezier(.2,.7,.2,1) both; }
+.settings-space .page-head { margin-bottom: 22px; }
+.settings-space .page-head h1 { letter-spacing: -.035em; }
+.settings-space .page-head p { margin-top: 5px; }
+.settings-profile { display: flex; align-items: center; gap: 14px; padding: 19px 18px; background: #f3f7f6; border: 1px solid #e5eeeb; border-radius: 20px; color: inherit; text-decoration: none; margin-bottom: 28px; }
+.settings-avatar { display: grid; place-items: center; width: 48px; height: 48px; flex-shrink: 0; border-radius: 50%; background: #dceee8; color: var(--settings-accent); font-size: 23px; font-weight: 700; }
+.settings-profile-copy { flex: 1; min-width: 0; display: grid; gap: 3px; }
+.settings-profile-copy strong { font-size: 18px; overflow-wrap: anywhere; }
+.settings-profile-copy > span { font-size: 13px; color: #617474; overflow-wrap: anywhere; }
+.settings-profile > svg, .settings-nav-row > svg { flex-shrink: 0; color: #8b9c9c; }
+.settings-groups { display: grid; gap: 24px; }
+.settings-group h2 { font-size: 12px; font-weight: 700; letter-spacing: .065em; text-transform: uppercase; color: #697d7d; margin: 0 0 8px 4px; }
+.settings-list { border: 1px solid #e7edeb; border-radius: 17px; overflow: hidden; background: #fff; }
+.settings-nav-row { display: flex; align-items: center; gap: 12px; position: relative; padding: 15px 14px; color: inherit; text-decoration: none; min-height: 76px; transition: background 180ms ease, transform 180ms ease; }
+.settings-nav-row + .settings-nav-row::before { content: ''; position: absolute; top: 0; left: 62px; right: 0; height: 1px; background: #edf0ef; }
+.settings-row-icon { width: 36px; height: 36px; border-radius: 11px; display: grid; place-items: center; flex-shrink: 0; background: #eaf3f1; color: #297675; }
+.tone-mitglieder { background: #edf0fb; color: #6576ab; }
+.tone-dokumentbereiche { background: #f8f0df; color: #987832; }
+.tone-wiederherstellung { background: #f4ecf7; color: #8c6899; }
+.tone-synology { background: #edf0f3; color: #607588; }
+.settings-row-copy { display: grid; gap: 3px; min-width: 0; flex: 1; }
+.settings-row-copy strong { font-size: 15px; font-weight: 650; line-height: 1.3; }
+.settings-row-copy > span { color: #6b7b7b; font-size: 12px; line-height: 1.4; }
+.settings-nav-row.is-locked { color: #687575; }
+.settings-footnote { display: flex; align-items: flex-start; justify-content: center; gap: 7px; margin: 24px 8px 0; color: #748383; font-size: 12px; line-height: 1.5; }
+.settings-footnote svg { flex-shrink: 0; margin-top: 2px; }
+.settings-space .settings-back-link { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; margin: -6px 0 8px; color: var(--settings-accent); font-size: 14px; }
+.settings-space .settings-detail-panel { padding: 0; border: 0; box-shadow: none; background: transparent; }
+.settings-detail-head { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 20px; }
+.settings-detail-head > div { flex: 1; min-width: 220px; }
+.settings-space .settings-detail-head h2 { font-size: 17px; margin: 0; }
+.settings-detail-head p { font-size: 13px; margin: 5px 0 0; }
+.settings-space .settings-info { width: 100%; border: 0; border-block: 1px solid #edf0ef; background: transparent; padding: 0; border-radius: 0; }
+.settings-info summary { display: flex; align-items: center; min-height: 44px; color: var(--settings-accent); font-size: 13px; cursor: pointer; list-style: none; }
+.settings-info summary::-webkit-details-marker { display: none; }
+.settings-info summary::after { content: '+'; margin-left: auto; font-size: 20px; }
+.settings-info[open] summary::after { content: '−'; }
+.settings-info > div { padding: 0 0 15px; font-size: 13px; line-height: 1.6; color: #637575; animation: settings-enter 180ms ease both; }
+.settings-info ol { padding-left: 20px; }
+.settings-info code { overflow-wrap: anywhere; }
+.settings-space .settings-form-card { border: 0; background: transparent; border-radius: 0; padding: 0; box-shadow: none; gap: 18px; max-width: 680px; }
+.settings-space .settings-form-card label { font-size: 13px; font-weight: 600; gap: 7px; }
+.settings-space .settings-form-card input:not([type=checkbox]), .settings-space .settings-form-card select { min-height: 48px; font-size: 16px; font-weight: 400; background: #f8faf9; border: 1px solid #e0e8e5; border-radius: 12px; box-shadow: none; }
+.settings-space .settings-form-card .button { min-height: 48px; width: 100%; border-radius: 13px; }
+.settings-space .settings-form-card .modal-submit-row { position: static; padding: 0; background: transparent; border: 0; }
+.settings-disclosure { margin-bottom: 20px; border-block: 1px solid #e6ece9; }
+.settings-disclosure-trigger { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 54px; border: 0; background: transparent; text-align: left; color: var(--settings-accent); font: inherit; font-size: 14px; cursor: pointer; }
+.settings-disclosure-trigger span { flex: 1; }
+.settings-disclosure-trigger > svg:last-child { transition: transform 240ms ease; }
+.settings-disclosure.is-open .settings-disclosure-trigger > svg:last-child { transform: rotate(180deg); }
+.settings-disclosure-body { display: grid; grid-template-rows: 0fr; visibility: hidden; opacity: 0; transition: grid-template-rows 280ms cubic-bezier(.2,.7,.2,1), opacity 180ms ease, visibility 280ms; }
+.settings-disclosure.is-open .settings-disclosure-body { grid-template-rows: 1fr; visibility: visible; opacity: 1; }
+.settings-disclosure-body > div { min-height: 0; overflow: hidden; }
+.settings-disclosure-body form { margin: 6px 0 20px; }
+.settings-space .settings-member-list { gap: 0; }
+.settings-space .settings-member-card { border: 0; border-bottom: 1px solid #e7edeb; border-radius: 0; background: transparent; padding: 16px 0; box-shadow: none; }
+.settings-member-card .row > div { display: grid; gap: 4px; }
+.settings-member-card .muted { font-size: 12px; }
+.settings-space .settings-reset { border: 0; padding: 0; margin-top: 8px; }
+.settings-reset summary { min-height: 44px; display: flex; align-items: center; font-size: 13px; }
+.settings-reset form { padding-bottom: 10px; }
+.settings-space .document-root-row { border: 0; border-bottom: 1px solid #e7edeb; border-radius: 0; padding: 16px 0; background: transparent; }
+.settings-space .document-root-row .muted { overflow-wrap: anywhere; }
+.settings-space .synology-facts { gap: 0; }
+.settings-space .synology-fact { border: 0; border-bottom: 1px solid #e7edeb; border-radius: 0; padding: 17px 0; gap: 6px 12px; }
+.settings-space .synology-fact strong { font-size: 14px; font-weight: 600; }
+.settings-space .synology-fact small { font-weight: 600; border-radius: 20px; padding: 4px 9px; background: #f3f6f5; }
+.settings-space a:focus-visible, .settings-space button:focus-visible, .settings-space summary:focus-visible { outline: 2px solid var(--settings-accent); outline-offset: 3px; }
+@media (hover: hover) { .settings-nav-row[href]:hover, .settings-profile:hover { background: #f2f7f5; } .settings-disclosure-trigger:hover { background: #f8faf9; } }
+.settings-nav-row[href]:active, .settings-profile:active { background: #eaf3ef; transform: scale(.99); }
+@media (min-width: 900px) { .settings-groups { grid-template-columns: 1fr 1fr; align-items: start; } .settings-group:first-child { grid-column: 1 / -1; } .settings-group:first-child .settings-list { max-width: 508px; } .settings-profile { max-width: 508px; } .settings-space .settings-detail-panel { max-width: 800px; } .settings-footnote { justify-content: flex-start; } }
+@media (max-width: 600px) { .settings-space .page-head { margin-bottom: 18px; } .settings-profile { margin-bottom: 23px; padding: 16px; } .settings-groups { gap: 21px; } .settings-space .form-grid { grid-template-columns: 1fr; } .settings-space .document-root-row { flex-wrap: wrap; } .settings-space .document-root-row > div { min-width: 0; } }
+@keyframes settings-enter { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+@media (prefers-reduced-motion: reduce) { .settings-space *, .settings-space *::before, .settings-space *::after { animation: none !important; transition: none !important; } }
+/* A white canvas follows the approved Aufgaben overview. */
+body:has(.settings-space), .shell:has(.settings-space) { background: #fff; }
+.settings-space .settings-profile { margin-bottom: 20px; }
+.settings-space .settings-groups { gap: 18px; }
+.settings-space .settings-nav-row { min-height: 70px; padding-block: 12px; }
+.settings-space .settings-member-card .row { display: flex; flex-direction: row; align-items: center; justify-content: space-between; gap: 12px; }
+.settings-space .settings-member-card .row > div { min-width: 0; }
+.settings-space .settings-member-card .row strong { overflow-wrap: anywhere; }
+.settings-space .settings-member-card .badge { width: auto; flex: 0 0 auto; font-size: 12px; padding: 4px 9px; }
+.settings-space .settings-reset summary { font-weight: 500; }
+.settings-space .document-root-row > div { display: grid; gap: 6px; flex: 1; }
+.settings-space .document-root-row > div > .muted { display: block; font-size: 12px; line-height: 1.5; }
+.settings-space .document-root-row .badge-row { margin: 0; }
+.settings-space .document-root-row > form { align-self: flex-start; margin-top: 8px; }
+.settings-space .document-root-row > form .button { min-height: 44px; font-size: 13px; font-weight: 500; }
+.settings-space .document-user-access { background: transparent; border: 0; border-top: 1px solid #e7edeb; border-radius: 0; padding: 14px 0 0; }
+.settings-space .document-user-access .checkbox-field { display: flex; flex-direction: row; align-items: center; min-height: 48px; border: 0; border-bottom: 1px solid #edf0ef; border-radius: 0; padding: 8px 0; background: transparent; }
+.settings-space .document-user-access { animation: settings-enter 180ms ease both; }
+@media (min-width: 900px) {
+  .settings-space .settings-profile, .settings-space .settings-group:first-child .settings-list { max-width: calc(50% - 9px); }
+}

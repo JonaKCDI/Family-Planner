@@ -7,8 +7,7 @@ export default async function ExpenseSetupPage() {
 
   return (
     <div className="expense-setup-page-layout">
-      <FinanceSetupBackLink href="/ausgaben" label="Finanzen" />
-      <PageHeader title="Finanz-Setup" />
+      <header className="finance-setup-head"><FinanceSetupBackLink href="/ausgaben" label="Finanzen" /><PageHeader title="Finanz-Setup" /></header>
       <FinanceSetupOverview />
     </div>
   );

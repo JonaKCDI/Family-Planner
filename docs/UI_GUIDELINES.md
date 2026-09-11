@@ -174,3 +174,29 @@ Detail sheets are read-first. Editing is intentional.
 - Detached modal cards for mobile flows.
 - Inert chevron rows that look tappable but do nothing.
 - Page scroll lock regressions when a sheet closes.
+
+## Settings
+
+- Settings use a white canvas, a compact account row, and grouped navigation lists.
+- Personal, family/access, and recovery/operation settings have short descriptions
+  and subtle icon tints. Admin-only rows are informational for ordinary members.
+- Keep member and document-area lists visible first; reveal their setup forms
+  through an explicit disclosure. Show the user-access checklist only when the
+  selected access mode requires it.
+- Settings styling lives in `src/app/(app)/einstellungen/settings.css` and stays
+  scoped to this area. Route entry, disclosures, and pressed feedback respect
+  reduced-motion preferences.
+
+## Consistent Field Options
+
+- Direct creation defines the input behavior for repeated fields in edit, series,
+  contract auto-expense and fuel-expense flows. Keep free text editable everywhere.
+- Use `PaymentMethodField` for payment methods: optional free text with shared
+  suggestions and an instance-specific datalist ID.
+- Expense category and label selectors offer the same inline quick-create actions
+  wherever a booking assignment is entered.
+- Expense series support monthly, quarterly and yearly intervals. Do not offer
+  contract-only intervals that the recurring save action silently defaults.
+- Expense and contract editing support HTTPS links and the shared NAS picker.
+  Existing NAS references stay attached when other fields are saved; selecting
+  another NAS file adds a reference without replacing existing attachments.
