@@ -1,10 +1,11 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { ArrowRight, BanknoteArrowUp, CalendarCheck, CarFront, FileText, ReceiptText, Scale, WalletCards } from "lucide-react";
+import { BanknoteArrowUp, CalendarCheck, CarFront, FileText, ReceiptText, Scale, TrendingUp, WalletCards } from "lucide-react";
 import { requireSession } from "@/lib/auth";
 import { ensureDueContractExpenses } from "@/lib/contract-auto-expenses";
 import { getContractNextCancellationDate } from "@/lib/contracts";
-import { sumByKind } from "@/lib/expense-analytics";
+import { buildBudgetAlerts, buildCategoryRows, buildLabelRows, sumByKind } from "@/lib/expense-analytics";
+import { forecastCurrentMonthEnd } from "@/lib/expense-forecast";
 import { formatDate, formatMoney } from "@/lib/format";
 import {
   addFuelDerivedFields,
@@ -21,10 +22,11 @@ import {
   getVisibleContracts,
   getVisibleDocuments,
   getVisibleExpenses,
+  getExpenseLabels,
   getVisibleTasks
 } from "@/lib/queries";
 import { TaskInlineCheck } from "@/components/task-inline-check";
-import { Chip, EmptyState, PageHeader, SectionCard, StatusBadge } from "@/components/ui";
+import { EmptyState, PageHeader, SectionCard, StatusBadge } from "@/components/ui";
 
 export default async function DashboardPage() {
   const session = await requireSession();
@@ -32,12 +34,13 @@ export default async function DashboardPage() {
     ensureDueContractExpenses(session.family.id, session.user.id),
     ensureDueRecurringTasks(session.family.id, session.user.id)
   ]);
-  const [expenses, tasks, contracts, documents, categories, cars] = await Promise.all([
+  const [expenses, tasks, contracts, documents, categories, labels, cars] = await Promise.all([
     getVisibleExpenses(session.family.id, session.user.id),
     getVisibleTasks(session.family.id, session.user.id),
     getVisibleContracts(session.family.id, session.user.id),
     getVisibleDocuments(session.family.id, session.user.id),
     getVisibleCategories(session.family.id, session.user.id, "EXPENSE"),
+    getExpenseLabels(session.family.id, session.user.id),
     getVisibleCars(session.family.id)
   ]);
 
@@ -51,6 +54,15 @@ export default async function DashboardPage() {
   const monthBudget = categories.reduce((sum, category) => sum + category.monthlyBudgetCents, 0);
   const netConsumption = Math.max(0, spending - income);
   const budgetRemaining = monthBudget - netConsumption;
+  const monthEndForecast = forecastCurrentMonthEnd(expenses, categories, today);
+  const projectedBudgetRemaining = monthBudget - monthEndForecast.projectedMonth;
+  const budgetAlerts = [
+    ...buildBudgetAlerts(buildCategoryRows(monthEntries, categories, spending, true), "category"),
+    ...buildBudgetAlerts(buildLabelRows(monthEntries, labels), "label")
+  ].sort((a, b) => {
+    if (a.status !== b.status) return a.status === "over" ? -1 : 1;
+    return b.budgetUsage - a.budgetUsage || b.netConsumption - a.netConsumption || a.name.localeCompare(b.name, "de");
+  });
   const openTasks = tasks
     .filter((task) => task.status === "OPEN" || task.status === "IN_PROGRESS")
     .sort((a, b) => taskRank(b) - taskRank(a));
@@ -142,11 +154,44 @@ export default async function DashboardPage() {
             <FinanceSummaryMetric icon={<Scale size={17} />} label="Saldo" value={formatSignedMoney(saldo)} detail={saldo < 0 ? "Mehr ausgegeben" : "Monat im Plus"} tone={saldo < 0 ? "negative" : "positive"} />
             <FinanceSummaryMetric icon={<WalletCards size={17} />} label={monthBudget > 0 ? "Budget übrig" : "Budget"} value={monthBudget > 0 ? formatMoney(budgetRemaining) : "-"} detail={monthBudget > 0 ? `${formatMoney(netConsumption)} netto verbraucht` : "Monatsbudget in Finanzen"} tone={budgetRemaining < 0 && monthBudget > 0 ? "negative" : "neutral"} />
           </div>
-          <div className="cockpit-finance-actions" aria-label="Finanzsprungziele">
-            <Link href="/ausgaben">Übersicht <ArrowRight size={15} aria-hidden="true" /></Link>
-            <Link href="/ausgaben?view=categories">Analyse <ArrowRight size={15} aria-hidden="true" /></Link>
-            <Link href="/ausgaben/planung">Planung <ArrowRight size={15} aria-hidden="true" /></Link>
-          </div>
+          <Link className={`cockpit-month-forecast ${monthBudget > 0 && projectedBudgetRemaining < 0 ? "forecast-over" : monthBudget > 0 && monthEndForecast.projectedMonth >= monthBudget * .8 ? "forecast-near" : ""}`} href="/ausgaben/planung">
+            <span className="cockpit-month-forecast-icon" aria-hidden="true"><TrendingUp size={18} /></span>
+            <span className="cockpit-month-forecast-copy">
+              <strong>Monatsende prognostiziert</strong>
+              <small>{monthEndForecast.hasEstimate
+                ? monthEndForecast.method === "historical-remainder"
+                  ? `${formatMoney(monthEndForecast.spentToDate)} bisher · typischer Rest aus ${monthEndForecast.historyMonths} ${monthEndForecast.historyMonths === 1 ? "Monat" : "Monaten"}`
+                  : "Hochrechnung aus den bisherigen Tagen"
+                : "Noch nicht genug Daten für eine Prognose"}</small>
+            </span>
+            <span className="cockpit-month-forecast-value">
+              <strong>{monthEndForecast.hasEstimate ? formatMoney(monthEndForecast.projectedMonth) : "–"}</strong>
+              <small>{monthEndForecast.hasEstimate && monthBudget > 0 ? projectedBudgetRemaining < 0 ? `${formatMoney(Math.abs(projectedBudgetRemaining))} über Budget` : `${formatMoney(projectedBudgetRemaining)} Budget frei` : "Prognose öffnen"}</small>
+            </span>
+          </Link>
+          {budgetAlerts.length > 0 ? (
+            <section className="cockpit-budget-alerts" aria-label="Budgetwarnungen">
+              <div className="cockpit-budget-alerts-head">
+                <strong>Budgets im Blick</strong>
+                <span>{budgetAlerts.length} {budgetAlerts.length === 1 ? "Hinweis" : "Hinweise"}</span>
+              </div>
+              {budgetAlerts.slice(0, 4).map((alert) => {
+                const overBudget = alert.status === "over";
+                const destination = `/ausgaben?month=${getMonthKey(today)}&view=${alert.dimension === "category" ? "budgets" : "labels"}`;
+                return (
+                  <Link className={`cockpit-budget-alert ${overBudget ? "budget-over" : "budget-near"}`} href={destination} key={`${alert.dimension}-${alert.id ?? alert.name}`}>
+                    <span className="cockpit-budget-alert-dot" style={{ background: alert.color }} aria-hidden="true" />
+                    <span className="cockpit-budget-alert-copy">
+                      <strong>{alert.name}</strong>
+                      <small>{alert.dimension === "category" ? "Kategorie" : "Label"} · {alert.budgetUsage.toFixed(0)} % genutzt</small>
+                      <span className="cockpit-bar" aria-hidden="true"><span style={{ width: `${Math.max(4, alert.budgetUsage)}%`, background: overBudget ? "var(--red)" : "#c9821c" }} /></span>
+                    </span>
+                    <strong>{overBudget ? `${formatMoney(Math.abs(alert.remaining))} über` : alert.remaining === 0 ? "ausgeschöpft" : `${formatMoney(alert.remaining)} frei`}</strong>
+                  </Link>
+                );
+              })}
+            </section>
+          ) : null}
         </SectionCard>
 
         <SectionCard className="cockpit-section">
@@ -188,18 +233,6 @@ export default async function DashboardPage() {
         </SectionCard>
       </section>
 
-      {importantTasks.length > 0 ? (
-        <section className="cockpit-priority-strip">
-          <strong>Kurzer Fokus</strong>
-          <span>{importantTasks.length} wichtige Aufgaben</span>
-          <div className="badge-row">
-            {importantTasks.slice(0, 2).map((task) => (
-              <Chip tone={daysUntil(task.dueDate) <= 0 ? "negative" : "warning"} key={task.id}>{task.title}</Chip>
-            ))}
-          </div>
-        </section>
-      ) : null}
-
       <section className="cockpit-documents">
         <SectionHead eyebrow="Dokumente" title="Zuletzt" href="/dokumente" />
         <div className="cockpit-document-row">
@@ -227,10 +260,7 @@ function dashboardDocumentHref(document: DocumentEntry) {
 function SectionHead({ eyebrow, title, href }: { eyebrow: string; title: string; href: string }) {
   return (
     <div className="card-head cockpit-section-head">
-      <div>
-        <span className="eyebrow">{eyebrow}</span>
-        <h2>{title}</h2>
-      </div>
+      <h2><span>{eyebrow}</span>{title}</h2>
       <Link className="text-link" href={href}>Alle</Link>
     </div>
   );

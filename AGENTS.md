@@ -32,6 +32,13 @@
 
 ## Agent Coordination
 
+- 2026-09-15 Codex: Completed family-finance implementation with explicit expense sharing, family mappings, scoped views/exports and future-source defaults. Verification: lint and production build passed; 22 test files / 167 tests passed; isolated PostgreSQL migration and mobile/desktop privacy smoke passed (three users across two families). Local family_app database migrated after verified pg_dump backup `.local-backups/family-app-before-family-finance-1789489806420.dump`; expense counts and sums unchanged, zero historical expenses automatically shared. Both family-finance and additive developer-feature migrations applied. Backups excluded from Git, Docker and Next.js tracing. Synology untouched; Docker/Compose deployment check remains open because Docker is unavailable. Preserve concurrent analysis/developer-feature work.
+
+- 2026-09-14 Codex: Implementing category/label detail analysis for personal and family finances, plus a personal admin-only developer switch for forecast test years. Preserve the existing uncommitted family-finance work. Scope includes additive user preference migration, scoped analysis styles, shared period/filter helpers, finance/settings pages and targeted tests.
+  - 2026-09-15 completed: separate List/FileSearch actions, actual category/label history with calendar week/month/year aggregation, preserved filters and return navigation, ID-based grouping and unassigned-category support. Removed fixed six-month chart and forecast hints from category analysis.
+  - Admin preference defaults off; forecast test years are gated server-side on all personal/family forecast paths. Migration: `20260914120000_developer_features`.
+  - Verification: lint, 22 test files / 167 tests, production build (existing document tracing warning), and `node scripts/smoke-finance-analysis.mjs` passed. Browser checks use a random isolated database and port 3103, verify admin/member/outsider behavior plus mobile/desktop, and clean up their database/server. App database was not migrated. Apply pending migrations through the normal deployment flow before starting the updated app.
+
 - 2026-07-14 Codex: Documented the approved Aufgaben mobile design as the implementation reference for future UI work.
   - Primary guide: `docs/UI_GUIDELINES.md`.
   - Use the current Aufgaben implementation as the canonical pattern for mobile overviews, quick filters, task/list rows, bottom sheets, create/edit flows, detail sheets, and NAS file picker behavior.

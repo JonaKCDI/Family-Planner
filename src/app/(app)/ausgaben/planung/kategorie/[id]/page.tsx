@@ -1,3 +1,4 @@
+import { allowedForecastYear } from "@/lib/developer-features";
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { CategoryIcon } from "@/components/category-icon";
@@ -20,7 +21,7 @@ export default async function CategoryForecastPage({ params, searchParams }: { p
   const category = categories.find((c) => c.id === id);
   if (!category && id !== "ohne-kategorie") notFound();
   const entries = expenses.filter((e) => (e.categoryId ?? "ohne-kategorie") === id);
-  const reference = forecastReference(expenses, (await searchParams).year);
+  const reference = forecastReference(expenses, allowedForecastYear(session, (await searchParams).year));
   const now = reference.date;
   const points = monthlyTotals(entries, now, 24);
   const history = points.slice(-12);

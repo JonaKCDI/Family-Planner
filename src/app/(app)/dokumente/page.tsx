@@ -10,7 +10,7 @@ import { DocumentFilePreview } from "@/components/document-file-preview";
 import { DocumentSummaryStrip, DocumentToolbar, type DocumentToolbarParams } from "@/components/document-toolbar";
 import { DocumentRootSelect } from "@/components/document-root-select";
 import { EmptyState, PageHeader, ScopeSelect } from "@/components/ui";
-import { CalendarDays, Download, ExternalLink, FileText, Folder, HardDrive, Link as LinkIcon, Lock, Pencil, Save, Tag, UserRound } from "lucide-react";
+import { CalendarDays, Download, ExternalLink, FileText, Folder, HardDrive, Link as LinkIcon, Lock, Pencil, Save, Tag, Trash2, UserRound } from "lucide-react";
 
 type DocumentsPageProps = {
   searchParams: Promise<DocumentPageParams>;
@@ -137,7 +137,13 @@ function DocumentReferenceRow({ document }: { document: DocumentLike }) {
             <h3>{document.title}</h3>
             <span>{localFile ? "Lokale Datei" : "HTTPS-Link"}</span>
           </div>
-          <DocumentEditModal document={document} />
+          <div className="task-detail-icon-actions">
+            <DocumentEditModal document={document} />
+            <form action={deleteDocumentReference}>
+              <input type="hidden" name="id" value={document.id} />
+              <ConfirmSubmitButton className="task-detail-edit-button danger-icon-button" title="Dokument löschen?" message="Die Referenz wird entfernt. Die Datei selbst bleibt auf dem NAS erhalten."><Trash2 size={18} aria-hidden="true" /><span className="sr-only">Dokument löschen</span></ConfirmSubmitButton>
+            </form>
+          </div>
         </div>
         <dl className="task-detail-meta document-detail-meta">
           <div><UserRound size={18} aria-hidden="true" /><dt>Besitzer</dt><dd>{document.owner.name}</dd></div>
@@ -172,10 +178,6 @@ function DocumentReferenceRow({ document }: { document: DocumentLike }) {
               <span>Öffnen</span>
             </a>
           )}
-          <form action={deleteDocumentReference}>
-            <input type="hidden" name="id" value={document.id} />
-            <ConfirmSubmitButton title="Dokument löschen?" message="Die Referenz wird entfernt. Die Datei selbst bleibt auf dem NAS erhalten.">Löschen</ConfirmSubmitButton>
-          </form>
         </div>
       </div>
     </ActionModal>

@@ -1,5 +1,6 @@
+import { setDeveloperFeatures } from "@/lib/developer-actions";
 import Link from "next/link";
-import { ArrowLeft, ChevronRight, FolderLock, KeyRound, LockKeyhole, Server, ShieldCheck, Users } from "lucide-react";
+import { ArrowLeft, CodeXml, ChevronRight, FolderLock, KeyRound, LockKeyhole, Server, ShieldCheck, Users } from "lucide-react";
 import { SettingsDocumentAccess } from "@/components/settings-document-access";
 import { SettingsDisclosure } from "@/components/settings-disclosure";
 import type { FamilyRole } from "@prisma/client";
@@ -11,6 +12,7 @@ import { getFamilyMembers } from "@/lib/queries";
 import { EmptyState } from "@/components/ui";
 
 export const settingsSections = [
+  { id: "entwickler", title: "Entwicklerfunktionen", description: "Testansichten für dein Admin-Konto.", adminOnly: true },
   {
     id: "konto",
     title: "Konto",
@@ -49,7 +51,7 @@ export type SettingsContext = Awaited<ReturnType<typeof loadSettingsContext>>;
 
 export async function loadSettingsContext(session: {
   family: { id: string };
-  user: { id: string };
+  user: { id: string; developerFeatures?: boolean };
   role: FamilyRole;
 }) {
   const isAdmin = session.role === "ADMIN";
@@ -71,6 +73,7 @@ export async function loadSettingsContext(session: {
 
   return {
     isAdmin,
+    developerFeatures: isAdmin && session.user.developerFeatures === true,
     members,
     documentRoots,
     documentBasePath: getConfiguredDocumentsDir(),
@@ -79,10 +82,11 @@ export async function loadSettingsContext(session: {
   };
 }
 
-const sectionIcons = { konto: LockKeyhole, mitglieder: Users, wiederherstellung: KeyRound, dokumentbereiche: FolderLock, synology: Server };
+const sectionIcons = { entwickler: CodeXml, konto: LockKeyhole, mitglieder: Users, wiederherstellung: KeyRound, dokumentbereiche: FolderLock, synology: Server };
 
 export function SettingsOverview({ context, name, familyName }: { context: SettingsContext; name: string; familyName: string }) {
   const summaries = {
+    entwickler: context.developerFeatures ? "Testansichten aktiviert" : "Testansichten ausgeschaltet",
     konto: "Passwort & Sicherheit",
     mitglieder: `${context.members.length} Familienmitglieder`,
     wiederherstellung: context.recoveryKey ? "Notfallschlüssel eingerichtet" : "Notfallschlüssel einrichten",
@@ -97,11 +101,11 @@ export function SettingsOverview({ context, name, familyName }: { context: Setti
         <ChevronRight size={18} aria-hidden="true" />
       </Link>
       <div className="settings-groups">
-        {[{ title: "Persönlich", ids: ["konto"] }, { title: "Familie & Zugriff", ids: ["mitglieder", "dokumentbereiche"] }, { title: "Sicherheit & Betrieb", ids: ["wiederherstellung", "synology"] }].map((group) => (
+        {[{ title: "Persönlich", ids: ["konto"] }, { title: "Familie & Zugriff", ids: ["mitglieder", "dokumentbereiche"] }, { title: "Sicherheit & Betrieb", ids: ["wiederherstellung", "synology", "entwickler"] }].map((group) => (
           <section className="settings-group" key={group.title}>
             <h2>{group.title}</h2>
             <div className="settings-list">
-              {settingsSections.filter((section) => group.ids.includes(section.id)).map((section) => {
+              {settingsSections.filter((section) => group.ids.includes(section.id) && (section.id !== "entwickler" || context.isAdmin)).map((section) => {
                 const Icon = sectionIcons[section.id];
                 const locked = section.adminOnly && !context.isAdmin;
                 const content = <><span className={`settings-row-icon tone-${section.id}`}><Icon size={20} strokeWidth={1.8} aria-hidden="true" /></span><span className="settings-row-copy"><strong>{section.id === "wiederherstellung" ? "Wiederherstellung" : section.title}</strong><span>{locked ? "Von euren Admins verwaltet" : summaries[section.id]}</span></span>{locked ? <LockKeyhole size={16} aria-label="Nur Admins" /> : <ChevronRight size={17} aria-hidden="true" />}</>;
@@ -328,4 +332,16 @@ export function SynologySettings({ context }: { context: SettingsContext }) {
       )}
     </section>
   );
+}
+
+export function DeveloperSettings({ context, saved }: { context: SettingsContext; saved: boolean }) {
+  if (!context.isAdmin) return null;
+  return <section className="panel settings-detail-panel">
+    <p className="muted">Zeigt die Testjahr-Auswahl in der Finanzprognose. Gilt nur für dein Admin-Konto auf allen Geräten.</p>
+    {saved ? <p role="status" className="badge spacing-bottom">Einstellung gespeichert.</p> : null}
+    <form action={setDeveloperFeatures} className="form settings-form-card">
+      <label className="checkbox-field"><input type="checkbox" role="switch" name="developerFeatures" defaultChecked={context.developerFeatures} />Entwicklerfunktionen</label>
+      <button className="button" type="submit">Speichern</button>
+    </form>
+  </section>;
 }

@@ -14,7 +14,7 @@ export async function getVisibleCategories(familyId: string, userId: string, typ
     where: {
       familyId,
       ...(type ? { type } : {}),
-      ...visibleScopeWhere(userId)
+      ...(type === "EXPENSE" ? { ownerUserId: userId } : visibleScopeWhere(userId))
     },
     orderBy: { name: "asc" }
   });
@@ -26,7 +26,7 @@ export async function getVisibleExpenses(familyId: string, userId: string) {
       familyId,
       ownerUserId: userId
     },
-    include: { category: true, label: true, contract: true, recurringTransaction: true, fuelEntry: { include: { car: true } } },
+    include: { category: true, label: true, contract: true, recurringTransaction: { include: { pricePhases: { orderBy: { validFrom: "asc" } } } }, fuelEntry: { include: { car: true } } },
     orderBy: { date: "desc" }
   });
 }

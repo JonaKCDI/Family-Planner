@@ -8,6 +8,7 @@ import { ExpenseFilterForm } from "@/components/expense-filter-form";
 import { ModalPortal } from "@/components/modal-portal";
 
 type FinanceToolbarProps = {
+  filterContent?: ReactNode;
   params: ExpenseFilterParams;
   categories: { id: string; name: string }[];
   labels: { id: string; name: string }[];
@@ -28,11 +29,13 @@ export function FinanceToolbar({
   currentMonthKey,
   paymentMethods,
   resultCount,
-  activeFilterCount
+  activeFilterCount,
+  filterContent
 }: FinanceToolbarProps) {
   const [searchOpen, setSearchOpen] = useState(Boolean(params.q));
   const [filterOpen, setFilterOpen] = useState(false);
   const resetHref = buildExpensesHref(params, {
+    person: undefined,
     q: undefined,
     category: undefined,
     label: undefined,
@@ -53,7 +56,7 @@ export function FinanceToolbar({
           <SearchCloseControl href={params.q ? buildExpensesHref(params, { q: undefined }) : undefined} />
           <label>
             <span>Finanzen durchsuchen</span>
-            <input name="q" type="search" defaultValue={params.q ?? ""} placeholder="Beschreibung, Kategorie, Label, Vertrag ..." autoFocus />
+            <input name="q" type="search" defaultValue={params.q ?? ""} placeholder={params.bereich === "familie" ? "Beschreibung, Person, Familienkategorie …" : "Beschreibung, Kategorie, Label, Vertrag ..."} autoFocus />
           </label>
           <button className="button secondary" type="submit">
             <Search size={16} aria-hidden="true" />
@@ -79,7 +82,7 @@ export function FinanceToolbar({
           </>
         )}
       >
-        <ExpenseFilterForm
+        {filterContent ?? <ExpenseFilterForm
           params={params}
           categories={categories}
           labels={labels}
@@ -89,7 +92,7 @@ export function FinanceToolbar({
           resultCount={resultCount}
           formId="finance-filter-form"
           showActions={false}
-        />
+        />}
       </BottomSheet>
     </div>
   );

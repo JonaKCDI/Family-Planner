@@ -10,7 +10,7 @@ export async function resolveExpenseCategoryId(familyId: string, userId: string,
       id: categoryId,
       familyId,
       type: "EXPENSE",
-      ...visibleScopeWhere(userId)
+      ownerUserId: userId
     },
     select: { id: true }
   });

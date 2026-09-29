@@ -17,10 +17,11 @@ type ActionModalProps = {
   sheetSize?: "compact" | "medium" | "large";
   showBackButton?: boolean;
   wide?: boolean;
+  headerActions?: React.ReactNode;
   children: React.ReactNode;
 };
 
-export function ActionModal({ title, trigger, triggerLabel, modalId, triggerClassName = "button secondary", panelClassName, sheetVariant = "action", sheetSize, showBackButton = false, wide = false, children }: ActionModalProps) {
+export function ActionModal({ title, trigger, triggerLabel, modalId, triggerClassName = "button secondary", panelClassName, sheetVariant = "action", sheetSize, showBackButton = false, wide = false, headerActions, children }: ActionModalProps) {
   const generatedId = useId();
   const resolvedModalId = modalId ?? `modal-${generatedId.replace(/:/g, "")}`;
   const [localOpen, setLocalOpen] = useState(false);
@@ -109,6 +110,7 @@ export function ActionModal({ title, trigger, triggerLabel, modalId, triggerClas
               </button>
               <div className="modal-head">
                 <h2 className="section-title" id={`action-modal-${resolvedModalId}`}>{title}</h2>
+                {headerActions ? <div className="modal-head-actions">{headerActions}</div> : null}
               </div>
               {isCreateSheet ? (
                 <div className="create-dialog-body">

@@ -1,3 +1,7 @@
+import { allowedForecastYear, developerFeaturesEnabled } from "@/lib/developer-features";
+import { FamilyFinancePage } from "@/components/family-finance-page";
+import { FinanceAreaIndicator } from "@/components/finance-area-switch";
+import type { ExpenseFilterParams } from "@/lib/expense-filter-url";
 import Link from "next/link";
 import { BanknoteArrowUp, ReceiptText, Scale } from "lucide-react";
 import { CategoryIcon } from "@/components/category-icon";
@@ -11,13 +15,15 @@ import { FinanceTransitionMarker } from "@/components/finance-transition-marker"
 import { AutoSubmitSelect } from "@/components/auto-submit-select";
 import "./forecast.css";
 
-export default async function ExpensePlanningPage({ searchParams }: { searchParams: Promise<{ year?: string | string[] }> }) {
+export default async function ExpensePlanningPage({ searchParams }: { searchParams: Promise<ExpenseFilterParams> }) {
   const session = await requireSession();
+  const params = await searchParams;
+  if (params.bereich === "familie") return <FamilyFinancePage params={params} planning />;
   const [expenses, categories] = await Promise.all([
     getVisibleExpenses(session.family.id, session.user.id),
     getVisibleCategories(session.family.id, session.user.id, "EXPENSE")
   ]);
-  const reference = forecastReference(expenses, (await searchParams).year);
+  const reference = forecastReference(expenses, allowedForecastYear(session, params.year));
   const now = reference.date;
   const ownExpenses = withoutExcludedCategories(expenses, categories);
   const history = monthlyTotals(ownExpenses, now, 17);
@@ -38,17 +44,19 @@ export default async function ExpensePlanningPage({ searchParams }: { searchPara
   });
   return <div className="forecast-page">
     <FinanceTransitionMarker view="planning" />
-    <div className="task-page-head finance-page-head"><PageHeader title="Finanzen" /></div>
+    <div className="task-page-head finance-page-head">
+      <PageHeader title="Finanzen" suffix={<FinanceAreaIndicator />} />
+    </div>
     <nav className="finance-primary-tabs" aria-label="Finanzbereich">
       <Link href="/ausgaben">Übersicht</Link><Link href="/ausgaben?view=categories">Analyse</Link><Link className="active" href={`/ausgaben/planung${reference.query}`} aria-current="page">Prognose</Link>
     </nav>
-    <form action="/ausgaben/planung" className="forecast-year-select">
+    {developerFeaturesEnabled(session) && <form action="/ausgaben/planung" className="forecast-year-select">
       <label>Datengrundlage<AutoSubmitSelect key={reference.selectedYear ?? "current"} name="year" defaultValue={String(reference.selectedYear ?? "current")}>
         <option value="current">Aktuell</option>
         {reference.years.map((year) => <option value={year} key={year}>{year}</option>)}
       </AutoSubmitSelect></label>
       <noscript><button className="button secondary" type="submit">Anzeigen</button></noscript>
-    </form>
+    </form>}
     <section className="forecast-widget-section" aria-label={`Prognose für ${forecastMonthLabel}`}>
       <div className="forecast-section-head"><h2>Prognose</h2><span>{forecastMonthLabel}</span></div>
       <div className="finance-summary-panel forecast-widget-grid">

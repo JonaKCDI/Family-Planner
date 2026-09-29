@@ -1,6 +1,10 @@
 import { isExpenseSortKey, type ExpenseSortKey } from "@/lib/expense-sorting";
 
 export type ExpenseFilterParams = {
+  analysisReturn?: string | null;
+  bereich?: string | null;
+  person?: string | null;
+  currency?: string | null;
   from?: string | null;
   to?: string | null;
   year?: string | null;
@@ -26,8 +30,8 @@ export type ExpenseFilterParams = {
   chartMonths?: string | null;
 };
 
-const orderedKeys = ["from", "to", "year", "month", "label", "category", "kind", "paymentMethod", "source", "q", "sort", "view", "compareA", "compareB", "compareMode", "compareMonth", "compareYear", "compareFrom", "compareTo", "chartDimension", "chartMetric", "chartTop", "chartMonths"] as const;
-const expenseViewKeys = ["entries", "categories", "analysis", "compare", "overview", "budgets", "labels", "periods"] as const;
+const orderedKeys = ["bereich", "person", "currency", "from", "to", "year", "month", "label", "category", "kind", "paymentMethod", "source", "q", "sort", "view", "compareA", "compareB", "compareMode", "compareMonth", "compareYear", "compareFrom", "compareTo", "chartDimension", "chartMetric", "chartTop", "chartMonths"] as const;
+const expenseViewKeys = ["entries", "categories", "analysis", "compare", "overview", "budgets", "labels", "periods", "people"] as const;
 const chartDimensionKeys = ["category", "label"] as const;
 const chartMetricKeys = ["spending", "income", "saldo", "net"] as const;
 const kindKeys = ["expense", "income"] as const;

@@ -1,5 +1,13 @@
 export type ForecastExpense = { kind: string; amountCents: number; date: Date | string; categoryId?: string | null };
 export type MonthTotal = { month: string; value: number };
+export type CurrentMonthForecast = {
+  spentToDate: number;
+  typicalRemaining: number;
+  projectedMonth: number;
+  historyMonths: number;
+  hasEstimate: boolean;
+  method: "historical-remainder" | "daily-pace";
+};
 
 export function forecastReference(entries: ForecastExpense[], year: string | string[] | undefined, today = new Date()) {
   const currentYear = today.getUTCFullYear();
@@ -69,6 +77,36 @@ export function forecastOverview(entries: ForecastExpense[], categories: { id: s
   return { spending, income, saldo: income - spending, hasHistory };
 }
 
+/** Forecasts the month end from money spent so far plus the typical remainder
+ * after the same calendar day in up to six prior months. */
+export function forecastCurrentMonthEnd(
+  entries: ForecastExpense[],
+  categories: { id: string; excludeFromForecast: boolean }[],
+  today = new Date()
+): CurrentMonthForecast {
+  const included = withoutExcludedCategories(entries, categories).filter((entry) => entry.kind === "EXPENSE");
+  const currentMonth = localMonthKey(today);
+  const currentDay = today.getDate();
+  const spentToDate = sumExpenses(included.filter((entry) => localMonthKey(entry.date) === currentMonth && new Date(entry.date).getDate() <= currentDay));
+  const historicalRemainders = Array.from({ length: 6 }, (_, index) => localMonthKey(new Date(today.getFullYear(), today.getMonth() - index - 1, 1)))
+    .map((month) => {
+      const monthEntries = included.filter((entry) => localMonthKey(entry.date) === month);
+      if (monthEntries.length === 0) return null;
+      const fullMonth = sumExpenses(monthEntries);
+      const throughToday = sumExpenses(monthEntries.filter((entry) => new Date(entry.date).getDate() <= currentDay));
+      return Math.max(0, fullMonth - throughToday);
+    })
+    .filter((value): value is number => value !== null);
+
+  if (historicalRemainders.length > 0) {
+    const typicalRemaining = median(historicalRemainders);
+    return { spentToDate, typicalRemaining, projectedMonth: spentToDate + typicalRemaining, historyMonths: historicalRemainders.length, hasEstimate: true, method: "historical-remainder" };
+  }
+
+  const projectedMonth = spentToDate > 0 ? Math.round((spentToDate / Math.max(1, currentDay)) * daysInLocalMonth(today)) : 0;
+  return { spentToDate, typicalRemaining: Math.max(0, projectedMonth - spentToDate), projectedMonth, historyMonths: 0, hasEstimate: spentToDate > 0, method: "daily-pace" };
+}
+
 export function movingAverage(points: MonthTotal[], window = 6) {
   return points.map((point, index) => ({
     month: point.month,
@@ -104,4 +142,23 @@ export function recordedMonths(entries: ForecastExpense[], now: Date) {
   if (!dates.length) return 0;
   const [year, month] = dates[0].split("-").map(Number);
   return (now.getUTCFullYear() - year) * 12 + now.getUTCMonth() - month + 1;
+}
+
+function localMonthKey(dateLike: Date | string) {
+  const date = new Date(dateLike);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function daysInLocalMonth(date: Date) {
+  return new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+}
+
+function sumExpenses(entries: ForecastExpense[]) {
+  return entries.reduce((sum, entry) => sum + entry.amountCents, 0);
+}
+
+function median(values: number[]) {
+  const sorted = [...values].sort((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 1 ? sorted[middle] : Math.round((sorted[middle - 1] + sorted[middle]) / 2);
 }

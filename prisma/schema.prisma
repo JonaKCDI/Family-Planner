@@ -118,6 +118,7 @@ enum ExpensePlanningRulePatternType {
 
 model User {
   id           String         @id @default(cuid())
+  developerFeatures Boolean   @default(false)
   name         String         @unique
   passwordHash String
   status       UserStatus     @default(ACTIVE)
@@ -143,6 +144,9 @@ model User {
   createdRecoveryKeys AdminRecoveryKey[] @relation("AdminRecoveryKeyCreator")
   expensePlanningTreatments ExpensePlanningTreatment[]
   expensePlanningRules ExpensePlanningRule[]
+  createdFamilyTransfers FamilyTransfer[] @relation("FamilyTransferCreator")
+  sentFamilyTransfers FamilyTransfer[] @relation("FamilyTransferSender")
+  receivedFamilyTransfers FamilyTransfer[] @relation("FamilyTransferRecipient")
 }
 
 model Session {
@@ -165,6 +169,8 @@ model LoginAttempt {
 }
 
 model Family {
+  financeCategories FamilyFinanceCategory[]
+  financeLabels FamilyFinanceLabel[]
   id        String   @id @default(cuid())
   name      String
   createdAt DateTime @default(now())
@@ -185,6 +191,7 @@ model Family {
   adminRecoveryKey AdminRecoveryKey?
   expensePlanningTreatments ExpensePlanningTreatment[]
   expensePlanningRules ExpensePlanningRule[]
+  transfers FamilyTransfer[]
 }
 
 model AdminRecoveryKey {
@@ -215,7 +222,33 @@ model FamilyMember {
   @@index([userId])
 }
 
+// A lightweight record of a real payment between family members. It deliberately
+// does not allocate individual expenses or create calculated debts.
+model FamilyTransfer {
+  id String @id @default(cuid())
+  familyId String
+  senderUserId String
+  recipientUserId String
+  createdByUserId String
+  amountCents Int
+  currency String @default("EUR")
+  date DateTime
+  note String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  family Family @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  sender User @relation("FamilyTransferSender", fields: [senderUserId], references: [id], onDelete: Cascade)
+  recipient User @relation("FamilyTransferRecipient", fields: [recipientUserId], references: [id], onDelete: Cascade)
+  createdBy User @relation("FamilyTransferCreator", fields: [createdByUserId], references: [id], onDelete: Cascade)
+
+  @@index([familyId, date])
+  @@index([senderUserId])
+  @@index([recipientUserId])
+  @@index([createdByUserId])
+}
+
 model Category {
+  familyMappings FamilyCategoryMapping[]
   id          String       @id @default(cuid())
   familyId    String
   ownerUserId String?
@@ -238,6 +271,7 @@ model Category {
 }
 
 model ExpenseLabel {
+  familyMappings FamilyLabelMapping[]
   id          String   @id @default(cuid())
   familyId    String
   ownerUserId String
@@ -259,6 +293,8 @@ model ExpenseLabel {
 }
 
 model Expense {
+  @@index([familyId, sharedWithFamily, date], map: "Expense_family_shared_date_idx")
+  sharedWithFamily Boolean @default(false)
   id          String   @id @default(cuid())
   familyId    String
   ownerUserId String
@@ -342,6 +378,7 @@ model ExpensePlanningRule {
 }
 
 model FuelExpenseSettings {
+  sharedWithFamily Boolean @default(false)
   id                   String   @id @default(cuid())
   familyId             String
   userId               String
@@ -460,6 +497,7 @@ model RecurringTask {
 }
 
 model Contract {
+  expenseSharedWithFamily Boolean @default(false)
   id                     String          @id @default(cuid())
   familyId               String
   ownerUserId            String
@@ -515,6 +553,7 @@ model ContractPricePhase {
 }
 
 model RecurringTransaction {
+  sharedWithFamily Boolean @default(false)
   id              String                     @id @default(cuid())
   familyId        String
   ownerUserId     String
@@ -619,4 +658,54 @@ model DocumentRootAccess {
   @@index([userId])
   @@unique([documentRootId, userId])
   @@unique([documentRootId, role])
+}
+
+model FamilyFinanceCategory {
+  id String @id @default(cuid())
+  familyId String
+  name String
+  color String @default("#16776f")
+  icon String @default("tag")
+  monthlyBudgetCents Int @default(0)
+  excludeFromForecast Boolean @default(false)
+  archivedAt DateTime?
+  family Family @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  mappings FamilyCategoryMapping[]
+  @@unique([familyId, name])
+}
+
+model FamilyCategoryMapping {
+  id String @id @default(cuid())
+  familyId String
+  userId String
+  personalId String
+  targetId String
+  personal Category @relation(fields: [personalId], references: [id], onDelete: Cascade)
+  target FamilyFinanceCategory @relation(fields: [targetId], references: [id], onDelete: Cascade)
+  @@unique([familyId, userId, personalId])
+  @@index([targetId])
+}
+
+model FamilyFinanceLabel {
+  id String @id @default(cuid())
+  familyId String
+  name String
+  color String @default("#16776f")
+  budgetCents Int @default(0)
+  archivedAt DateTime?
+  family Family @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  mappings FamilyLabelMapping[]
+  @@unique([familyId, name])
+}
+
+model FamilyLabelMapping {
+  id String @id @default(cuid())
+  familyId String
+  userId String
+  personalId String
+  targetId String
+  personal ExpenseLabel @relation(fields: [personalId], references: [id], onDelete: Cascade)
+  target FamilyFinanceLabel @relation(fields: [targetId], references: [id], onDelete: Cascade)
+  @@unique([familyId, userId, personalId])
+  @@index([targetId])
 }

@@ -48,7 +48,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           {children}
         </main>
       </div>
-      <CreateModal categories={categories} labels={labels} contracts={contracts} members={members} cars={cars} fuelExpenseSettings={fuelExpenseSettings} documentRoots={documentRoots} />
+      <CreateModal currentUserId={session.user.id} categories={categories.map(c => ({ id: c.id, name: c.name, color: c.color, icon: c.icon }))} labels={labels.map(l => ({ id: l.id, name: l.name }))} contracts={contracts.map(c => ({ id: c.id, provider: c.provider, contractType: c.contractType, status: c.status }))} members={members.map(m => ({ id: m.id, userId: m.userId, user: { name: m.user.name } }))} cars={cars.map(c => ({ id: c.id, name: c.name, licensePlate: c.licensePlate }))} fuelExpenseSettings={fuelExpenseSettings} documentRoots={documentRoots} />
     </div>
   );
 }

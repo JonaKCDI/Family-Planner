@@ -1,10 +1,10 @@
 import type { HTMLAttributes, ReactNode } from "react";
 
-export function PageHeader({ title, description }: { title: string; description?: string }) {
+export function PageHeader({ title, description, suffix }: { title: string; description?: string; suffix?: ReactNode }) {
   return (
     <div className="page-head app-page-header">
       <div>
-        <h1>{title}</h1>
+        <h1>{title}{suffix ? <span className="page-head-suffix">{suffix}</span> : null}</h1>
         {description ? <p className="muted">{description}</p> : null}
       </div>
     </div>

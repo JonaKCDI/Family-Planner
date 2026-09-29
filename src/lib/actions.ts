@@ -1,5 +1,7 @@
 ﻿"use server";
 
+import { enrichPersonalExport, restorePersonalMappings } from "@/lib/family-finance-backup";
+
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { revalidatePath } from "next/cache";
@@ -96,6 +98,7 @@ export async function createExpense(formData: FormData) {
     data: {
       familyId: session.family.id,
       ownerUserId: session.user.id,
+      sharedWithFamily: formData.get("kind") !== "INCOME" && formData.get("sharedWithFamily") === "on",
       kind: enumValue(formData, "kind", ["EXPENSE", "INCOME"] as const, "EXPENSE"),
       amountCents: parseEuroInputToCents(formData.get("amount")),
       currency: "EUR",
@@ -342,6 +345,7 @@ async function importExpenseRows(familyId: string, userId: string, rows: Expense
     const data = {
       familyId,
       ownerUserId: userId,
+      ...(row.kind === "INCOME" ? { sharedWithFamily: false } : row.sharedWithFamily === undefined ? {} : { sharedWithFamily: row.sharedWithFamily }),
       kind: row.kind,
       amountCents: row.amountCents,
       currency: row.currency || "EUR",
@@ -371,6 +375,7 @@ async function importExpenseRows(familyId: string, userId: string, rows: Expense
     } else {
       await db.expense.create({ data });
     }
+    await restorePersonalMappings(row, familyId, userId, categoryId, labelId);
   }
 }
 
@@ -413,6 +418,7 @@ export async function updateExpense(formData: FormData) {
       ownerUserId: session.user.id
     },
     data: {
+      sharedWithFamily: formData.get("kind") !== "INCOME" && formData.get("sharedWithFamily") === "on",
       kind: enumValue(formData, "kind", ["EXPENSE", "INCOME"] as const, "EXPENSE"),
       amountCents: parseEuroInputToCents(formData.get("amount")),
       currency: "EUR",
@@ -538,6 +544,7 @@ export async function exportExpensesToSynologyExcel(formData: FormData) {
   });
   const rows = [
     ...expenses.map((expense) => ({
+      sharedWithFamily: expense.sharedWithFamily,
       id: expense.id,
       kind: expense.kind,
       amountCents: expense.amountCents,
@@ -556,7 +563,7 @@ export async function exportExpensesToSynologyExcel(formData: FormData) {
   ];
 
   await mkdir(dirname(excelPath), { recursive: true });
-  await writeFile(excelPath, Buffer.from(await buildExpenseWorkbook(rows, year)));
+  await writeFile(excelPath, Buffer.from(await buildExpenseWorkbook(await enrichPersonalExport(rows, session.family.id, session.user.id), year)));
   revalidatePath("/ausgaben");
 }
 
@@ -630,6 +637,7 @@ export async function updateFuelExpenseSettings(formData: FormData) {
     create: {
       familyId: session.family.id,
       userId: session.user.id,
+      sharedWithFamily: formData.get("sharedWithFamily") === "on",
       autoCreateExpense: formData.get("autoCreateExpense") === "on",
       defaultCategoryId: categoryId,
       defaultLabelId: labelId,
@@ -638,6 +646,7 @@ export async function updateFuelExpenseSettings(formData: FormData) {
       defaultDescription: optionalText(formData, "defaultDescription") ?? ""
     },
     update: {
+      sharedWithFamily: formData.get("sharedWithFamily") === "on",
       autoCreateExpense: formData.get("autoCreateExpense") === "on",
       defaultCategoryId: categoryId,
       defaultLabelId: labelId,
@@ -688,6 +697,7 @@ export async function createFuelEntry(formData: FormData) {
           description: expenseDescription,
           scope: "PRIVATE",
           fuelEntryId: fuelEntry.id,
+          sharedWithFamily: formData.get("sharedWithFamily") === "on",
           generatedByFuelEntry: true
         }
       });
@@ -917,7 +927,7 @@ export async function updateCategory(formData: FormData) {
     where: {
       id,
       familyId: session.family.id,
-      ...(session.role === "ADMIN" ? {} : { ownerUserId: session.user.id })
+      ownerUserId: session.user.id
     },
     data: {
       name,
@@ -925,7 +935,7 @@ export async function updateCategory(formData: FormData) {
       icon,
       monthlyBudgetCents: parseOptionalEuroInputToCents(formData.get("monthlyBudget")),
       ...(formData.has("forecastExclusionPresent") ? { excludeFromForecast: formData.get("excludeFromForecast") === "on" } : {}),
-      scope: scopeValue(formData)
+      scope: "PRIVATE"
     }
   });
 
@@ -943,7 +953,7 @@ export async function deleteCategory(formData: FormData) {
     id,
     familyId: session.family.id,
     type: "EXPENSE" as const,
-    ...(session.role === "ADMIN" ? {} : { ownerUserId: session.user.id })
+    ownerUserId: session.user.id
   };
   const [category, expenseCount, settingsCount] = await Promise.all([
     db.category.findFirst({
@@ -1169,6 +1179,19 @@ export async function updateTask(formData: FormData) {
   revalidatePath("/dashboard");
 }
 
+export async function deleteTask(formData: FormData) {
+  const session = await requireSession();
+  await db.task.deleteMany({
+    where: {
+      id: requiredText(formData, "id"),
+      familyId: session.family.id,
+      OR: [{ ownerUserId: session.user.id }, { assignedToUserId: session.user.id }]
+    }
+  });
+  revalidatePath("/aufgaben");
+  revalidatePath("/dashboard");
+}
+
 export async function createRecurringTask(formData: FormData) {
   const session = await requireSession();
   const assignedToUserId = await resolveTaskAssigneeId(session.family.id, optionalText(formData, "assignedToUserId"));
@@ -1245,6 +1268,25 @@ export async function updateRecurringTask(formData: FormData) {
   revalidatePath("/dashboard");
 }
 
+export async function deleteRecurringTask(formData: FormData) {
+  const session = await requireSession();
+  const existing = await db.recurringTask.findFirst({
+    where: {
+      id: requiredText(formData, "id"),
+      familyId: session.family.id,
+      OR: [{ ownerUserId: session.user.id }, { assignedToUserId: session.user.id }]
+    }
+  });
+  if (!existing) throw new Error("Diese geplante Aufgabe ist nicht verfügbar.");
+
+  await db.$transaction([
+    db.task.deleteMany({ where: { recurringTaskId: existing.id, familyId: session.family.id } }),
+    db.recurringTask.delete({ where: { id: existing.id } })
+  ]);
+  revalidatePath("/aufgaben");
+  revalidatePath("/dashboard");
+}
+
 export async function pauseRecurringTask(formData: FormData) {
   await setRecurringTaskStatus(formData, "PAUSED");
 }
@@ -1286,6 +1328,7 @@ export async function createRecurringTransaction(formData: FormData) {
     data: {
       familyId: session.family.id,
       ownerUserId: session.user.id,
+      sharedWithFamily: formData.get("kind") !== "INCOME" && formData.get("sharedWithFamily") === "on",
       kind: enumValue(formData, "kind", ["EXPENSE", "INCOME"] as const, "EXPENSE"),
       title: requiredText(formData, "title"),
       description: optionalText(formData, "description") ?? "",
@@ -1335,6 +1378,7 @@ export async function updateRecurringTransaction(formData: FormData) {
   await db.recurringTransaction.update({
     where: { id: existing.id },
     data: {
+      sharedWithFamily: formData.get("kind") !== "INCOME" && formData.get("sharedWithFamily") === "on",
       kind: enumValue(formData, "kind", ["EXPENSE", "INCOME"] as const, existing.kind),
       title: requiredText(formData, "title"),
       description: optionalText(formData, "description") ?? "",
@@ -1362,6 +1406,7 @@ export async function updateRecurringTransaction(formData: FormData) {
         }
       },
       data: {
+        ...(formData.get("kind") === "INCOME" ? { sharedWithFamily: false } : {}),
         kind: enumValue(formData, "kind", ["EXPENSE", "INCOME"] as const, existing.kind),
         amountCents,
         currency: "EUR",
@@ -1438,6 +1483,7 @@ export async function createContract(formData: FormData) {
       renewalInterval: renewalIntervalValue(formData),
       renewalAnchorDay: cancellation.renewalAnchorDay,
       autoCreateExpenses,
+      expenseSharedWithFamily: formData.get("expenseSharedWithFamily") === "on",
       expensePaymentDay,
       expenseCategoryId,
       expenseLabelId,
@@ -1526,6 +1572,7 @@ export async function updateContract(formData: FormData) {
       renewalInterval: renewalIntervalValue(formData),
       renewalAnchorDay: cancellation.renewalAnchorDay,
       autoCreateExpenses,
+      ...(existing.ownerUserId === session.user.id ? { expenseSharedWithFamily: formData.get("expenseSharedWithFamily") === "on" } : {}),
       expensePaymentDay,
       expenseCategoryId,
       expenseLabelId,
@@ -1567,6 +1614,87 @@ export async function updateContract(formData: FormData) {
   }
 
   await ensureDueContractExpenses(session.family.id, session.user.id, new Date(), { force: true });
+  revalidatePath("/vertraege");
+  revalidatePath("/ausgaben");
+  revalidatePath("/dashboard");
+}
+
+/** Creates a series from an owned booking and makes that booking its first generated occurrence. */
+export async function createRecurringTransactionFromExpense(formData: FormData) {
+  const session = await requireSession();
+  const expenseId = requiredText(formData, "sourceExpenseId");
+  const source = await db.expense.findFirst({
+    where: { id: expenseId, familyId: session.family.id, ownerUserId: session.user.id }
+  });
+  if (!source) throw new Error("Die Ausgangsbuchung ist nicht verfügbar.");
+  if (source.recurringTransactionId) throw new Error("Diese Buchung ist bereits mit einer Serie verknüpft.");
+
+  const categoryId = await resolveExpenseCategoryId(session.family.id, session.user.id, optionalText(formData, "categoryId"));
+  const labelId = await resolveExpenseLabelId(session.family.id, session.user.id, optionalText(formData, "labelId"));
+  const startDate = parseRequiredDateInput(formData.get("startDate"));
+  const priceValidFrom = parseOptionalDateInput(optionalText(formData, "priceValidFrom")) ?? startDate;
+  const kind = enumValue(formData, "kind", ["EXPENSE", "INCOME"] as const, source.kind);
+  const amountCents = parseEuroInputToCents(formData.get("amount"));
+  const recurringTransaction = await db.$transaction(async (transaction) => {
+    const series = await transaction.recurringTransaction.create({
+      data: {
+        familyId: session.family.id,
+        ownerUserId: session.user.id,
+        sharedWithFamily: kind !== "INCOME" && formData.get("sharedWithFamily") === "on",
+        kind,
+        title: requiredText(formData, "title"),
+        description: optionalText(formData, "description") ?? "",
+        paymentMethod: paymentMethodValue(formData),
+        store: optionalText(formData, "store") ?? "",
+        categoryId,
+        labelId,
+        startDate,
+        endDate: parseOptionalDateInput(optionalText(formData, "endDate")),
+        nextDueDate: startDate,
+        status: enumValue(formData, "status", ["ACTIVE", "PAUSED"] as const, "ACTIVE"),
+        pricePhases: { create: { amountCents, currency: "EUR", billingInterval: recurringBillingIntervalValue(formData), validFrom: priceValidFrom } }
+      }
+    });
+    await transaction.expense.update({
+      where: { id: source.id },
+      data: {
+        recurringTransactionId: series.id,
+        generatedByRecurringTransaction: true,
+        kind,
+        amountCents,
+        currency: "EUR",
+        date: startDate,
+        paymentMethod: paymentMethodValue(formData),
+        store: optionalText(formData, "store") ?? "",
+        categoryId,
+        labelId,
+        description: optionalText(formData, "description") || requiredText(formData, "title"),
+        sharedWithFamily: kind !== "INCOME" && formData.get("sharedWithFamily") === "on"
+      }
+    });
+    return series;
+  });
+  if (recurringTransaction.status === "ACTIVE") await ensureDueContractExpenses(session.family.id, session.user.id, new Date(), { force: true });
+  revalidatePath("/ausgaben");
+  revalidatePath("/dashboard");
+}
+
+export async function deleteContract(formData: FormData) {
+  const session = await requireSession();
+  const contract = await db.contract.findFirst({
+    where: {
+      id: requiredText(formData, "id"),
+      familyId: session.family.id,
+      ...(session.role === "ADMIN" ? {} : { ownerUserId: session.user.id })
+    }
+  });
+  if (!contract) throw new Error("Der Vertrag ist nicht verfügbar.");
+
+  await db.$transaction([
+    db.expense.updateMany({ where: { contractId: contract.id, familyId: session.family.id }, data: { contractId: null } }),
+    db.contractPricePhase.deleteMany({ where: { contractId: contract.id } }),
+    db.contract.delete({ where: { id: contract.id } })
+  ]);
   revalidatePath("/vertraege");
   revalidatePath("/ausgaben");
   revalidatePath("/dashboard");
@@ -1924,11 +2052,11 @@ async function createDefaultCategories(userId: string) {
 
 function defaultCategorySeed(familyId: string, ownerUserId: string) {
   return [
-    { familyId, ownerUserId, type: "EXPENSE" as const, name: "Lebensmittel", color: "#1c8c55", icon: "cart", monthlyBudgetCents: 50000, scope: "FAMILY" as const },
-    { familyId, ownerUserId, type: "EXPENSE" as const, name: "Wohnen", color: "#2e6fea", icon: "home", monthlyBudgetCents: 120000, scope: "FAMILY" as const },
-    { familyId, ownerUserId, type: "EXPENSE" as const, name: "Mobilität", color: "#b7791f", icon: "car", monthlyBudgetCents: 25000, scope: "FAMILY" as const },
-    { familyId, ownerUserId, type: "EXPENSE" as const, name: "Freizeit", color: "#7c5cc4", icon: "sparkles", monthlyBudgetCents: 20000, scope: "FAMILY" as const },
-    { familyId, ownerUserId, type: "EXPENSE" as const, name: "Gehalt", color: "#16776f", icon: "wallet", monthlyBudgetCents: 0, scope: "FAMILY" as const },
+    { familyId, ownerUserId, type: "EXPENSE" as const, name: "Lebensmittel", color: "#1c8c55", icon: "cart", monthlyBudgetCents: 50000, scope: "PRIVATE" as const },
+    { familyId, ownerUserId, type: "EXPENSE" as const, name: "Wohnen", color: "#2e6fea", icon: "home", monthlyBudgetCents: 120000, scope: "PRIVATE" as const },
+    { familyId, ownerUserId, type: "EXPENSE" as const, name: "Mobilität", color: "#b7791f", icon: "car", monthlyBudgetCents: 25000, scope: "PRIVATE" as const },
+    { familyId, ownerUserId, type: "EXPENSE" as const, name: "Freizeit", color: "#7c5cc4", icon: "sparkles", monthlyBudgetCents: 20000, scope: "PRIVATE" as const },
+    { familyId, ownerUserId, type: "EXPENSE" as const, name: "Gehalt", color: "#16776f", icon: "wallet", monthlyBudgetCents: 0, scope: "PRIVATE" as const },
     { familyId, ownerUserId, type: "EXPENSE" as const, name: "Rückerstattung", color: "#66736f", icon: "return", monthlyBudgetCents: 0, scope: "FAMILY" as const }
   ];
 }
@@ -2314,12 +2442,7 @@ function chooseCategoryColor(name: string, existingCount: number, submittedColor
 }
 
 function scopeWhereForCategoryColor(userId: string) {
-  return {
-    OR: [
-      { scope: "FAMILY" as const },
-      { ownerUserId: userId }
-    ]
-  };
+  return { ownerUserId: userId };
 }
 
 async function findOrCreateExpenseCategory(familyId: string, ownerUserId: string, name: string) {

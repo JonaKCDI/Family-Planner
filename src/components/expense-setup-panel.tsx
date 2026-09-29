@@ -232,6 +232,7 @@ export function RecurringTransactionsPanel({ recurringTransactions, categories, 
           <label>Art<select name="kind" defaultValue="EXPENSE"><option value="EXPENSE">Ausgabe</option><option value="INCOME">Einnahme</option></select></label>
           <label>Betrag in EUR<input name="amount" inputMode="decimal" placeholder="42,50" required /></label>
           <label>Intervall<select name="billingInterval" defaultValue="MONTHLY"><option value="MONTHLY">Monatlich</option><option value="QUARTERLY">Quartalsweise</option><option value="YEARLY">Jährlich</option></select></label>
+          <label><input type="checkbox" name="sharedWithFamily"/> Neue Ausgaben mit Familie teilen</label>
           <label>Startdatum<input name="startDate" type="date" defaultValue={today} required /></label>
           <label>Enddatum optional<input name="endDate" type="date" /></label>
           <PaymentMethodField />
@@ -267,6 +268,7 @@ export function RecurringTransactionsPanel({ recurringTransactions, categories, 
                   <label>Intervall<select name="billingInterval" defaultValue={currentPhase?.billingInterval ?? "MONTHLY"}><option value="MONTHLY">Monatlich</option><option value="QUARTERLY">Quartalsweise</option><option value="YEARLY">Jährlich</option></select></label>
                   <label>Startdatum<input name="startDate" type="date" defaultValue={toDateInputValue(series.startDate)} required /></label>
                   <label>Enddatum optional<input name="endDate" type="date" defaultValue={toDateInputValue(series.endDate)} /></label>
+                  <label><input type="checkbox" name="sharedWithFamily" defaultChecked={series.sharedWithFamily}/> Neue Ausgaben mit Familie teilen</label>
                   <label>Status<select name="status" defaultValue={series.status}><option value="ACTIVE">Aktiv</option><option value="PAUSED">Pausiert</option></select></label>
                   </div></details>
                   <details className="full-span finance-series-options"><summary>Zuordnung und weitere Angaben</summary><div className="form-grid">

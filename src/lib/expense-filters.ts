@@ -42,6 +42,14 @@ export function normalizeList(value: string | string[] | null | undefined) {
     .filter(Boolean))];
 }
 
+export function filterExpenseAssignments<T extends { categoryId: string | null; labelId: string | null; currency: string }>(entries: T[], params: ExpenseFilterParams) {
+  const categories = normalizeList(params.category);
+  const labels = normalizeList(params.label);
+  return entries.filter(entry => (!categories.length || categories.includes(entry.categoryId ?? "unassigned"))
+    && (!labels.length || labels.includes(entry.labelId ?? "unassigned"))
+    && (!params.currency || entry.currency === params.currency));
+}
+
 function normalizeKind(value: ExpenseFilterParams["kind"]) {
   if (value === "expense") return "EXPENSE";
   if (value === "income") return "INCOME";

@@ -1,3 +1,5 @@
+import { FamilyFinanceSetup } from "@/components/family-finance-setup";
+import { FinanceAreaSwitch } from "@/components/finance-area-switch";
 import { notFound } from "next/navigation";
 import { requireSession } from "@/lib/auth";
 import {
@@ -20,13 +22,14 @@ import {
 
 type ExpenseSetupSectionPageProps = {
   params: Promise<{ section: string }>;
-  searchParams: Promise<{ year?: string }>;
+  searchParams: Promise<{ year?: string; bereich?: string }>;
 };
 
 export default async function ExpenseSetupSectionPage({ params, searchParams }: ExpenseSetupSectionPageProps) {
   const session = await requireSession();
   const { section } = await params;
   const query = await searchParams;
+  if (query.bereich === "familie") return <FamilyFinanceSetup section={section} />;
   const sectionMeta = financeSetupSections.find((item) => item.id === section);
   if (!sectionMeta) notFound();
 
@@ -37,6 +40,7 @@ export default async function ExpenseSetupSectionPage({ params, searchParams }: 
   return (
     <div className="expense-setup-page-layout">
       <header className="finance-setup-head"><FinanceSetupBackLink /><PageHeader title={sectionMeta.title} /></header>
+      <FinanceAreaSwitch />
       {sectionId === "sicherung" ? <FinanceSetupYearSelect selectedYear={context.selectedYear} sectionId={sectionId} years={context.years} /> : null}
       {sectionId === "sicherung" ? <ExpenseExcelSetupPanel exportYear={context.selectedYear} returnTo={returnTo} /> : null}
       {sectionId === "anlegen" ? <ExpenseCreateSetupPanel returnTo={returnTo} /> : null}

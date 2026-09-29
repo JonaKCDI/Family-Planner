@@ -18,13 +18,13 @@
   },
   "dependencies": {
     "@fontsource-variable/nunito-sans": "^5.2.7",
-    "@prisma/client": "^6.19.0",
+    "@prisma/client": "6.18.0",
     "bcryptjs": "^3.0.2",
     "clsx": "^2.1.1",
     "exceljs": "^4.4.0",
     "lucide-react": "^1.14.0",
     "next": "^16.0.0",
-    "prisma": "^6.19.0",
+    "prisma": "6.18.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "zod": "^4.1.12"

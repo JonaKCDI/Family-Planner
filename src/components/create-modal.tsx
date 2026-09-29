@@ -1,11 +1,12 @@
 "use client";
 
+
 import { PaymentMethodField } from "@/components/payment-method-field";
 
 import type { ButtonHTMLAttributes, FormEvent, ReactNode } from "react";
-import { useMemo, useRef, useState } from "react";
-import { ArrowLeft, ChevronRight, ClipboardCheck, Euro, FileText, Fuel, Plus, Repeat2, ScrollText, X } from "lucide-react";
-import { usePathname } from "next/navigation";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { ArrowLeft, ChevronRight, ClipboardCheck, Euro, FileText, Fuel, HandCoins, Plus, Repeat2, ScrollText, X } from "lucide-react";
+import { usePathname, useSearchParams } from "next/navigation";
 import {
   createContract,
   createDocumentReference,
@@ -18,12 +19,14 @@ import {
   createRecurringTask,
   createTask
 } from "@/lib/actions";
+import { createFamilyTransfer } from "@/lib/family-finance-actions";
 import { enqueueOfflineExpenseCreate, enqueueOfflineTaskCreate } from "@/lib/offline-sync";
 import { DocumentFilePicker } from "@/components/document-file-picker";
 import { ModalPortal } from "@/components/modal-portal";
 import { SearchableSelect } from "@/components/searchable-select";
 
 type CreateModalProps = {
+  currentUserId: string;
   categories: { id: string; name: string; color: string; icon: string }[];
   labels: { id: string; name: string }[];
   contracts: { id: string; provider: string; contractType: string; status: string }[];
@@ -31,6 +34,7 @@ type CreateModalProps = {
   cars: { id: string; name: string; licensePlate: string }[];
   documentRoots: { id: string; name: string }[];
   fuelExpenseSettings: {
+    sharedWithFamily?: boolean;
     autoCreateExpense: boolean;
     defaultCategoryId: string | null;
     defaultLabelId: string | null;
@@ -40,14 +44,15 @@ type CreateModalProps = {
   } | null;
 };
 
-type CreateType = "expense" | "fuel" | "task" | "contract" | "document";
+type CreateType = "expense" | "fuel" | "task" | "contract" | "document" | "transfer";
 
 const createTypes = [
   { id: "expense", label: "Ausgabe", detail: "Geld ausgegeben oder erhalten", icon: Euro, tone: "rose" },
   { id: "fuel", label: "Tankstopp", detail: "Kilometerstand, Kosten und Verbrauch", icon: Fuel, tone: "mint" },
   { id: "task", label: "Aufgabe", detail: "To-do mit Priorität und Deadline", icon: ClipboardCheck, tone: "blue" },
   { id: "contract", label: "Vertrag", detail: "Abo, Versicherung oder Frist", icon: ScrollText, tone: "amber" },
-  { id: "document", label: "Dokument", detail: "Link oder NAS-Datei speichern", icon: FileText, tone: "violet" }
+  { id: "document", label: "Dokument", detail: "Link oder NAS-Datei speichern", icon: FileText, tone: "violet" },
+  { id: "transfer", label: "Ausgleich", detail: "Zahlung an ein Familienmitglied", icon: HandCoins, tone: "mint" }
 ] satisfies { id: CreateType; label: string; detail: string; icon: typeof Euro; tone: string }[];
 
 const typeByPath: Record<string, CreateType> = {
@@ -58,11 +63,13 @@ const typeByPath: Record<string, CreateType> = {
   "/dokumente": "document"
 };
 
-export function CreateModal({ categories, labels, contracts, members, cars, documentRoots, fuelExpenseSettings }: CreateModalProps) {
+export function CreateModal({ currentUserId, categories, labels, contracts, members, cars, documentRoots, fuelExpenseSettings }: CreateModalProps) {
   const pathname = usePathname();
-  const pageType = typeByPath[pathname];
+  const params = useSearchParams();
+  const pageType = pathname.startsWith("/ausgaben") ? "expense" : typeByPath[pathname];
   const shouldShow = pathname === "/dashboard" || Boolean(pageType);
-  const allowedTypes = pathname === "/dashboard" ? createTypes : createTypes.filter((item) => item.id === pageType);
+  const familyFinance = pathname.startsWith("/ausgaben") && params.get("bereich") === "familie";
+  const allowedTypes = pathname === "/dashboard" ? createTypes.filter((item) => item.id !== "transfer") : familyFinance ? createTypes.filter((item) => item.id === "expense" || item.id === "transfer") : createTypes.filter((item) => item.id === pageType);
   const defaultType = allowedTypes[0]?.id ?? "expense";
   const [open, setOpen] = useState(false);
   const [type, setType] = useState<CreateType>(defaultType);
@@ -78,6 +85,17 @@ export function CreateModal({ categories, labels, contracts, members, cars, docu
     setReturnTo(`${window.location.pathname}${window.location.search}`);
     setOpen(true);
   }
+  useEffect(() => {
+    const openTransfer = () => {
+      if (!familyFinance) return;
+      setType("transfer");
+      setFormStarted(true);
+      setReturnTo(`${window.location.pathname}${window.location.search}`);
+      setOpen(true);
+    };
+    window.addEventListener("open-family-transfer", openTransfer);
+    return () => window.removeEventListener("open-family-transfer", openTransfer);
+  }, [familyFinance]);
 
   if (!shouldShow) return null;
 
@@ -96,14 +114,10 @@ export function CreateModal({ categories, labels, contracts, members, cars, docu
         onOpenChange={setOpen}
         title={formStarted && selectedType === "task" ? taskSheetTitle : formStarted ? createTypes.find((item) => item.id === selectedType)?.label ?? "Neu erstellen" : "Neuen Eintrag erstellen"}
         description={!formStarted ? "Was möchtest du erfassen?" : undefined}
-        leadingAction={allowedTypes.length > 1 && formStarted ? (
-          <IconButton className="modal-back-button" type="button" label="Zur Auswahl" onClick={() => setFormStarted(false)}>
-            <ArrowLeft size={19} aria-hidden="true" />
-          </IconButton>
-        ) : null}
+        leadingAction={allowedTypes.length > 1 && formStarted ? <IconButton className="modal-back-button" type="button" label="Zur Auswahl" onClick={() => setFormStarted(false)}><ArrowLeft size={19} aria-hidden="true" /></IconButton> : null}
         wide={formStarted}
         labelledById="create-modal-title"
-        panelClassName={formStarted && selectedType === "contract" ? "contract-create-sheet" : undefined}
+        panelClassName={formStarted && selectedType === "contract" ? "contract-create-sheet" : formStarted && selectedType === "transfer" ? "family-transfer-sheet" : undefined}
       >
               <div className={formStarted && selectedType === "contract" ? "create-dialog-body contract-create-dialog-body" : "create-dialog-body"}>
                 {allowedTypes.length > 1 && !formStarted ? (
@@ -141,10 +155,24 @@ export function CreateModal({ categories, labels, contracts, members, cars, docu
                 {formStarted && selectedType === "task" ? <TaskForm members={members} documentRoots={documentRoots} today={today} onSheetTitleChange={setTaskSheetTitle} onSubmit={() => setOpen(false)} /> : null}
                 {formStarted && selectedType === "contract" ? <ContractForm categories={categories} labels={labels} documentRoots={documentRoots} today={today} onSubmit={() => setOpen(false)} /> : null}
                 {formStarted && selectedType === "document" ? <DocumentForm documentRoots={documentRoots} onSubmit={() => setOpen(false)} /> : null}
+                {formStarted && selectedType === "transfer" ? <FamilyTransferForm currentUserId={currentUserId} members={members} today={today} onSubmit={() => setOpen(false)} /> : null}
               </div>
       </BottomSheet>
     </>
   );
+}
+
+function FamilyTransferForm({ currentUserId, members, today, onSubmit }: { currentUserId: string; members: CreateModalProps["members"]; today: string; onSubmit: () => void }) {
+  const recipients = members.filter(member => member.userId !== currentUserId);
+  return <form action={createFamilyTransfer} className="form form-grid modal-form" onSubmit={onSubmit}>
+    <p className="muted full-span">Halte eine echte Zahlung an ein Familienmitglied fest. Ausgaben werden dadurch nicht verändert.</p>
+    <label>Empfänger*<select name="recipientUserId" defaultValue="" required disabled={recipients.length === 0}><option value="" disabled>{recipients.length ? "Familienmitglied auswählen" : "Kein weiteres Familienmitglied"}</option>{recipients.map(member => <option key={member.userId} value={member.userId}>{member.user.name}</option>)}</select></label>
+    <label>Betrag*<input name="amount" inputMode="decimal" placeholder="0,00 EUR" required /></label>
+    <label>Datum<input name="date" type="date" defaultValue={today} required /></label>
+    <label>Währung<select name="currency" defaultValue="EUR"><option value="EUR">EUR</option></select></label>
+    <label className="full-span">Notiz optional<input name="note" maxLength={500} placeholder="z. B. Monatsausgleich" /></label>
+    <div className="modal-submit-row modal-footer full-span"><button className="button" type="submit" disabled={recipients.length === 0}>Ausgleich speichern</button></div>
+  </form>;
 }
 
 function ExpenseForm({
@@ -167,6 +195,7 @@ function ExpenseForm({
   const [planningRecurring, setPlanningRecurring] = useState(false);
   const [expenseKind, setExpenseKind] = useState<"EXPENSE" | "INCOME">("EXPENSE");
   const [expensePanel, setExpensePanel] = useState<"main" | "document">("main");
+  const [sharedWithFamily, setSharedWithFamily] = useState(() => returnTo.includes("bereich=familie"));
   const showMainExpenseFields = expensePanel === "main" && !planningRecurring;
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -235,10 +264,12 @@ function ExpenseForm({
             <SearchableSelect name="labelId" label="Label / Projekt" options={labels} emptyLabel="Kein Label" placeholder="Label auswählen" quickAddLabel="+ Neues Label hinzufügen" quickAddAction={quickCreateExpenseLabel} />
           </div>
           <label hidden={!showMainExpenseFields}>Geschäft / Anbieter<input name="store" placeholder="Rewe, Lidl, Amazon ..." /></label>
-          {!planningRecurring ? <label hidden={!showMainExpenseFields}>Vertrag<select name="contractId" defaultValue=""><option value="">Kein Vertrag</option>{contracts.filter((contract) => contract.status === "ACTIVE").map((contract) => <option value={contract.id} key={contract.id}>{contract.provider} · {contract.contractType}</option>)}</select></label> : null}
-          {!planningRecurring ? <label hidden={!showMainExpenseFields}>Sichtbarkeit<select name="scope" defaultValue="PRIVATE"><option value="PRIVATE">Privat</option><option value="FAMILY">Familie</option></select></label> : null}
+          {!planningRecurring ? <div className="finance-contract-share-row" hidden={!showMainExpenseFields}><label>Vertrag<select name="contractId" defaultValue=""><option value="">Kein Vertrag</option>{contracts.filter((contract) => contract.status === "ACTIVE").map((contract) => <option value={contract.id} key={contract.id}>{contract.provider} · {contract.contractType}</option>)}</select></label><label className="finance-share-field" data-active={sharedWithFamily ? "true" : "false"}><input aria-label="Familie teilen" type="checkbox" name="sharedWithFamily" checked={sharedWithFamily} onChange={(event) => setSharedWithFamily(event.target.checked)} /><span>Familie teilen</span></label></div> : null}
+          <input type="hidden" name="scope" value="PRIVATE" />
+
         </div>
       </fieldset>
+      {planningRecurring && expenseKind === "EXPENSE" ? <label className="finance-share-field finance-recurring-share full-span" data-active={sharedWithFamily ? "true" : "false"} hidden={expensePanel !== "main"}><input aria-label="Familie teilen" type="checkbox" name="sharedWithFamily" checked={sharedWithFamily} onChange={(event) => setSharedWithFamily(event.target.checked)} /><span>Familie teilen</span></label> : null}
       {planningRecurring ? (
         <fieldset className="fieldset modal-form-section full-span task-create-options-page finance-recurring-page" id="create-recurring-expense" hidden={expensePanel !== "main"}>
           <legend>Wiederholung</legend>
@@ -310,6 +341,7 @@ function FuelForm({
   onSubmit: () => void;
 }) {
   const [bookExpense, setBookExpense] = useState(Boolean(settings?.autoCreateExpense));
+  const [sharedWithFamily, setSharedWithFamily] = useState(Boolean(settings?.sharedWithFamily));
   const [fuelPanel, setFuelPanel] = useState<"main" | "document">("main");
   if (cars.length === 0) {
     return <div className="empty">Noch kein aktives Auto vorhanden. Admins können Autos im Kilometer-Setup anlegen.</div>;
@@ -361,7 +393,7 @@ function FuelForm({
             <SearchableSelect name="expenseLabelId" label="Label / Projekt" options={labels} defaultValue={settings?.defaultLabelId} emptyLabel="Kein Label" placeholder="Label suchen oder auswählen" quickAddLabel="+ Neues Label hinzufügen" quickAddAction={quickCreateExpenseLabel} />
             <PaymentMethodField name="expensePaymentMethod" defaultValue={settings?.defaultPaymentMethod ?? ""} />
             <label>Laden<input name="expenseStore" defaultValue={settings?.defaultStore ?? ""} placeholder="Tankstelle oder Händler" /></label>
-            <label className="full-span">Beschreibung<input name="expenseDescription" defaultValue={settings?.defaultDescription ?? ""} /></label>
+            <div className="fuel-description-share-row full-span"><label>Beschreibung<input name="expenseDescription" defaultValue={settings?.defaultDescription ?? ""} /></label><label className="finance-share-field finance-inline-share-field" data-active={sharedWithFamily ? "true" : "false"}><input aria-label="Familie teilen" type="checkbox" name="sharedWithFamily" checked={sharedWithFamily} onChange={(event) => setSharedWithFamily(event.target.checked)} /><span>Familie teilen</span></label></div>
           </div>
         ) : null}
       </fieldset>
@@ -557,6 +589,8 @@ function ContractForm({
   onSubmit: () => void;
 }) {
   const [panel, setPanel] = useState<"main" | "auto" | "term" | "document">("main");
+  const [autoCreateExpenses, setAutoCreateExpenses] = useState(false);
+  const [expenseSharedWithFamily, setExpenseSharedWithFamily] = useState(false);
   const day = new Date(`${today}T00:00:00`).getDate();
   const panelTitle = panel === "auto" ? "Automatische Ausgabe" : panel === "term" ? "Laufzeit & Kündigung" : panel === "document" ? "Beleg / Dokument" : null;
 
@@ -616,7 +650,10 @@ function ContractForm({
       <fieldset className="fieldset modal-form-section full-span task-create-options-page contract-auto-page" id="create-contract-auto" hidden={panel !== "auto"}>
         <legend>Automatische Ausgabe</legend>
         <div className="form-grid">
-          <label className="checkbox-field full-span"><input name="autoCreateExpenses" type="checkbox" /> Automatisch als Ausgabe eintragen</label>
+          <div className="contract-auto-action-row full-span">
+            <label className="finance-share-field" data-active={autoCreateExpenses ? "true" : "false"}><input aria-label="Automatische Ausgabe" name="autoCreateExpenses" type="checkbox" checked={autoCreateExpenses} onChange={(event) => setAutoCreateExpenses(event.target.checked)} /><span>Automatische Ausgabe</span></label>
+            <label className="finance-share-field" data-active={expenseSharedWithFamily ? "true" : "false"}><input aria-label="Familie teilen" name="expenseSharedWithFamily" type="checkbox" checked={expenseSharedWithFamily} onChange={(event) => setExpenseSharedWithFamily(event.target.checked)} /><span>Familie teilen</span></label>
+          </div>
           <label>Einzugstag<input name="expensePaymentDay" type="number" min="1" max="31" defaultValue={day} /></label>
           <SearchableSelect name="expenseCategoryId" label="Ausgaben-Kategorie" options={categories} emptyLabel="Keine Kategorie" placeholder="Kategorie suchen oder auswählen" quickAddLabel="+ Neue Kategorie hinzufügen" quickAddAction={quickCreateExpenseCategory} />
           <SearchableSelect name="expenseLabelId" label="Label / Projekt" options={labels} emptyLabel="Kein Label" placeholder="Label suchen oder auswählen" quickAddLabel="+ Neues Label hinzufügen" quickAddAction={quickCreateExpenseLabel} />
@@ -763,18 +800,8 @@ function FloatingActionButton({ className, children, ...props }: ButtonHTMLAttri
   );
 }
 
-function IconButton({
-  className,
-  children,
-  label,
-  title,
-  ...props
-}: ButtonHTMLAttributes<HTMLButtonElement> & { children: ReactNode; label: string }) {
-  return (
-    <button className={["icon-button", className].filter(Boolean).join(" ")} aria-label={label} title={title ?? label} {...props}>
-      {children}
-    </button>
-  );
+function IconButton({ className, children, label, title, ...props }: ButtonHTMLAttributes<HTMLButtonElement> & { children: ReactNode; label: string }) {
+  return <button className={["icon-button", className].filter(Boolean).join(" ")} aria-label={label} title={title ?? label} {...props}>{children}</button>;
 }
 
 function BottomSheet({
@@ -813,7 +840,7 @@ function BottomSheet({
   return (
     <ModalPortal>
       <div className={closing ? "modal-backdrop is-closing" : "modal-backdrop"} role="presentation">
-        <section className={["modal-panel create-dialog create-from-fab", wide ? "action-modal-wide" : null, panelClassName].filter(Boolean).join(" ")} role="dialog" aria-modal="true" aria-labelledby={labelledById}>
+        <section className={["modal-panel create-dialog create-from-fab", leadingAction ? "has-back-button" : null, wide ? "action-modal-wide" : null, panelClassName].filter(Boolean).join(" ")} role="dialog" aria-modal="true" aria-labelledby={labelledById}>
           {leadingAction}
           <button className="icon-button modal-close-button" type="button" aria-label="Schließen" title="Schließen" onClick={closeSheet}>
             <X size={20} />

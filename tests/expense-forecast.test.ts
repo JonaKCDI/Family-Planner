@@ -1,8 +1,30 @@
 import { describe, expect, test } from "vitest";
-import { monthlyTotals, monthlySaldo, movingAverage, fitForecast, boxStatistics, recordedMonths, withoutExcludedCategories, forecastReference, forecastOverview, smoothedForecast } from "../src/lib/expense-forecast";
+import { forecastCurrentMonthEnd, monthlyTotals, monthlySaldo, movingAverage, fitForecast, boxStatistics, recordedMonths, withoutExcludedCategories, forecastReference, forecastOverview, smoothedForecast } from "../src/lib/expense-forecast";
 
 const now = new Date("2026-02-15T12:00:00Z");
 describe("expense forecasts", () => {
+  test("forecasts the current month using the typical remaining spend after today", () => {
+    const today = new Date(2026, 8, 15);
+    const entries = [
+      { kind: "EXPENSE", date: new Date(2026, 8, 2), amountCents: 4000 },
+      { kind: "EXPENSE", date: new Date(2026, 7, 2), amountCents: 3000 },
+      { kind: "EXPENSE", date: new Date(2026, 7, 25), amountCents: 7000 },
+      { kind: "EXPENSE", date: new Date(2026, 6, 5), amountCents: 5000 },
+      { kind: "EXPENSE", date: new Date(2026, 6, 22), amountCents: 9000 },
+      { kind: "EXPENSE", date: new Date(2026, 5, 8), amountCents: 4000 },
+      { kind: "EXPENSE", date: new Date(2026, 5, 21), amountCents: 6000 },
+      { kind: "EXPENSE", date: new Date(2026, 8, 8), amountCents: 999999, categoryId: "excluded" }
+    ];
+
+    expect(forecastCurrentMonthEnd(entries, [{ id: "excluded", excludeFromForecast: true }], today)).toMatchObject({
+      spentToDate: 4000,
+      typicalRemaining: 7000,
+      projectedMonth: 11000,
+      historyMonths: 3,
+      method: "historical-remainder"
+    });
+  });
+
   test("fits the rolling mean and keeps overview values aligned with both forecast months", () => {
     const entries = Array.from({ length: 11 }, (_, i) => ({ kind: "EXPENSE", date: new Date(Date.UTC(2025, 2 + i, 1)), amountCents: (i + 1) * 100 }));
     // Rolling means: 350, 450, 550, 650, 750, 850; fitted next: 950, 1050.

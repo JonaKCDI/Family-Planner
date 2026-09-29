@@ -2,7 +2,7 @@ import { describe, expect, test } from "vitest";
 import ExcelJS from "exceljs";
 import { buildExpenseWorkbook, parseExpenseWorkbook } from "../src/lib/expense-formats";
 import { parseEuroToCents } from "../src/lib/format";
-import { buildCategoryRows, buildDonutSegments, buildExpenseTrendChart, buildLabelRows, buildPeriodRows, findDominantDonutSegment, formatDonutPercent, sumByKind } from "../src/lib/expense-analytics";
+import { buildBudgetAlerts, buildCategoryRows, buildDonutSegments, buildExpenseTrendChart, buildLabelRows, buildPeriodRows, findDominantDonutSegment, formatDonutPercent, sumByKind } from "../src/lib/expense-analytics";
 
 describe("money parsing", () => {
   test("parses German euro input into cents", () => {
@@ -77,6 +77,20 @@ describe("expense analytics", () => {
     ];
 
     expect(buildLabelRows(entries, [...labels, ...neverUsedLabels]).map((row) => row.name)).toEqual(["Lappland", "Sommerurlaub", "Kinderzimmer"]);
+  });
+
+  test("flags near and overshot budgets while using net consumption", () => {
+    const rows = [
+      { id: "near", name: "Fast voll", color: "#b7791f", budget: 10000, netConsumption: 8000, remaining: 2000, budgetUsage: 80 },
+      { id: "over", name: "Drüber", color: "#b94242", budget: 10000, netConsumption: 12000, remaining: -2000, budgetUsage: 100 },
+      { id: "calm", name: "Ruhig", color: "#16776f", budget: 10000, netConsumption: 7900, remaining: 2100, budgetUsage: 79 },
+      { id: "none", name: "Ohne Budget", color: "#6b6f76", budget: 0, netConsumption: 40000, remaining: -40000, budgetUsage: 100 }
+    ];
+
+    expect(buildBudgetAlerts(rows, "label")).toEqual([
+      expect.objectContaining({ id: "over", status: "over", dimension: "label" }),
+      expect.objectContaining({ id: "near", status: "near", dimension: "label" })
+    ]);
   });
 
   test("builds robust donut segments with fallback colors and no zero divisions", () => {

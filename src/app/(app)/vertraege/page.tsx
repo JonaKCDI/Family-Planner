@@ -1,6 +1,5 @@
 import { DocumentFilePicker } from "@/components/document-file-picker";
-import { quickCreateExpenseCategory, quickCreateExpenseLabel } from "@/lib/actions";
-import { updateContract } from "@/lib/actions";
+import { deleteContract, quickCreateExpenseCategory, quickCreateExpenseLabel, updateContract } from "@/lib/actions";
 import { requireSession } from "@/lib/auth";
 import { ensureDueContractExpenses } from "@/lib/contract-auto-expenses";
 import { getContractNextCancellationDate, toAnnualCancellationInputValue } from "@/lib/contracts";
@@ -8,12 +7,13 @@ import { formatDate, formatMoney, toDateInputValue } from "@/lib/format";
 import { getVisibleDocumentRoots, getDocumentsForLinkedEntities, getExpenseLabels, getVisibleCategories, getVisibleContractPayments, getVisibleContractsWithExpenseDetails } from "@/lib/queries";
 import { ActionModal } from "@/components/action-modal";
 import { AutosaveForm } from "@/components/autosave-form";
+import { ConfirmSubmitButton } from "@/components/confirm-submit-button";
 import { ContractPayments } from "@/components/contract-payments";
 import { ContractSummaryStrip, type ContractSummaryView } from "@/components/contract-summary-strip";
 import { ContractToolbar, type ContractToolbarParams } from "@/components/contract-toolbar";
 import { SearchableSelect } from "@/components/searchable-select";
 import { EmptyState, PageHeader, ScopeSelect } from "@/components/ui";
-import { CalendarClock, CreditCard, FileText, Lock, Pencil, Repeat, ShieldCheck, UserRound } from "lucide-react";
+import { CalendarClock, CreditCard, FileText, Lock, Pencil, Repeat, ShieldCheck, Trash2, UserRound } from "lucide-react";
 
 type ContractsPageProps = {
   searchParams: Promise<ContractPageParams>;
@@ -170,6 +170,8 @@ export default async function ContractsPage({ searchParams }: ContractsPageProps
                         <h3>{contract.provider}</h3>
                         <p>{contract.contractType}</p>
                       </div>
+                      <div className="task-detail-icon-actions">
+                        <form action={deleteContract}><input type="hidden" name="id" value={contract.id} /><ConfirmSubmitButton className="task-detail-edit-button danger-icon-button" title="Vertrag löschen?" message="Der Vertrag wird dauerhaft entfernt. Bestehende Ausgaben bleiben erhalten, aber ohne Vertragsverknüpfung."><Trash2 size={18} aria-hidden="true" /><span className="sr-only">Vertrag löschen</span></ConfirmSubmitButton></form>
                       <ContractEditModal documentRoots={documentRoots}
                         contract={contract}
                         categories={categories}
@@ -177,6 +179,7 @@ export default async function ContractsPage({ searchParams }: ContractsPageProps
                         primaryDocument={primaryDocument}
                         currentPricePhase={currentPricePhase}
                       />
+                      </div>
                     </div>
                     <dl className="task-detail-meta contract-detail-meta">
                       <div><CreditCard size={18} aria-hidden="true" /><dt>Kosten</dt><dd>{formatMoney(contract.costCents, contract.currency)} · {billingLabels[contract.billingInterval]}</dd></div>
@@ -338,6 +341,7 @@ function ContractEditModal({
         <fieldset className="fieldset modal-form-section full-span">
           <legend>Automatik</legend>
           <div className="form-grid">
+            <label className="checkbox-field full-span"><input name="expenseSharedWithFamily" type="checkbox" defaultChecked={contract.expenseSharedWithFamily}/> Neue Ausgaben mit Familie teilen</label>
             <label className="checkbox-field full-span"><input name="autoCreateExpenses" type="checkbox" defaultChecked={contract.autoCreateExpenses} /> Automatisch als Ausgabe eintragen</label>
             <label>Einzugstag<input name="expensePaymentDay" type="number" min="1" max="31" defaultValue={contract.expensePaymentDay ?? new Date(contract.startDate).getDate()} /></label>
             <SearchableSelect name="expenseCategoryId" label="Ausgaben-Kategorie" options={categories} defaultValue={contract.expenseCategoryId} emptyLabel="Keine Kategorie" placeholder="Kategorie suchen oder auswählen" quickAddLabel="+ Neue Kategorie hinzufügen" quickAddAction={quickCreateExpenseCategory} />

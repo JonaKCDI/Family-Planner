@@ -1,0 +1,1 @@
+ALTER TABLE "User" ADD COLUMN "developerFeatures" BOOLEAN NOT NULL DEFAULT false;

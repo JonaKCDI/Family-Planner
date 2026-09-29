@@ -11,7 +11,7 @@ import {
   updateFuelEntry
 } from "@/lib/actions";
 import Link from "next/link";
-import { CalendarCheck, Droplets, Fuel, Pencil, Route } from "lucide-react";
+import { CalendarCheck, Droplets, Fuel, Pencil, Route, Trash2 } from "lucide-react";
 import { requireSession } from "@/lib/auth";
 import { formatDate, formatMoney } from "@/lib/format";
 import {
@@ -274,7 +274,7 @@ function FuelEntryList({
     <div className="expense-list mileage-entry-list">
       {entries.map((entry) => (
         <article className="expense-row mileage-row" key={entry.id}>
-          <div className="mileage-row-content">
+          <ActionModal title="Tankstoppdetails" trigger={<span className="mileage-row-content">
             <div className="mileage-row-head">
               <span className="mileage-date">{formatDate(entry.date)}</span>
               <span className="mileage-main">
@@ -288,44 +288,36 @@ function FuelEntryList({
               <span className="mileage-value"><small>Gefahren</small><b>{entry.drivenKm === null ? "-" : `${formatKilometers(entry.drivenKm)} km`}</b></span>
               <span className="mileage-value"><small>Preis</small><b>{formatMoney(Math.round(entry.pricePerLiterCents ?? 0))}/l</b></span>
             </span>
-            <div className="mileage-row-actions">
-              <strong className="mileage-cost">{formatMoney(entry.costCents)}</strong>
-              <ActionModal title="Tankstopp bearbeiten" trigger={<Pencil size={17} aria-hidden="true" />} triggerLabel="Tankstopp bearbeiten" triggerClassName="icon-button mileage-row-edit-button" modalId={`fuel-entry-${entry.id}`} sheetVariant="create" panelClassName="mileage-edit-sheet" wide>
-                <AutosaveForm action={updateFuelEntry} className="form form-grid modal-form finance-create-form fuel-create-form mileage-edit-form" data-fuel-panel="main">
-                  <input type="hidden" name="id" value={entry.id} />
-                  <input type="hidden" name="carId" value={selectedCarId} />
-                  <input type="hidden" name="returnTo" value={returnTo} />
-                  <fieldset className="fieldset modal-form-section full-span finance-create-core fuel-create-core">
-                    <legend>Tankstopp</legend>
-                    <div className="form-grid finance-create-grid fuel-create-grid">
-                      <label>Auto<input value={selectedCarName} readOnly /></label>
-                      <label>Datum<input name="date" type="date" defaultValue={toDateInputValue(entry.date)} required /></label>
-                      <div className="fuel-measure-row full-span">
-                        <label>Kilometerstand<input name="odometerKm" type="number" inputMode="numeric" min="0" defaultValue={entry.odometerKm} required /></label>
-                        <label>Liter<input name="liters" inputMode="decimal" defaultValue={formatLitersInput(entry.litersMilli)} required /></label>
-                      </div>
-                      <div className="fuel-booking-row full-span">
-                        <label>Betrag in EUR<input name="cost" inputMode="decimal" defaultValue={formatEuroInputFromCents(entry.costCents)} required /></label>
-                        <div className="finance-kind-toggle finance-kind-compact fuel-expense-segment fuel-edit-expense-hint" aria-label="Ausgabenverknüpfung">
-                          <span>Ausgabe wird mit aktualisiert</span>
-                        </div>
-                      </div>
-                      <label className="full-span">Bemerkung<input name="note" defaultValue={entry.note} placeholder="Urlaub, bezahlt von ..., Werkstatt ..." /></label>
-                    </div>
-                  </fieldset>
-                  <div className="modal-submit-row modal-footer">
-                    <button className="button full-span autosave-submit" type="submit">Tankstopp speichern</button>
+            <strong className="mileage-cost">{formatMoney(entry.costCents)}</strong>
+          </span>} triggerLabel="Tankstoppdetails öffnen" triggerClassName="mileage-row-detail-trigger" modalId={`fuel-entry-${entry.id}-details`} headerActions={<>
+            <ActionModal title="Tankstopp bearbeiten" trigger={<Pencil size={17} aria-hidden="true" />} triggerLabel="Tankstopp bearbeiten" triggerClassName="task-detail-edit-button mileage-row-edit-button" modalId={`fuel-entry-${entry.id}`} sheetVariant="create" panelClassName="mileage-edit-sheet" wide>
+              <AutosaveForm action={updateFuelEntry} className="form form-grid modal-form finance-create-form fuel-create-form mileage-edit-form" data-fuel-panel="main">
+                <input type="hidden" name="id" value={entry.id} /><input type="hidden" name="carId" value={selectedCarId} /><input type="hidden" name="returnTo" value={returnTo} />
+                <fieldset className="fieldset modal-form-section full-span finance-create-core fuel-create-core"><legend>Tankstopp</legend><div className="form-grid finance-create-grid fuel-create-grid"><label>Auto<input value={selectedCarName} readOnly /></label><label>Datum<input name="date" type="date" defaultValue={toDateInputValue(entry.date)} required /></label><div className="fuel-measure-row full-span"><label>Kilometerstand<input name="odometerKm" type="number" inputMode="numeric" min="0" defaultValue={entry.odometerKm} required /></label><label>Liter<input name="liters" inputMode="decimal" defaultValue={formatLitersInput(entry.litersMilli)} required /></label></div><div className="fuel-booking-row full-span"><label>Betrag in EUR<input name="cost" inputMode="decimal" defaultValue={formatEuroInputFromCents(entry.costCents)} required /></label><div className="finance-kind-toggle finance-kind-compact fuel-expense-segment fuel-edit-expense-hint" aria-label="Ausgabenverknüpfung"><span>Ausgabe wird mit aktualisiert</span></div></div><label className="full-span">Bemerkung<input name="note" defaultValue={entry.note} placeholder="Urlaub, bezahlt von ..., Werkstatt ..." /></label></div></fieldset>
+                <div className="modal-submit-row modal-footer"><button className="button full-span autosave-submit" type="submit">Tankstopp speichern</button></div>
+              </AutosaveForm>
+            </ActionModal>
+            <form action={deleteFuelEntry}><input type="hidden" name="id" value={entry.id} /><input type="hidden" name="carId" value={selectedCarId} /><input type="hidden" name="returnTo" value={returnTo} /><ConfirmSubmitButton className="task-detail-edit-button danger-icon-button" title="Tankstopp löschen?" message="Der Tankstopp wird dauerhaft entfernt. Eine verknüpfte Ausgabe bleibt davon unberührt."><Trash2 size={18} aria-hidden="true" /><span className="sr-only">Tankstopp löschen</span></ConfirmSubmitButton></form>
+          </>}>
+              <div className="mileage-detail-sheet">
+                <div className="mileage-detail-hero">
+                  <span className="mileage-detail-icon" aria-hidden="true"><Fuel size={24} /></span>
+                  <div>
+                    <h3>{selectedCarName}</h3>
+                    <time dateTime={toDateInputValue(entry.date)}>{formatDate(entry.date)}</time>
                   </div>
-                </AutosaveForm>
-                <form action={deleteFuelEntry} className="mileage-edit-delete-form">
-                  <input type="hidden" name="id" value={entry.id} />
-                  <input type="hidden" name="carId" value={selectedCarId} />
-                  <input type="hidden" name="returnTo" value={returnTo} />
-                  <ConfirmSubmitButton title="Tankstopp löschen?" message="Der Tankstopp wird dauerhaft entfernt. Eine verknüpfte Ausgabe bleibt davon unberührt.">Löschen</ConfirmSubmitButton>
-                </form>
-              </ActionModal>
-            </div>
-          </div>
+                  <strong className="mileage-detail-total"><small>Kosten</small>{formatMoney(entry.costCents)}</strong>
+                </div>
+                <div className="mileage-detail-grid">
+                  <span><small>Kilometerstand</small><b>{formatKilometers(entry.odometerKm)} km</b></span>
+                  <span><small>Liter</small><b>{formatLiters(entry.litersMilli)} l</b></span>
+                  <span><small>Preis pro Liter</small><b>{formatMoney(Math.round(entry.pricePerLiterCents ?? 0))}/l</b></span>
+                  <span><small>Verbrauch</small><b>{formatDecimal(entry.litersPer100Km)} l/100 km</b></span>
+                  <span><small>Gefahren</small><b>{entry.drivenKm === null ? "–" : `${formatKilometers(entry.drivenKm)} km`}</b></span>
+                </div>
+                {entry.note ? <div className="task-detail-note"><span>Bemerkung</span><p>{entry.note}</p></div> : null}
+              </div>
+          </ActionModal>
         </article>
       ))}
     </div>
@@ -488,7 +480,8 @@ function MileageSetupPanel({
             <input name="autoCreateExpense" type="checkbox" defaultChecked={fuelExpenseSettings?.autoCreateExpense ?? false} />
             Tankstopps automatisch als Ausgabe vorbereiten
           </label>
-          <SearchableSelect name="defaultCategoryId" label="Kategorie" options={categories} defaultValue={fuelExpenseSettings?.defaultCategoryId} emptyLabel="Keine Kategorie" placeholder="Kategorie suchen oder auswählen" />
+          <label><input type="checkbox" name="sharedWithFamily" defaultChecked={fuelExpenseSettings?.sharedWithFamily}/> Neue Tankausgaben mit Familie teilen</label>
+            <SearchableSelect name="defaultCategoryId" label="Kategorie" options={categories} defaultValue={fuelExpenseSettings?.defaultCategoryId} emptyLabel="Keine Kategorie" placeholder="Kategorie suchen oder auswählen" />
           <SearchableSelect name="defaultLabelId" label="Label / Projekt" options={labels} defaultValue={fuelExpenseSettings?.defaultLabelId} emptyLabel="Kein Label" placeholder="Label suchen oder auswählen" />
           <label>Bezahlart<input name="defaultPaymentMethod" defaultValue={fuelExpenseSettings?.defaultPaymentMethod ?? ""} placeholder="Optional" /></label>
           <label>Laden<input name="defaultStore" defaultValue={fuelExpenseSettings?.defaultStore ?? ""} placeholder="Optional" /></label>

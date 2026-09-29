@@ -1,4 +1,6 @@
 .forecast-page { display: grid; gap: 16px; min-width: 0; padding-bottom: 24px; }
+/* The grid gap would otherwise be added to the shared finance-header margin. */
+.forecast-page > .finance-page-head { margin-bottom: calc(.75rem - 16px); }
 .forecast-page h2 { font-size: 1rem; margin: 0; font-weight: 650; }
 .forecast-page p { font-size: .85rem; line-height: 1.5; margin: 8px 0; }
 .forecast-page section { min-width: 0; }
@@ -15,6 +17,9 @@
   .forecast-widget-grid .finance-summary-card-head i { width: 22px; height: 22px; }
   .forecast-widget-grid .finance-summary-card-head svg { width: 14px; height: 14px; }
   .forecast-widget-grid .forecast-widget > strong { font-size: .9rem; }
+}
+@media (max-width: 700px) {
+  .forecast-page > .finance-page-head { margin-bottom: calc(.55rem - 16px); }
 }
 .forecast-page .forecast-tile { padding: 16px; border: 1px solid #e2e8e6; border-radius: 16px; background: #fff; box-shadow: 0 2px 8px rgb(23 102 106 / 3%); }
 .forecast-tile .forecast-box-summary { border-top: 1px solid #edf0ee; padding-top: 12px; }

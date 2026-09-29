@@ -2,6 +2,7 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  outputFileTracingExcludes: { "/*": ["./.local-backups/**/*"] },
   allowedDevOrigins: ["192.168.2.76", "192.168.178.59"],
   experimental: {
     serverActions: {

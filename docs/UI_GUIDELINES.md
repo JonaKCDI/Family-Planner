@@ -175,6 +175,22 @@ Detail sheets are read-first. Editing is intentional.
 - Inert chevron rows that look tappable but do nothing.
 - Page scroll lock regressions when a sheet closes.
 
+## Finance Analysis
+
+- Categories and labels describe the selected period. Do not add fixed-window
+  trend charts or forecast hints to these lists; forecasts live in Prognose.
+- Tapping a category/label opens its actual spending history. Each row also has
+  separate, unboxed List and FileSearch links with 44px touch targets.
+- Detail pages preserve the original period and filters on return. Period rows
+  open the corresponding bookings; another assignment filter stays active.
+- Use weekly periods up to three calendar months, monthly periods up to three
+  years, and yearly periods thereafter. Include zero periods and label partial
+  edge periods. Keep income separate from spending and currencies separate.
+- Apply the same interaction to personal and shared family finances, using their
+  respective permission scopes. Keep the detail canvas white and compact.
+- Developer features are a personal, default-off admin setting. Ordinary members
+  never see this setting or forecast test-year controls, including through URLs.
+
 ## Settings
 
 - Settings use a white canvas, a compact account row, and grouped navigation lists.

@@ -1,11 +1,14 @@
 ﻿import { pauseRecurringTask, resumeRecurringTask } from "@/lib/actions";
 import { CalendarDays, Flag, Lock, Pencil, RotateCcw, UserRound } from "lucide-react";
+import { deleteRecurringTask, deleteTask } from "@/lib/actions";
+import { Trash2 } from "lucide-react";
 import { requireSession } from "@/lib/auth";
 import { formatDate, toDateInputValue } from "@/lib/format";
 import { getFamilyMembers, getVisibleDocumentRoots, getVisibleRecurringTasks, getVisibleTasks } from "@/lib/queries";
 import { ensureDueRecurringTasks } from "@/lib/recurring-tasks";
 import { daysUntil, getRecurringTaskIntervalLabel, taskRank, taskUrgency } from "@/lib/tasks";
 import { ActionModal } from "@/components/action-modal";
+import { ConfirmSubmitButton } from "@/components/confirm-submit-button";
 import { RecurringTaskEditForm, TaskEditForm } from "@/components/task-edit-form";
 import { TaskInlineCheck } from "@/components/task-inline-check";
 import { TaskSummaryStrip } from "@/components/task-summary-strip";
@@ -383,7 +386,10 @@ function TaskCard({ task, members, documentRoots, completed = false }: { task: T
                 <h3>{task.title}</h3>
                 {urgency.className !== "task-calm" ? <span className={`task-detail-urgency ${urgency.className}`}>{urgency.label}</span> : null}
               </div>
-              <TaskEditModal task={task} members={members} documentRoots={documentRoots} />
+              <div className="task-detail-icon-actions">
+                <TaskEditModal task={task} members={members} documentRoots={documentRoots} />
+                <form action={deleteTask}><input type="hidden" name="id" value={task.id} /><ConfirmSubmitButton className="task-detail-edit-button danger-icon-button" title="Aufgabe löschen?" message="Die Aufgabe wird dauerhaft entfernt."><Trash2 size={18} aria-hidden="true" /><span className="sr-only">Aufgabe löschen</span></ConfirmSubmitButton></form>
+              </div>
             </div>
             <dl className="task-detail-meta">
               <div><UserRound size={18} aria-hidden="true" /><dt>Zuständig</dt><dd>{task.assignee ? <><InitialAvatar name={task.assignee.name} /> {task.assignee.name}</> : "Nicht zugewiesen"}</dd></div>
@@ -425,7 +431,10 @@ function PlannedTaskCard({ task, members }: { task: RecurringTaskLike; members: 
               </div>
               <h3>{task.title}</h3>
             </div>
-            <RecurringTaskEditModal task={task} members={members} />
+            <div className="task-detail-icon-actions">
+              <RecurringTaskEditModal task={task} members={members} />
+              <form action={deleteRecurringTask}><input type="hidden" name="id" value={task.id} /><ConfirmSubmitButton className="task-detail-edit-button danger-icon-button" title="Wiederkehrende Aufgabe löschen?" message="Die Serie und ihre erzeugten Aufgaben werden dauerhaft entfernt."><Trash2 size={18} aria-hidden="true" /><span className="sr-only">Wiederkehrende Aufgabe löschen</span></ConfirmSubmitButton></form>
+            </div>
           </div>
           <dl className="task-detail-meta">
             <div><UserRound size={18} aria-hidden="true" /><dt>Zuständig</dt><dd>{task.assignee ? <><InitialAvatar name={task.assignee.name} /> {task.assignee.name}</> : "Nicht zugewiesen"}</dd></div>

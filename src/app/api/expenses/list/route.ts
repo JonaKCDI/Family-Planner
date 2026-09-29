@@ -1,11 +1,15 @@
+import { getExpenseRange as getRange } from "@/lib/expense-range";
+import { filterExpenseAssignments } from "@/lib/expense-filters";
+import { getFamilyFinance } from "@/lib/family-finance";
+import { filterFamilyExpenses } from "@/lib/family-finance-filters";
 import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/auth";
 import { toExpenseDocumentItem, toExpenseListItem } from "@/lib/expense-list";
 import { getMonthKey, type ExpenseFilterParams } from "@/lib/expense-filter-url";
-import { filterExpenseFacets, normalizeList } from "@/lib/expense-filters";
+import { filterExpenseFacets } from "@/lib/expense-filters";
 import { matchesExpenseSearch } from "@/lib/expense-search";
 import { sortExpenseEntries } from "@/lib/expense-sorting";
-import { getDocumentsForLinkedEntities, getVisibleExpenses } from "@/lib/queries";
+import { getDocumentsForLinkedEntities, getVisibleExpenses, getVisibleDocumentRoots } from "@/lib/queries";
 
 export async function GET(request: Request) {
   const session = await requireSession();
@@ -13,16 +17,25 @@ export async function GET(request: Request) {
   const params = searchParamsToExpenseParams(url.searchParams);
   const offset = boundedInteger(url.searchParams.get("offset"), 0, 0, 10000);
   const limit = boundedInteger(url.searchParams.get("limit"), 100, 1, 100);
+  if (url.searchParams.get("bereich") === "familie") {
+    const { expenses } = await getFamilyFinance();
+    const selected = filterFamilyExpenses(expenses, { ...params, person: url.searchParams.get("person"), currency: url.searchParams.get("currency") });
+    const rows = selected.slice(offset, offset + limit);
+    const own = await getVisibleExpenses(session.family.id, session.user.id);
+    const roots = await getVisibleDocumentRoots(session.family.id, session.user.id, session.role);
+    const docs = (await getDocumentsForLinkedEntities(session.family.id, session.user.id, "EXPENSE", rows.map(e=>e.id))).filter(d => !d.documentRootId || roots.some(r => r.id === d.documentRootId));
+    return NextResponse.json({ totalCount: selected.length, documentsByExpense: groupBy(docs.map(toExpenseDocumentItem), d=>d.linkedEntityId??""), entries: rows.map(e=>({
+      id:e.id,date:e.date.toISOString(),kind:"EXPENSE",amountCents:e.amountCents,currency:e.currency,description:e.description,store:e.store,paymentMethod:e.paymentMethod,categoryId:e.categoryId,labelId:e.labelId,category:e.category,label:e.label,personName:e.person.name,canEdit:e.canEdit,sharedWithFamily:true,
+      editExpense:e.canEdit && own.find(p=>p.id===e.id) ? toExpenseListItem(own.find(p=>p.id===e.id)!) : undefined,
+      contractId:null,fuelEntryId:null,recurringTransactionId:null,contract:null,fuelEntry:null,recurringTransaction:null,generatedByContract:false,generatedByFuelEntry:false,generatedByRecurringTransaction:false
+    })) });
+  }
   const query = normalizeSearch(params.q);
 
   const expenses = await getVisibleExpenses(session.family.id, session.user.id);
   const range = getRange(params, getMonthKey(), expenses);
-  const selectedLabels = normalizeList(params.label);
-  const selectedCategories = normalizeList(params.category);
-  const rangeFilteredEntries = expenses
-    .filter((entry) => isInRange(entry.date, range.from, range.to))
-    .filter((entry) => selectedLabels.length === 0 || (entry.labelId !== null && selectedLabels.includes(entry.labelId)))
-    .filter((entry) => selectedCategories.length === 0 || (entry.categoryId !== null && selectedCategories.includes(entry.categoryId)));
+  const rangeFilteredEntries = filterExpenseAssignments(expenses, params)
+    .filter((entry) => isInRange(entry.date, range.from, range.to));
   const facetFilteredEntries = filterExpenseFacets(rangeFilteredEntries, params);
   const searchableDocuments = query
     ? await getDocumentsForLinkedEntities(session.family.id, session.user.id, "EXPENSE", facetFilteredEntries.map((entry) => entry.id))
@@ -46,6 +59,7 @@ export async function GET(request: Request) {
 
 function searchParamsToExpenseParams(searchParams: URLSearchParams): ExpenseFilterParams {
   return {
+    currency: searchParams.get("currency"),
     from: searchParams.get("from"),
     to: searchParams.get("to"),
     year: searchParams.get("year"),
@@ -61,58 +75,10 @@ function searchParamsToExpenseParams(searchParams: URLSearchParams): ExpenseFilt
 }
 
 function boundedInteger(value: string | null, fallback: number, min: number, max: number) {
+  if (value === null || value.trim() === "") return fallback;
   const parsed = Number(value);
   if (!Number.isInteger(parsed)) return fallback;
   return Math.min(max, Math.max(min, parsed));
-}
-
-function getRange(params: ExpenseFilterParams, currentMonthKey: string, expenses: Awaited<ReturnType<typeof getVisibleExpenses>>) {
-  const fallbackMonth = monthRange(currentMonthKey) ?? monthRange(getMonthKey())!;
-  if (params.from || params.to) {
-    return {
-      from: params.from ? new Date(params.from) : fallbackMonth.from,
-      to: params.to ? endOfDay(new Date(params.to)) : fallbackMonth.to
-    };
-  }
-  if (params.month) {
-    const range = monthRange(params.month);
-    if (range) return range;
-  }
-  if (params.year) {
-    const year = Number(params.year);
-    return { from: new Date(year, 0, 1), to: endOfDay(new Date(year, 11, 31)) };
-  }
-  if (hasFacetFilter(params)) {
-    return allExpenseRange(expenses) ?? fallbackMonth;
-  }
-  return fallbackMonth;
-}
-
-function monthRange(monthKey: string) {
-  const match = /^(\d{4})-(\d{2})$/.exec(monthKey);
-  if (!match) return null;
-  const year = Number(match[1]);
-  const month = Number(match[2]);
-  if (!Number.isInteger(year) || month < 1 || month > 12) return null;
-  return { from: new Date(year, month - 1, 1), to: endOfDay(new Date(year, month, 0)) };
-}
-
-function endOfDay(date: Date) {
-  date.setHours(23, 59, 59, 999);
-  return date;
-}
-
-function allExpenseRange(expenses: Awaited<ReturnType<typeof getVisibleExpenses>>) {
-  if (expenses.length === 0) return null;
-  const times = expenses.map((expense) => new Date(expense.date).getTime());
-  return {
-    from: new Date(Math.min(...times)),
-    to: endOfDay(new Date(Math.max(...times)))
-  };
-}
-
-function hasFacetFilter(params: ExpenseFilterParams) {
-  return Boolean(params.q || normalizeList(params.category).length > 0 || normalizeList(params.label).length > 0 || params.kind || normalizeList(params.paymentMethod).length > 0 || normalizeList(params.source).length > 0);
 }
 
 function isInRange(date: Date, from: Date, to: Date) {

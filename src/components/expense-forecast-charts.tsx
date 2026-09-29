@@ -17,7 +17,8 @@ function stableCompactEuro(amount: number) {
     .replace(/[\u00a0\u202f]/g, " ");
 }
 
-export function ForecastChart({ history, forecast = [], average = [], saldo = [], spendingLabel = "Ausgaben", showMonthlyValues = true }: {
+export function ForecastChart({ history, forecast = [], average = [], saldo = [], spendingLabel = "Ausgaben", showMonthlyValues = true, currency = "EUR" }: {
+  currency?: string;
   history: MonthTotal[];
   forecast?: MonthTotal[];
   average?: { month: string; value: number | null }[];
@@ -37,7 +38,7 @@ export function ForecastChart({ history, forecast = [], average = [], saldo = []
       <svg viewBox="0 0 360 210" role="img" aria-label={`${spendingLabel} mit Prognose${saldo.length ? " und monatlichem Gesamtsaldo" : ""}.${showMonthlyValues ? " Exakte Werte in der Tabelle unter dem Diagramm." : ""}`}>
         {[0, 0.5, 1].map((fraction) => <g key={fraction}>
           <line x1="54" x2="340" y1={y(min + (max - min) * fraction)} y2={y(min + (max - min) * fraction)} stroke="#e2e8e6" />
-          <text x="48" y={y(min + (max - min) * fraction) + 4} textAnchor="end">{stableCompactEuro((min + (max - min) * fraction) / 100)} €</text>
+          <text x="48" y={y(min + (max - min) * fraction) + 4} textAnchor="end">{stableCompactEuro((min + (max - min) * fraction) / 100)} {currency}</text>
         </g>)}
         {forecast.length > 0 && <rect x={x(history.length - 1) + 4} y="20" width={Math.max(0, 340 - x(history.length - 1) - 4)} height="160" fill="#f1f7f6" />}
         {min < 0 && <line x1="54" x2="340" y1={y(0)} y2={y(0)} stroke="#a6b5ae" strokeDasharray="2 3" />}
@@ -46,14 +47,14 @@ export function ForecastChart({ history, forecast = [], average = [], saldo = []
         {average.length > 0 && <polyline points={path(average.filter((p): p is MonthTotal => p.value !== null))} fill="none" stroke="#b7791f" strokeWidth="2" />}
         {forecast.length > 0 && <polyline points={path([...(forecastStart ? [forecastStart] : []), ...forecast])} fill="none" stroke="#16776f" strokeWidth="3" strokeDasharray="7 5" />}
         {all.map((p, i) => <g key={p.month}>
-          <circle cx={x(i)} cy={y(p.value)} r="2.5" fill={i < history.length ? "#16776f" : "white"} stroke="#16776f"><title>{`${monthLabel(p.month)}: ${stableMoney(p.value)}`}</title></circle>
+          <circle cx={x(i)} cy={y(p.value)} r="2.5" fill={i < history.length ? "#16776f" : "white"} stroke="#16776f"><title>{`${monthLabel(p.month)}: ${stableMoney(p.value, currency)}`}</title></circle>
           {(i === 0 || i === Math.floor((all.length - 1) / 2) || i === all.length - 1) && <text x={x(i)} y="202" textAnchor="middle">{monthLabel(p.month)}</text>}
         </g>)}
       </svg>
     </div>
     <div className="forecast-legend"><span><i />{spendingLabel}</span>{saldo.length > 0 && <span><i style={{ borderColor: "#7163b6" }} />Gesamtsaldo</span>}{forecast.length > 0 && <span><i className="is-dashed" />Prognose</span>}{average.length > 0 && <span><i className="is-average" />Ø 6 Monate</span>}</div>
     {showMonthlyValues && <details><summary>Monatswerte anzeigen</summary><table className="forecast-table"><thead><tr><th>Monat</th><th>{spendingLabel}</th>{average.length > 0 && <th>Ø 6 Monate</th>}{saldo.length > 0 && <th>Gesamtsaldo</th>}</tr></thead><tbody>
-      {all.map((p, i) => <tr key={p.month}><td>{monthLabel(p.month)}{i >= history.length ? " (Prognose)" : ""}</td><td>{stableMoney(p.value)}</td>{average.length > 0 && <td>{average.find((a) => a.month === p.month)?.value != null ? stableMoney(average.find((a) => a.month === p.month)!.value!) : "–"}</td>}{saldo.length > 0 && <td>{saldo.find((s) => s.month === p.month) ? stableMoney(saldo.find((s) => s.month === p.month)!.value) : "–"}</td>}</tr>)}
+      {all.map((p, i) => <tr key={p.month}><td>{monthLabel(p.month)}{i >= history.length ? " (Prognose)" : ""}</td><td>{stableMoney(p.value, currency)}</td>{average.length > 0 && <td>{average.find((a) => a.month === p.month)?.value != null ? stableMoney(average.find((a) => a.month === p.month)!.value!) : "–"}</td>}{saldo.length > 0 && <td>{saldo.find((s) => s.month === p.month) ? stableMoney(saldo.find((s) => s.month === p.month)!.value) : "–"}</td>}</tr>)}
     </tbody></table></details>}
   </>;
 }

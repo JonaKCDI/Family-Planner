@@ -1,3 +1,8 @@
+import { FinanceAnalysisRow } from "@/components/finance-analysis-row";
+import { getExpenseRange as getRange, explicitExpensePeriod } from "@/lib/expense-range";
+import { filterExpenseAssignments } from "@/lib/expense-filters";
+import { FamilyFinancePage } from "@/components/family-finance-page";
+import { FinanceAreaIndicator } from "@/components/finance-area-switch";
 import { mergeDuplicateExpenses } from "@/lib/actions";
 import Link from "next/link";
 import { redirect } from "next/navigation";
@@ -5,13 +10,11 @@ import { requireSession } from "@/lib/auth";
 import { ensureDueContractExpenses } from "@/lib/contract-auto-expenses";
 import {
   buildCategoryRows,
-  buildExpenseTrendChart,
   buildLabelRows,
   buildPeriodRows,
   sumByKind,
   type ExpenseChartDimension,
   type ExpenseChartMetric,
-  type ExpenseTrendChart,
   type PeriodRow
 } from "@/lib/expense-analytics";
 import { toExpenseDocumentItem, toExpenseListItem } from "@/lib/expense-list";
@@ -40,6 +43,7 @@ type FinanceView = "overview" | "entries" | "categories" | "budgets" | "labels" 
 export default async function ExpensesPage({ searchParams }: ExpensesPageProps) {
   const session = await requireSession();
   const params = await searchParams;
+  if (params.bereich === "familie") return <FamilyFinancePage params={params} />;
   const canonicalHref = getCanonicalExpensesHref(params);
   if (canonicalHref !== getRawExpensesHref(params)) redirect(canonicalHref);
   await ensureDueContractExpenses(session.family.id, session.user.id);
@@ -56,12 +60,8 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
   const currentYear = Number(currentMonthKey.slice(0, 4));
   const years = [...new Set([currentYear, ...expenses.map((entry) => new Date(entry.date).getFullYear())])].sort((a, b) => b - a);
   const range = getRange(params, currentMonthKey, expenses);
-  const selectedLabels = normalizeList(params.label);
-  const selectedCategories = normalizeList(params.category);
-  const rangeFilteredEntries = expenses
-    .filter((entry) => isInRange(entry.date, range.from, range.to))
-    .filter((entry) => selectedLabels.length === 0 || (entry.labelId !== null && selectedLabels.includes(entry.labelId)))
-    .filter((entry) => selectedCategories.length === 0 || (entry.categoryId !== null && selectedCategories.includes(entry.categoryId)));
+  const rangeFilteredEntries = filterExpenseAssignments(expenses, params)
+    .filter((entry) => isInRange(entry.date, range.from, range.to));
   const facetFilteredEntries = filterExpenseFacets(rangeFilteredEntries, params);
   const searchableDocuments = query
     ? await getDocumentsForLinkedEntities(session.family.id, session.user.id, "EXPENSE", facetFilteredEntries.map((entry) => entry.id))
@@ -86,33 +86,10 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
   const categoryAnalysisRows = categoryRows.filter((row) => row.spending > 0 || row.income > 0);
   const labelAnalysisRows = labelRows.filter((row) => row.spending > 0 || row.income > 0);
   const monthlyRows = buildPeriodRows(selectedEntries, categories, "month");
-  const chartDimension: ExpenseChartDimension = "category";
-  const chartMetric: ExpenseChartMetric = "spending";
-  const chartTop = 5;
-  const chartMonths = 6;
-  const trendBaseEntries = buildAnalyticsScopeEntries(expenses, params, query);
-  const expenseTrendChart = buildExpenseTrendChart(trendBaseEntries, {
-    dimension: chartDimension,
-    metric: chartMetric,
-    months: chartMonths,
-    topN: chartTop,
-    endDate: range.to
-  });
+  const analysisParams = explicitExpensePeriod(params, range);
   const comparisonRange = getComparisonRange(params, range);
   const comparisonEntries = buildComparableEntries(expenses, params, comparisonRange, query);
   const comparison = buildPeriodComparison(selectedEntries, comparisonEntries, categories, range, comparisonRange);
-  const insights = buildAnalysisInsights({
-    params,
-    selectedEntries,
-    allEntries: expenses,
-    categoryRows,
-    labelRows,
-    range,
-    monthBudget,
-    netConsumption,
-    showBudget,
-    currentMonthKey
-  });
   const activeFilterChips = buildActiveFilterChips(params, categories, allLabels, range);
   const paymentMethods = buildPaymentMethodOptions(expenses);
   const activeFilterCount = countActiveFinanceFilters(params);
@@ -127,7 +104,6 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
   const expenseListEntries = initialEntries.map(toExpenseListItem);
   const expenseListLoadUrl = buildExpenseListLoadUrl(params);
   const returnTo = getRawExpensesHref(params);
-  const focusTitle = getAnalysisFocusTitle(params, categories, allLabels);
   const budgetRemaining = monthBudget - netConsumption;
   const isAnalysisArea = isFinanceAnalysisView(view);
   const summaryMax = Math.max(income, spending, Math.abs(saldo), Math.abs(budgetRemaining), 1);
@@ -137,7 +113,7 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
     <>
       <FinanceTransitionMarker view={view} />
       <div className="task-page-head finance-page-head">
-        <PageHeader title="Finanzen" />
+        <PageHeader title="Finanzen" suffix={<FinanceAreaIndicator />} />
         <FinanceToolbar
           params={params}
           categories={categories}
@@ -180,8 +156,8 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
       {isAnalysisArea ? (
         <nav className="finance-analysis-subtabs" aria-label="Analysebereiche">
           <Link className={view === "categories" ? "active" : ""} href={financeViewHref(params, "categories")} scroll={false}>Kategorien</Link>
-          <Link className={view === "budgets" ? "active" : ""} href={financeViewHref(params, "budgets")} scroll={false}>Budgets</Link>
           <Link className={view === "labels" ? "active" : ""} href={financeViewHref(params, "labels")} scroll={false}>Labels</Link>
+          <Link className={view === "budgets" ? "active" : ""} href={financeViewHref(params, "budgets")} scroll={false}>Budgets</Link>
           <Link className={view === "compare" ? "active" : ""} href={financeViewHref(params, "compare")} scroll={false}>Vergleich</Link>
         </nav>
       ) : (
@@ -316,13 +292,6 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
 
       {view === "categories" ? (
       <section className="analysis-tabs spacing-top" id="kategorien">
-        <section className="panel finance-chart-widget" aria-labelledby="category-trend-title">
-          <div className="finance-chart-widget-head">
-            <h2 id="category-trend-title">Ausgabenverlauf</h2>
-            <span>{chartMonths} Monate · Top {chartTop}</span>
-          </div>
-          <ExpenseTrendChartView chart={expenseTrendChart} params={params} dimension={chartDimension} metric={chartMetric} />
-        </section>
         <section className="panel finance-category-page">
           <div className="section-head compact-section-head">
             <div>
@@ -333,26 +302,10 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
               {params.category ? <a className="button secondary" href={buildExpensesHref(params, { category: undefined, view: "categories" })}>Kategorie lösen</a> : null}
             </div>
           </div>
-          {focusTitle ? <AnalysisFocusPanel title={focusTitle} income={income} spending={spending} saldo={saldo} netConsumption={netConsumption} entryCount={selectedEntries.length} /> : null}
           <div className="list finance-analysis-list">
             {categoryAnalysisRows.length === 0 ? <EmptyState>Noch keine Kategorien im Zeitraum.</EmptyState> : null}
             {categoryAnalysisRows.map((row) => (
-              <AnalysisRow
-                href={analysisRowHref(params, "category", row.id)}
-                key={row.name}
-                row={row}
-                showBudget={false}
-                percent={row.percent}
-              />
-            ))}
-          </div>
-          <div className="insight-list finance-compact-insights" aria-label="Analysehinweise">
-            {insights.slice(0, 2).map((insight) => (
-              <a className={`insight-card ${insight.tone}`} href={insight.href} key={insight.title}>
-                <span>{insight.label}</span>
-                <strong>{insight.title}</strong>
-                <small>{insight.detail}</small>
-              </a>
+              <FinanceAnalysisRow key={row.id ?? row.name} row={row} dimension="category" params={analysisParams} returnParams={params} currency={params.currency || "EUR"} percent={row.percent} />
             ))}
           </div>
 
@@ -389,14 +342,7 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
           <div className="list finance-analysis-list">
             {labelAnalysisRows.length === 0 ? <EmptyState>Noch keine Labels im Zeitraum.</EmptyState> : null}
             {labelAnalysisRows.map((row) => (
-              <AnalysisRow
-                href={analysisRowHref(params, "label", row.id)}
-                key={row.name}
-                row={row}
-                showBudget={false}
-                percent={undefined}
-                meta={labelRowMeta(row)}
-              />
+              <FinanceAnalysisRow key={row.id ?? row.name} row={row} dimension="label" params={analysisParams} returnParams={params} currency={params.currency || "EUR"} percent={spending > 0 ? row.spending / spending * 100 : 0} />
             ))}
           </div>
         </section>
@@ -428,93 +374,6 @@ type DuplicateGroup = {
 
 function financeViewHref(params: Awaited<ExpensesPageProps["searchParams"]>, view: FinanceView) {
   return `${buildExpensesHref(params, { view })}#finanzansichten`;
-}
-
-function ExpenseTrendChartView({
-  chart,
-  params,
-  dimension,
-  metric
-}: {
-  chart: ExpenseTrendChart;
-  params: Awaited<ExpensesPageProps["searchParams"]>;
-  dimension: ExpenseChartDimension;
-  metric: ExpenseChartMetric;
-}) {
-  if (chart.series.length === 0) return <EmptyState>Noch keine Daten für das Zeitdiagramm.</EmptyState>;
-  const canBeNegative = metric === "saldo";
-  const minValue = canBeNegative ? -chart.maxValue : 0;
-  const maxValue = chart.maxValue * 1.1;
-  const valueRange = Math.max(1, maxValue - minValue);
-  const width = 360;
-  const height = 210;
-  const padX = 54;
-  const padTop = 24;
-  const padBottom = 30;
-  const plotWidth = 282;
-  const plotHeight = height - padTop - padBottom;
-  const zeroY = padTop + ((maxValue - 0) / valueRange) * plotHeight;
-
-  function x(index: number) {
-    if (chart.periods.length <= 1) return padX + plotWidth / 2;
-    return padX + (index / (chart.periods.length - 1)) * plotWidth;
-  }
-
-  function y(value: number) {
-    return padTop + ((maxValue - value) / valueRange) * plotHeight;
-  }
-
-  return (
-    <div className="finance-trend-chart">
-      <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`${chartMetricLabel(metric)} nach ${dimension === "label" ? "Labels" : "Kategorien"}`}>
-        {[0, 0.5, 1].map((fraction) => {
-          const value = minValue + valueRange * fraction;
-          return <g key={fraction}>
-            <line className="finance-chart-grid-line" x1={padX} x2="340" y1={y(value)} y2={y(value)} />
-            <text className="finance-chart-axis" x="48" y={y(value) + 4} textAnchor="end">{new Intl.NumberFormat("de-DE", { notation: "compact", maximumFractionDigits: 1 }).format(value / 100)} €</text>
-          </g>;
-        })}
-        {canBeNegative && <line x1={padX} x2="340" y1={zeroY} y2={zeroY} stroke="#a6b5ae" strokeDasharray="2 3" />}
-        {chart.series.map((series) => {
-          const points = series.points.map((point, index) => `${x(index).toFixed(1)},${y(point.value).toFixed(1)}`).join(" ");
-          return <polyline className="finance-chart-line" fill="none" points={points} stroke={series.color} key={series.name} />;
-        })}
-        {chart.series.flatMap((series) => series.points.map((point, index) => (
-          <circle className="finance-chart-dot" cx={x(index)} cy={y(point.value)} fill={series.color} key={`${series.name}-${point.period}`} r="2.5"><title>{`${series.name} · ${formatMonthShort(point.period)}: ${formatMoney(point.value)}`}</title></circle>
-        )))}
-        {chart.periods.map((period, index) => (index === 0 || index === Math.floor((chart.periods.length - 1) / 2) || index === chart.periods.length - 1) && (
-          <text className="finance-chart-axis" x={x(index)} y={height - 8} textAnchor="middle" key={period}>{`${period.slice(5)}.${period.slice(0, 4)}`}</text>
-        ))}
-      </svg>
-      <div className="finance-trend-legend" style={{ gridTemplateColumns: `repeat(${Math.ceil(chart.series.length / 2)}, minmax(0, 1fr))` }}>
-        {chart.series.map((series) => (
-          <a href={trendSeriesHref(params, dimension, series.id)} key={series.name}>
-            <i style={{ background: series.color }} aria-hidden="true" />
-            <span>{series.name}</span>
-          </a>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function trendSeriesHref(params: Awaited<ExpensesPageProps["searchParams"]>, dimension: ExpenseChartDimension, id?: string) {
-  if (!id) return buildExpensesHref(params, { view: "entries" });
-  return dimension === "label"
-    ? buildExpensesHref(params, { label: id, category: undefined, view: "entries" })
-    : buildExpensesHref(params, { category: id, label: undefined, view: "entries" });
-}
-
-function analysisRowHref(params: Awaited<ExpensesPageProps["searchParams"]>, dimension: ExpenseChartDimension, id?: string) {
-  if (!id) return buildExpensesHref(params, { view: "categories" });
-  return dimension === "label"
-    ? buildExpensesHref(params, { label: id, category: undefined, view: "entries" })
-    : buildExpensesHref(params, { category: id, label: undefined, view: "entries" });
-}
-
-function formatMonthShort(period: string) {
-  const [year, month] = period.split("-");
-  return `${month}.${year.slice(2)}`;
 }
 
 function PeriodComparisonView({ comparison }: { comparison: ReturnType<typeof buildPeriodComparison> }) {
@@ -672,38 +531,6 @@ function percentWidth(value: number, max: number) {
   return `${percent}%`;
 }
 
-function AnalysisFocusPanel({
-  title,
-  income,
-  spending,
-  saldo,
-  netConsumption,
-  entryCount
-}: {
-  title: string;
-  income: number;
-  spending: number;
-  saldo: number;
-  netConsumption: number;
-  entryCount: number;
-}) {
-  return (
-    <div className="analysis-focus-panel">
-      <div>
-        <span className="eyebrow">Fokus</span>
-        <h3>{title}</h3>
-        <p className="muted">{entryCount} Einträge im aktiven Zeitraum</p>
-      </div>
-      <div className="analysis-focus-stats">
-        <div><span>Saldo</span><strong className={saldo < 0 ? "negative" : "positive"}>{formatMoney(saldo)}</strong></div>
-        <div><span>Einnahmen</span><strong>{formatMoney(income)}</strong></div>
-        <div><span>Ausgaben</span><strong>{formatMoney(spending)}</strong></div>
-        <div><span>Netto-Verbrauch</span><strong>{formatMoney(netConsumption)}</strong></div>
-      </div>
-    </div>
-  );
-}
-
 function BudgetPressureList({ rows, showBudget }: { rows: ReturnType<typeof buildCategoryRows>; showBudget: boolean }) {
   const visibleRows = (showBudget
     ? [...rows].sort((a, b) => {
@@ -731,53 +558,6 @@ function BudgetPressureList({ rows, showBudget }: { rows: ReturnType<typeof buil
       ))}
     </div>
   );
-}
-
-function AnalysisRow({
-  href,
-  row,
-  showBudget,
-  percent,
-  meta
-}: {
-  href?: string;
-  row: {
-    name: string;
-    color: string;
-    icon?: string | null;
-    budget: number;
-    remaining: number;
-    budgetUsage: number;
-    income: number;
-    spending: number;
-    saldo: number;
-    amount: number;
-  };
-  showBudget: boolean;
-  percent?: number;
-  meta?: string;
-}) {
-  const content = (
-    <>
-      <span className="analysis-row-icon" style={{ background: row.color }} aria-hidden="true"><CategoryIcon icon={row.icon} size={17} /></span>
-      <div className="analysis-row-copy">
-        <strong>{row.name}</strong>
-        <span className="muted">{meta ?? (showBudget ? row.budget > 0 ? `Budget ${formatMoney(row.budget)}` : "Ohne Budget" : row.income > 0 && row.spending <= 0 ? "Einnahme" : typeof percent === "number" ? `${percent.toFixed(0)}% Anteil` : "Ausgaben")}</span>
-      </div>
-      <div className="bar-stack">
-        {typeof percent === "number" ? <div className="bar-wrap"><span style={{ width: `${percent}%`, background: row.color }} /></div> : null}
-        {showBudget ? <div className="bar-wrap budget-bar"><span style={{ width: `${row.budgetUsage}%`, background: row.color }} /></div> : null}
-      </div>
-      <div className="amount-column compact-amount">
-        <AnalysisAmount row={row} />
-        {showBudget ? <BudgetHint row={row} /> : null}
-      </div>
-      {href ? <span className="analysis-row-chevron" aria-hidden="true">›</span> : null}
-    </>
-  );
-
-  if (!href) return <div className="analysis-row">{content}</div>;
-  return <a className="analysis-row analysis-link-row" href={href}>{content}</a>;
 }
 
 function DuplicateReviewPanel({ groups, returnTo }: { groups: DuplicateGroup[]; returnTo: string }) {
@@ -1074,39 +854,6 @@ function countActiveFinanceFilters(params: Awaited<ExpensesPageProps["searchPara
   ].filter(Boolean).length;
 }
 
-function buildAnalyticsScopeEntries(entries: ExpenseLike[], params: Awaited<ExpensesPageProps["searchParams"]>, query: string) {
-  const selectedLabels = normalizeList(params.label);
-  const selectedCategories = normalizeList(params.category);
-  const facetEntries = entries
-    .filter((entry) => selectedLabels.length === 0 || (entry.labelId !== null && selectedLabels.includes(entry.labelId)))
-    .filter((entry) => selectedCategories.length === 0 || (entry.categoryId !== null && selectedCategories.includes(entry.categoryId)));
-  return filterExpenseFacets(facetEntries, params)
-    .filter((entry) => !query || matchesExpenseSearch(entry, query, { documents: [] }));
-}
-
-function getRange(params: Awaited<ExpensesPageProps["searchParams"]>, currentMonthKey: string, expenses: ExpenseLike[]) {
-  const fallbackMonth = monthRange(currentMonthKey) ?? monthRange(getMonthKey())!;
-  if (params.from || params.to) {
-    return {
-      mode: "custom" as const,
-      from: params.from ? new Date(params.from) : fallbackMonth.from,
-      to: params.to ? endOfDay(new Date(params.to)) : fallbackMonth.to
-    };
-  }
-  if (params.month) {
-    const range = monthRange(params.month);
-    if (range) return { mode: "month" as const, key: params.month, ...range };
-  }
-  if (params.year) {
-    const year = Number(params.year);
-    return { mode: "year" as const, from: new Date(year, 0, 1), to: endOfDay(new Date(year, 11, 31)) };
-  }
-  if (hasFacetFilter(params)) {
-    return allExpenseRange(expenses) ?? { mode: "month" as const, key: currentMonthKey, ...fallbackMonth };
-  }
-  return { mode: "month" as const, key: currentMonthKey, ...fallbackMonth };
-}
-
 function getComparisonRange(params: Awaited<ExpensesPageProps["searchParams"]>, currentRange: ReturnType<typeof getRange>) {
   const fallback = previousSameLengthRange(currentRange);
   const fallbackMode = currentRange.mode === "year" ? "year" : "month";
@@ -1162,12 +909,8 @@ function buildMonthKeyFromDate(date: Date, monthOffset: number) {
 }
 
 function buildComparableEntries(entries: ExpenseLike[], params: Awaited<ExpensesPageProps["searchParams"]>, range: { from: Date; to: Date }, query: string) {
-  const selectedLabels = normalizeList(params.label);
-  const selectedCategories = normalizeList(params.category);
-  const rangeEntries = entries
-    .filter((entry) => isInRange(entry.date, range.from, range.to))
-    .filter((entry) => selectedLabels.length === 0 || (entry.labelId !== null && selectedLabels.includes(entry.labelId)))
-    .filter((entry) => selectedCategories.length === 0 || (entry.categoryId !== null && selectedCategories.includes(entry.categoryId)));
+  const rangeEntries = filterExpenseAssignments(entries, params)
+    .filter((entry) => isInRange(entry.date, range.from, range.to));
   return filterExpenseFacets(rangeEntries, params)
     .filter((entry) => !query || matchesExpenseSearch(entry, query, { documents: [] }));
 }
@@ -1180,7 +923,7 @@ function getInitialEntryLimit(mode: ReturnType<typeof getRange>["mode"]) {
 
 function buildExpenseListLoadUrl(params: Awaited<ExpensesPageProps["searchParams"]>) {
   const search = new URLSearchParams();
-  for (const key of ["from", "to", "year", "month", "label", "category", "kind", "q", "sort"] as const) {
+  for (const key of ["currency", "from", "to", "year", "month", "label", "category", "kind", "q", "sort"] as const) {
     const value = params[key];
     if (Array.isArray(value)) {
       for (const item of value) search.append(key, item);
@@ -1204,20 +947,6 @@ function monthRange(monthKey: string) {
 function endOfDay(date: Date) {
   date.setHours(23, 59, 59, 999);
   return date;
-}
-
-function allExpenseRange(expenses: ExpenseLike[]) {
-  if (expenses.length === 0) return null;
-  const times = expenses.map((expense) => new Date(expense.date).getTime());
-  return {
-    mode: "all" as const,
-    from: new Date(Math.min(...times)),
-    to: endOfDay(new Date(Math.max(...times)))
-  };
-}
-
-function hasFacetFilter(params: Awaited<ExpensesPageProps["searchParams"]>) {
-  return Boolean(params.q || normalizeList(params.category).length > 0 || normalizeList(params.label).length > 0 || params.kind || normalizeList(params.paymentMethod).length > 0 || normalizeList(params.source).length > 0);
 }
 
 function isInRange(date: Date, from: Date, to: Date) {
@@ -1293,110 +1022,6 @@ function rangeLabel(range: { from: Date; to: Date }) {
 
 function dateInputKey(date: Date) {
   return date.toISOString().slice(0, 10);
-}
-
-type FinanceInsight = {
-  label: string;
-  title: string;
-  detail: string;
-  href: string;
-  tone: "positive" | "warning" | "neutral";
-};
-
-function buildAnalysisInsights({
-  params,
-  selectedEntries,
-  allEntries,
-  categoryRows,
-  labelRows,
-  range,
-  monthBudget,
-  netConsumption,
-  showBudget,
-  currentMonthKey
-}: {
-  params: Awaited<ExpensesPageProps["searchParams"]>;
-  selectedEntries: ExpenseLike[];
-  allEntries: ExpenseLike[];
-  categoryRows: ReturnType<typeof buildCategoryRows>;
-  labelRows: ReturnType<typeof buildLabelRows>;
-  range: ReturnType<typeof getRange>;
-  monthBudget: number;
-  netConsumption: number;
-  showBudget: boolean;
-  currentMonthKey: string;
-}): FinanceInsight[] {
-  const insights: FinanceInsight[] = [];
-  const topCategory = categoryRows.find((row) => row.spending > 0);
-  const mixedLabel = labelRows.find((row) => row.income > 0 && row.spending > 0);
-
-  if (showBudget && monthBudget > 0) {
-    const remaining = monthBudget - netConsumption;
-    insights.push({
-      label: "Budget",
-      title: remaining < 0 ? "Netto-Budget überschritten" : "Netto-Budget im Blick",
-      detail: remaining < 0 ? `${formatMoney(Math.abs(remaining))} über Budget.` : `${formatMoney(remaining)} noch frei.`,
-      href: buildExpensesHref(params, { view: "categories" }),
-      tone: remaining < 0 ? "warning" : "positive"
-    });
-  }
-
-  if (topCategory) {
-    insights.push({
-      label: "Treiber",
-      title: `${topCategory.name} prägt den Zeitraum`,
-      detail: `${formatMoney(topCategory.spending)} Ausgaben · ${topCategory.percent.toFixed(0)}% Anteil.`,
-      href: topCategory.id ? buildExpensesHref(params, { category: topCategory.id, label: undefined, view: "categories" }) : buildExpensesHref(params, { view: "categories" }),
-      tone: "neutral"
-    });
-
-    const benchmark = previousSpendingBenchmark(allEntries, topCategory.name, range);
-    if (benchmark && topCategory.spending > benchmark.average * 1.25) {
-      insights.push({
-        label: "Auffällig",
-        title: `${topCategory.name} liegt höher als üblich`,
-        detail: `Aktuell ${formatMoney(topCategory.spending)} · Vergleich ${benchmark.label}.`,
-        href: topCategory.id ? buildExpensesHref(params, { category: topCategory.id, label: undefined, view: "categories" }) : buildExpensesHref(params, { view: "categories" }),
-        tone: "warning"
-      });
-    }
-  }
-
-  if (range.mode === "month" && range.key === currentMonthKey && selectedEntries.length > 0) {
-    const today = new Date();
-    const elapsedDays = Math.max(1, Math.min(today.getDate(), new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate()));
-    const daysInMonth = new Date(range.from.getFullYear(), range.from.getMonth() + 1, 0).getDate();
-    const projected = Math.round((netConsumption / elapsedDays) * daysInMonth);
-    insights.push({
-      label: "Prognose",
-      title: `Monatsende ca. ${formatMoney(projected)}`,
-      detail: `${formatMoney(netConsumption)} netto bisher, hochgerechnet auf ${daysInMonth} Tage.`,
-      href: buildExpensesHref(params, { view: "categories" }),
-      tone: showBudget && monthBudget > 0 && projected > monthBudget ? "warning" : "neutral"
-    });
-  }
-
-  if (mixedLabel) {
-    insights.push({
-      label: "Rückerstattung",
-      title: `${mixedLabel.name} enthält Einnahmen und Ausgaben`,
-      detail: `Saldo ${formatMoney(mixedLabel.saldo)} · netto ${formatMoney(mixedLabel.netConsumption)} verbraucht.`,
-      href: mixedLabel.id ? buildExpensesHref(params, { label: mixedLabel.id, category: undefined, view: "categories" }) : buildExpensesHref(params, { view: "categories" }),
-      tone: mixedLabel.saldo >= 0 ? "positive" : "neutral"
-    });
-  }
-
-  if (insights.length === 0) {
-    insights.push({
-      label: "Status",
-      title: "Noch keine Auffälligkeiten",
-      detail: "Sobald genug Einträge vorhanden sind, erscheinen hier Vergleichs- und Budgethinweise.",
-      href: buildExpensesHref(params, { view: "entries" }),
-      tone: "neutral"
-    });
-  }
-
-  return insights.slice(0, 4);
 }
 
 function previousSpendingBenchmark(entries: ExpenseLike[], categoryName: string, range: ReturnType<typeof getRange>) {
@@ -1498,14 +1123,6 @@ function chartMetricLabel(metric: ExpenseChartMetric) {
   if (metric === "saldo") return "Saldo";
   if (metric === "net") return "Netto-Verbrauch";
   return "Ausgaben";
-}
-
-function getAnalysisFocusTitle(params: Awaited<ExpensesPageProps["searchParams"]>, categories: CategoryLike[], labels: LabelLike[]) {
-  const categoryNames = normalizeList(params.category).map((id) => categories.find((category) => category.id === id)?.name).filter((name): name is string => Boolean(name));
-  if (categoryNames.length) return `Kategorie: ${categoryNames.join(", ")}`;
-  const labelNames = normalizeList(params.label).map((id) => labels.find((label) => label.id === id)?.name).filter((name): name is string => Boolean(name));
-  if (labelNames.length) return `Label: ${labelNames.join(", ")}`;
-  return null;
 }
 
 function normalizeSearch(value: unknown) {

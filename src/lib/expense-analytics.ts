@@ -65,6 +65,18 @@ export type CategoryTrendChart = {
   totalSpending: number;
 };
 
+export type BudgetAlert = {
+  id?: string;
+  name: string;
+  color: string;
+  budget: number;
+  netConsumption: number;
+  remaining: number;
+  budgetUsage: number;
+  dimension: "category" | "label";
+  status: "near" | "over";
+};
+
 export function sumByKind(entries: AnalyticsExpense[], kind: "EXPENSE" | "INCOME") {
   return entries.filter((entry) => entry.kind === kind).reduce((sum, entry) => sum + entry.amountCents, 0);
 }
@@ -73,7 +85,8 @@ export function buildCategoryRows(entries: AnalyticsExpense[], categories: Analy
   const rows = new Map<string, { income: number; spending: number; color: string; icon?: string | null; category?: AnalyticsCategory; id?: string }>();
   for (const entry of entries) {
     const name = entry.category?.name ?? "Ohne Kategorie";
-    const current = rows.get(name) ?? {
+    const key = entry.category?.id ?? name;
+    const current = rows.get(key) ?? {
       income: 0,
       spending: 0,
       color: entry.category?.color ?? "#6b6f76",
@@ -83,16 +96,17 @@ export function buildCategoryRows(entries: AnalyticsExpense[], categories: Analy
     };
     if (entry.kind === "INCOME") current.income += entry.amountCents;
     if (entry.kind === "EXPENSE") current.spending += entry.amountCents;
-    rows.set(name, current);
+    rows.set(key, current);
   }
   if (showBudget) {
     for (const category of categories) {
-      if (category.monthlyBudgetCents <= 0 || rows.has(category.name)) continue;
-      rows.set(category.name, { income: 0, spending: 0, color: category.color, icon: category.icon, category });
+      if (category.monthlyBudgetCents <= 0 || rows.has(category.id ?? category.name)) continue;
+      rows.set(category.id ?? category.name, { income: 0, spending: 0, color: category.color, icon: category.icon, category });
     }
   }
 
-  return [...rows.entries()].map(([name, row]) => {
+  return [...rows.entries()].map(([key, row]) => {
+    const name = row.category?.name ?? key;
     const budget = showBudget ? row.category?.monthlyBudgetCents ?? 0 : 0;
     const amount = row.spending;
     const saldo = row.income - row.spending;
@@ -116,16 +130,18 @@ export function buildCategoryRows(entries: AnalyticsExpense[], categories: Analy
 }
 
 export function buildLabelRows(entries: AnalyticsExpense[], labels: AnalyticsLabel[]) {
-  const rows = new Map<string, { income: number; spending: number; color: string; budget: number; neverUsed: boolean; id?: string }>();
-  const labelsByName = new Map(labels.map((label) => [label.name, label]));
+  const rows = new Map<string, { income: number; spending: number; color: string; budget: number; neverUsed: boolean; id?: string; name: string }>();
+  const labelsByName = new Map(labels.map((label) => [label.id ?? label.name, label]));
   for (const label of labels) {
     if (label.lastUsedAt !== null) continue;
-    rows.set(label.name, { income: 0, spending: 0, color: label.color, budget: label.budgetCents, neverUsed: true, id: label.id });
+    rows.set(label.id ?? label.name, { name: label.name, income: 0, spending: 0, color: label.color, budget: label.budgetCents, neverUsed: true, id: label.id });
   }
   for (const entry of entries) {
     if (!entry.label) continue;
-    const configuredLabel = labelsByName.get(entry.label.name);
-    const current = rows.get(entry.label.name) ?? {
+    const key = entry.label.id ?? entry.label.name;
+    const configuredLabel = labelsByName.get(key);
+    const current = rows.get(key) ?? {
+      name: entry.label.name,
       income: 0,
       spending: 0,
       color: configuredLabel?.color ?? entry.label.color,
@@ -136,9 +152,10 @@ export function buildLabelRows(entries: AnalyticsExpense[], labels: AnalyticsLab
     if (entry.kind === "INCOME") current.income += entry.amountCents;
     if (entry.kind === "EXPENSE") current.spending += entry.amountCents;
     current.neverUsed = false;
-    rows.set(entry.label.name, current);
+    rows.set(key, current);
   }
-  return [...rows.entries()].map(([name, row]) => {
+  return [...rows.values()].map((row) => {
+    const name = row.name;
     const amount = row.spending;
     const saldo = row.income - row.spending;
     const netConsumption = Math.max(0, row.spending - row.income);
@@ -175,6 +192,34 @@ export function buildPeriodRows(entries: AnalyticsExpense[], categories: Analyti
 
 export function monthlyBudget(categories: AnalyticsCategory[]) {
   return categories.reduce((sum, category) => sum + category.monthlyBudgetCents, 0);
+}
+
+/** Returns configured budgets that need attention. A refund/income assigned to the
+ * same category or label lowers its consumption before the budget is evaluated. */
+export function buildBudgetAlerts(
+  rows: Array<{
+    id?: string;
+    name: string;
+    color: string;
+    budget: number;
+    netConsumption: number;
+    remaining: number;
+    budgetUsage: number;
+  }>,
+  dimension: BudgetAlert["dimension"],
+  warningThreshold = 80
+): BudgetAlert[] {
+  return rows
+    .filter((row) => row.budget > 0 && row.budgetUsage >= warningThreshold)
+    .map((row) => ({
+      ...row,
+      dimension,
+      status: row.remaining < 0 ? "over" as const : "near" as const
+    }))
+    .sort((a, b) => {
+      if (a.status !== b.status) return a.status === "over" ? -1 : 1;
+      return b.budgetUsage - a.budgetUsage || b.netConsumption - a.netConsumption || a.name.localeCompare(b.name, "de");
+    });
 }
 
 export function buildDonutSegments(
