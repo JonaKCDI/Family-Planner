@@ -74,6 +74,8 @@ The app container waits for PostgreSQL, runs `prisma migrate deploy`, then start
 
 The document mount is read-only inside the app container (`DOCUMENTS_HOST_DIR:/mnt/documents:ro`). Mount only the narrow folder tree you want the app to read, never a broad root like `/volume1`. After startup, create document roots in the app with paths below `DOCUMENTS_DIR`, for example `/mnt/documents/Familie` or `/mnt/documents/Versicherungen`.
 
+For the exact NAS-to-container path mapping, which mounts must remain writable, and how to add a separate read-only document mount, see [NAS-Verzeichnisse und Schreibrechte](QUICK_DEPLOY.md#nas-verzeichnisse-und-schreibrechte). Existing mounts usually only require changing the host paths in the preserved `deploy/synology/.env`; do not replace that file during an update.
+
 ## 4. First App Check
 
 Open:

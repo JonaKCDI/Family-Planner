@@ -12,7 +12,7 @@ Diese Anleitung aktualisiert ein bestehendes `family-app`-Projekt in Synology Co
    docker compose ps
    ```
 
-3. Ein frisches Backup erstellen. Der Backup-Dienst erstellt SQL-Dateien, keine zweite Datenbank:
+3. Das letzte automatische `.sql.gz`-Backup auf Aktualität und Lesbarkeit prüfen. Es reicht für das Update aus, wenn seitdem keine Daten hinzugekommen sind, die bei einer Wiederherstellung verloren gingen. Für einen Sicherungsstand unmittelbar vor dem Update stattdessen ein manuelles Backup erstellen:
 
    ```sh
    backup_name="family-app-before-update-$(date +%Y%m%d-%H%M%S).sql.gz"
@@ -30,14 +30,47 @@ Diese Anleitung aktualisiert ein bestehendes `family-app`-Projekt in Synology Co
 ## Dateien und Docker-Konfiguration aktualisieren
 
 1. Den freigegebenen `main`-Stand nach `/volume1/docker/family-app` übernehmen. `deploy/synology/.env` aus dem bestehenden Projekt behalten.
-2. Vor dem Start die Compose-Konfiguration prüfen:
+2. Die vorhandenen Mounts wie unten beschrieben prüfen. Bei einem anderen NAS-Ordner für Dokumente genügt es, `DOCUMENTS_HOST_DIR` in der bestehenden `.env` anzupassen. Die `.env` nicht durch `.env.example` ersetzen.
+3. Vor dem Start die Compose-Konfiguration prüfen:
 
    ```sh
    docker compose config
    ```
 
-3. Der neue Dokumenten-Mount ist optional. Entweder den Ordner `/volume1/docker/family-app/documents` anlegen oder `DOCUMENTS_HOST_DIR` in `.env` auf einen vorhandenen, eng begrenzten Ordner setzen. Er wird im App-Container nur lesbar unter `/mnt/documents` eingebunden. Niemals `/volume1` mounten.
-4. `APP_URL`, Exportordner, Dokumentenordner und Backupordner müssen auf die bestehenden Werte zeigen. `POSTGRES_PASSWORD` nicht ändern.
+4. `APP_URL`, Exportordner, Dokumentenordner und Backupordner müssen auf die bestehenden Werte zeigen. `POSTGRES_PASSWORD` nicht ändern. Die Ausgabe von `docker compose config` enthält Konfigurationswerte und sollte nicht unbereinigt weitergegeben werden.
+
+### NAS-Verzeichnisse und Schreibrechte
+
+Die Standard-Mounts stehen bereits in `deploy/synology/compose.yaml`. Links vom Doppelpunkt steht der NAS-Pfad (meist über `.env` gesetzt), rechts der Pfad im Container. Für die vorhandenen Mounts ist normalerweise **keine Änderung an der YAML-Datei** nötig.
+
+| NAS-Ordner / Volume | Pfad im Container | Zugriff | Zweck |
+| --- | --- | --- | --- |
+| `EXPENSE_EXCEL_HOST_DIR` | `/data/expenses` | Lesen und Schreiben | Excel-Import und -Export für Ausgaben |
+| `MILEAGE_EXCEL_HOST_DIR` | `/data/mileage` | Lesen und Schreiben | Excel-Import und -Export für Kilometer |
+| `DOCUMENTS_HOST_DIR` | `/mnt/documents` | **Nur Lesen (`:ro`)** | NAS-Dokumente durchsuchen, ansehen und herunterladen |
+| `BACKUP_DIR` | `/backups` im Backup-Container | Lesen und Schreiben | Automatische Datenbank-Dumps |
+| `family_app_postgres` | `/var/lib/postgresql/data` | Lesen und Schreiben | Bestehende PostgreSQL-Daten; Volume bei Updates behalten |
+
+Beispiel für einen vorhandenen Dokumentenordner auf dem NAS in `deploy/synology/.env`:
+
+```env
+DOCUMENTS_HOST_DIR="/volume1/Familie/Dokumente"
+DOCUMENTS_DIR="/mnt/documents"
+```
+
+Die dazugehörige Zeile in `compose.yaml` bleibt `- ${DOCUMENTS_HOST_DIR:-/volume1/docker/family-app/documents}:/mnt/documents:ro`. Der Ordner auf dem NAS muss vor dem Start existieren und für den Container lesbar sein. `:ro` verhindert Schreibzugriffe aus diesem Container; es ersetzt nicht die NAS-Dateirechte und die Berechtigungen für Dokumentbereiche in der App. Nur einen eng begrenzten Ordner mounten, niemals `/volume1` oder eine komplette Freigabe mit fremden Daten. Wenn du die Dokumentenfunktion nicht nutzt, den im YAML festgelegten leeren Standardordner trotzdem anlegen.
+
+In **Einstellungen > Dokumentbereiche** werden anschließend Pfade **aus Sicht des Containers** eingetragen, zum Beispiel `/mnt/documents/Familie`, nicht `/volume1/Familie/Dokumente/Familie`. Bereits angelegte Dokumentbereiche speichern diesen Container-Pfad; bei einem Update `/mnt/documents` daher beibehalten. Für mehrere Unterordner unter demselben NAS-Ordner reicht ein einzelner Mount.
+
+Für einen zusätzlichen, getrennt liegenden NAS-Ordner ist eine weitere Zeile unter `services.app.volumes` in `compose.yaml` nötig, zum Beispiel:
+
+```yaml
+- /volume1/Privat/Jona:/mnt/jona-dokumente:ro
+```
+
+Danach in der App einen eigenen Dokumentbereich mit dem Container-Pfad `/mnt/jona-dokumente` und passenden App-Berechtigungen anlegen. Jeder zusätzliche Dokumenten-Mount benötigt `:ro` und einen eigenen Container-Pfad.
+
+Die Excel- und Backup-Mounts nicht auf `:ro` setzen: Die App beziehungsweise der Backup-Container müssen dort Dateien schreiben können. Das PostgreSQL-Volume nicht löschen oder durch einen leeren Ordner ersetzen.
 
 ## Update starten
 
