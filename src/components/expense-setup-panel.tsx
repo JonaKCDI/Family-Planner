@@ -30,194 +30,11 @@ import { SearchableSelect } from "@/components/searchable-select";
 import { CategoryIcon } from "@/components/category-icon";
 import { CategoryIconPicker } from "@/components/category-icon-picker";
 import { EmptyState } from "@/components/ui";
+import { budgetCadenceLabel } from "@/lib/expense-analytics";
 
 type CategoryLike = Awaited<ReturnType<typeof getVisibleCategories>>[number];
 type LabelLike = Awaited<ReturnType<typeof getExpenseLabels>>[number];
 type RecurringTransactionLike = Awaited<ReturnType<typeof getRecurringTransactions>>[number];
-
-type ExpenseSetupPanelProps = {
-  exportYear: number;
-  categories: CategoryLike[];
-  labels: LabelLike[];
-  allLabels: LabelLike[];
-  recurringTransactions: RecurringTransactionLike[];
-  includeSeries?: boolean;
-  returnTo?: string;
-};
-
-export function ExpenseSetupPanel({ exportYear, categories, labels, allLabels, recurringTransactions, includeSeries = false, returnTo = "/ausgaben/setup" }: ExpenseSetupPanelProps) {
-  return (
-    <div className="expense-setup-layout">
-      <section className="setup-card setup-card-primary" id="excel-sicherung">
-        <div className="setup-card-head">
-          <div>
-            <h2 className="section-title">Excel-Sicherung</h2>
-            <p className="muted">Export und Import für das aktuell ausgewählte Jahr {exportYear}.</p>
-          </div>
-        </div>
-        <ExcelProgressPanel>
-          <div className="excel-actions">
-            <a className="button secondary" href={`/api/expenses/export?year=${exportYear}`} data-excel-progress={`Excel ${exportYear} wird vorbereitet ...`}>Excel {exportYear} herunterladen</a>
-            <form action={importExpensesFromUploadedXlsx} className="upload-form">
-              <input type="hidden" name="returnTo" value={returnTo} />
-              <input name="xlsxFile" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required />
-              <button className="button secondary" type="submit" data-excel-progress="Excel-Datei wird importiert ...">Excel hochladen</button>
-            </form>
-            <div className="setup-action-row">
-              <form action={importExpensesFromSynologyExcel}>
-                <input type="hidden" name="returnTo" value={returnTo} />
-                <input type="hidden" name="year" value={exportYear} />
-                <button className="button secondary" type="submit" data-excel-progress="Synology-Import läuft ...">Synology importieren</button>
-              </form>
-              <form action={exportExpensesToSynologyExcel}>
-                <input type="hidden" name="year" value={exportYear} />
-                <button className="button secondary" type="submit" data-excel-progress="Synology-Export läuft ...">Synology exportieren</button>
-              </form>
-            </div>
-          </div>
-        </ExcelProgressPanel>
-      </section>
-
-      <details className="setup-card" id="finanz-anlegen" open>
-        <summary>
-          <span>
-            <strong>Anlegen</strong>
-            <small>Neue Labels und Kategorien</small>
-          </span>
-        </summary>
-        <div className="setup-two-column">
-          <form action={createExpenseLabel} className="form compact" id="label-erfassen">
-            <input type="hidden" name="returnTo" value={returnTo} />
-            <strong>Label hinzufügen</strong>
-            <label>Name<input name="name" placeholder="Dienstreise Berlin, Gartenprojekt ..." required /></label>
-            <label>Budget in EUR<input name="budget" inputMode="decimal" placeholder="500,00" /></label>
-            <label>Farbe<input name="color" type="color" defaultValue="#16776f" /></label>
-            <button className="button secondary" type="submit">Label speichern</button>
-          </form>
-          <form action={createCategory} className="form compact" id="kategorie-erfassen">
-            <input type="hidden" name="returnTo" value={returnTo} />
-            <strong>Kategorie hinzufügen</strong>
-            <input type="hidden" name="type" value="EXPENSE" />
-            <label>Name<input name="name" placeholder="Schule, Urlaub, Kindergeld ..." required /></label>
-            <label>Monatsbudget in EUR<input name="monthlyBudget" inputMode="decimal" placeholder="250,00" /></label>
-            <label>Farbe<input name="color" type="color" defaultValue="#2f6fed" /></label>
-            <CategoryIconPicker /><label className="checkbox-field"><input type="checkbox" name="excludeFromForecast" />Aus Prognose ausschließen (z. B. Auslagen)</label>
-            <button className="button secondary" type="submit">Kategorie speichern</button>
-          </form>
-        </div>
-      </details>
-
-      <details className="setup-card" id="kategorien-bearbeiten">
-        <summary>
-          <span>
-            <strong>Kategorien bearbeiten</strong>
-            <small>Budget, Farbe, Icon und Name anpassen</small>
-          </span>
-        </summary>
-        <div className="category-editor-list">
-          {categories.map((category) => (
-            <div className="label-management-row category-management-row" key={category.id}>
-              <div>
-                <strong><span className="category-icon-swatch" style={{ background: category.color }}><CategoryIcon icon={category.icon} size={16} /></span>{category.name}</strong>
-                <span className="muted">Monatsbudget: {formatMoney(category.monthlyBudgetCents)}{category.excludeFromForecast ? " · Ohne Prognose" : ""}</span>
-              </div>
-              <div className="label-management-actions">
-                <FinanceSetupEdit title={`${category.name} bearbeiten`}>
-                  <AutosaveForm action={updateCategory} className="form compact label-inline-form" statusKey={`expense-category-${category.id}`}>
-                    <input type="hidden" name="id" value={category.id} />
-                    <input type="hidden" name="returnTo" value={returnTo} />
-                    <label>Name<input name="name" defaultValue={category.name} required /></label>
-                    <label>Monatsbudget in EUR<input name="monthlyBudget" inputMode="decimal" defaultValue={formatEuroInput(category.monthlyBudgetCents)} /></label>
-                    <label>Farbe<input name="color" type="color" defaultValue={category.color} /></label>
-                    <CategoryIconPicker defaultValue={category.icon} /><input type="hidden" name="forecastExclusionPresent" value="1" /><label className="checkbox-field"><input type="checkbox" name="excludeFromForecast" defaultChecked={category.excludeFromForecast} />Aus Prognose ausschließen (z. B. Auslagen)</label>
-                    <input type="hidden" name="scope" value="PRIVATE" />
-                    <button className="button secondary autosave-submit" type="submit">Speichern</button>
-                  </AutosaveForm>
-                </FinanceSetupEdit>
-                <form action={deleteCategory}>
-                  <input type="hidden" name="id" value={category.id} />
-                  <input type="hidden" name="returnTo" value={returnTo} />
-                  <ConfirmSubmitButton className="icon-button finance-setup-icon danger-subtle" title="Kategorie löschen?" message="Die Kategorie wird nur gelöscht, wenn sie nicht mehr verwendet wird."><Trash2 size={18} aria-hidden="true" /><span className="sr-only">Kategorie löschen</span></ConfirmSubmitButton>
-                </form>
-              </div>
-            </div>
-          ))}
-        </div>
-      </details>
-
-      <details className="setup-card" id="labels-verwalten">
-        <summary>
-          <span>
-            <strong>Labels verwalten</strong>
-            <small>Aktive Labels nach letzter Nutzung, archivierte am Ende</small>
-          </span>
-        </summary>
-        <div className="label-management-list">
-          {allLabels.length === 0 ? <EmptyState>Noch keine Labels vorhanden.</EmptyState> : null}
-          {allLabels.map((label) => (
-            <div className={label.archivedAt ? "label-management-row archived" : "label-management-row"} key={label.id}>
-              <div>
-                <strong>{label.name}</strong>
-                <span className="muted">
-                  {label.archivedAt ? "Archiviert" : "Aktiv"}{" · "}{label.budgetCents > 0 ? `Budget: ${formatMoney(label.budgetCents)}` : "Ohne Budget"}{" · "}{label.lastUsedAt ? `Zuletzt genutzt: ${formatDate(label.lastUsedAt)}` : "Noch nicht genutzt"}
-                </span>
-              </div>
-              <div className="label-management-actions">
-                <FinanceSetupEdit title={`${label.name} bearbeiten`}>
-                  <AutosaveForm action={updateExpenseLabel} className="form compact label-inline-form" statusKey={`expense-label-${label.id}`}>
-                    <input type="hidden" name="id" value={label.id} />
-                    <input type="hidden" name="returnTo" value={returnTo} />
-                    <label>Name<input name="name" defaultValue={label.name} required /></label>
-                    <label>Budget in EUR<input name="budget" inputMode="decimal" defaultValue={formatEuroInput(label.budgetCents)} /></label>
-                    <label>Farbe<input name="color" type="color" defaultValue={label.color} /></label>
-                    <button className="button secondary autosave-submit" type="submit">Speichern</button>
-                  </AutosaveForm>
-                </FinanceSetupEdit>
-                <form action={label.archivedAt ? unarchiveExpenseLabel : archiveExpenseLabel}>
-                  <input type="hidden" name="id" value={label.id} />
-                  <input type="hidden" name="returnTo" value={returnTo} />
-                  <button className="icon-button finance-setup-icon" type="submit" aria-label={label.archivedAt ? "Wieder aktivieren" : "Archivieren"} title={label.archivedAt ? "Wieder aktivieren" : "Archivieren"}>{label.archivedAt ? <ArchiveRestore size={18} /> : <Archive size={18} />}</button>
-                </form>
-                <form action={deleteExpenseLabel}>
-                  <input type="hidden" name="id" value={label.id} />
-                  <input type="hidden" name="returnTo" value={returnTo} />
-                  <ConfirmSubmitButton className="icon-button finance-setup-icon danger-subtle" title="Label löschen?" message="Das Label wird nur gelöscht, wenn es nicht mehr verwendet wird."><Trash2 size={18} aria-hidden="true" /><span className="sr-only">Label löschen</span></ConfirmSubmitButton>
-                </form>
-              </div>
-            </div>
-          ))}
-        </div>
-      </details>
-
-      <details className="setup-card" id="daten-zusammenfuehren">
-        <summary>
-          <span>
-            <strong>Zusammenführen</strong>
-            <small>Typo-Daten in das richtige Ziel schieben</small>
-          </span>
-        </summary>
-        <div className="merge-tools">
-          <form action={mergeExpenseLabels} className="form compact">
-            <input type="hidden" name="returnTo" value={returnTo} />
-            <strong>Labels</strong>
-            <label>Von<select name="sourceLabelId" required defaultValue=""><option value="" disabled>Typo wählen</option>{allLabels.map((label) => <option value={label.id} key={label.id}>{label.name}{label.archivedAt ? " (archiviert)" : ""}</option>)}</select></label>
-            <label>Nach<select name="targetLabelId" required defaultValue=""><option value="" disabled>Ziel wählen</option>{allLabels.map((label) => <option value={label.id} key={label.id}>{label.name}{label.archivedAt ? " (archiviert)" : ""}</option>)}</select></label>
-            <button className="button secondary" type="submit" disabled={allLabels.length < 2}>Labels zusammenführen</button>
-          </form>
-          <form action={mergeExpenseCategories} className="form compact">
-            <input type="hidden" name="returnTo" value={returnTo} />
-            <strong>Kategorien</strong>
-            <label>Von<select name="sourceCategoryId" required defaultValue=""><option value="" disabled>Typo wählen</option>{categories.map((category) => <option value={category.id} key={category.id}>{category.name}</option>)}</select></label>
-            <label>Nach<select name="targetCategoryId" required defaultValue=""><option value="" disabled>Ziel wählen</option>{categories.map((category) => <option value={category.id} key={category.id}>{category.name}</option>)}</select></label>
-            <button className="button secondary" type="submit" disabled={categories.length < 2}>Kategorien zusammenführen</button>
-          </form>
-        </div>
-      </details>
-
-      {includeSeries ? <RecurringTransactionsPanel recurringTransactions={recurringTransactions} categories={categories} labels={labels} /> : null}
-    </div>
-  );
-}
 
 export function RecurringTransactionsPanel({ recurringTransactions, categories, labels }: { recurringTransactions: RecurringTransactionLike[]; categories: CategoryLike[]; labels: LabelLike[] }) {
   const today = new Date().toISOString().slice(0, 10);
@@ -351,7 +168,8 @@ export function ExpenseCreateSetupPanel({ returnTo = "/ausgaben/setup/anlegen" }
           <input type="hidden" name="returnTo" value={returnTo} />
           <strong>Label hinzufügen</strong>
           <label>Name<input name="name" placeholder="Dienstreise Berlin, Gartenprojekt ..." required /></label>
-          <label>Budget in EUR<input name="budget" inputMode="decimal" placeholder="500,00" /></label>
+          <label>Budgetbetrag in EUR<input name="budget" inputMode="decimal" placeholder="500,00" /></label>
+          <label>Zeitraum<select name="budgetCadence" defaultValue="ALL_TIME"><option value="MONTHLY">Monatlich</option><option value="YEARLY">Jährlich</option><option value="ALL_TIME">Allzeit</option></select></label>
           <label>Farbe<input name="color" type="color" defaultValue="#16776f" /></label>
           <button className="button secondary" type="submit">Label speichern</button>
         </form>
@@ -360,7 +178,8 @@ export function ExpenseCreateSetupPanel({ returnTo = "/ausgaben/setup/anlegen" }
           <strong>Kategorie hinzufügen</strong>
           <input type="hidden" name="type" value="EXPENSE" />
           <label>Name<input name="name" placeholder="Schule, Urlaub, Kindergeld ..." required /></label>
-          <label>Monatsbudget in EUR<input name="monthlyBudget" inputMode="decimal" placeholder="250,00" /></label>
+          <label>Budgetbetrag in EUR<input name="monthlyBudget" inputMode="decimal" placeholder="250,00" /></label>
+          <label>Zeitraum<select name="budgetCadence" defaultValue="MONTHLY"><option value="MONTHLY">Monatlich</option><option value="YEARLY">Jährlich</option></select></label>
           <label>Farbe<input name="color" type="color" defaultValue="#2f6fed" /></label>
           <CategoryIconPicker /><label className="checkbox-field"><input type="checkbox" name="excludeFromForecast" />Aus Prognose ausschließen (z. B. Auslagen)</label>
           <button className="button secondary" type="submit">Kategorie speichern</button>
@@ -383,7 +202,7 @@ export function ExpenseCategorySetupPanel({ categories, returnTo = "/ausgaben/se
           <div className="label-management-row category-management-row" key={category.id}>
             <div>
               <strong><span className="category-icon-swatch" style={{ background: category.color }}><CategoryIcon icon={category.icon} size={16} /></span>{category.name}</strong>
-              <span className="muted">Monatsbudget: {formatMoney(category.monthlyBudgetCents)}{category.excludeFromForecast ? " · Ohne Prognose" : ""}</span>
+              <span className="muted">Budget: {formatMoney(category.monthlyBudgetCents)} · {budgetCadenceLabel(category.budgetCadence)}{category.excludeFromForecast ? " · Ohne Prognose" : ""}</span>
             </div>
             <div className="label-management-actions">
               <FinanceSetupEdit title={`${category.name} bearbeiten`}>
@@ -391,11 +210,12 @@ export function ExpenseCategorySetupPanel({ categories, returnTo = "/ausgaben/se
                   <input type="hidden" name="id" value={category.id} />
                   <input type="hidden" name="returnTo" value={returnTo} />
                   <label>Name<input name="name" defaultValue={category.name} required /></label>
-                  <label>Monatsbudget in EUR<input name="monthlyBudget" inputMode="decimal" defaultValue={formatEuroInput(category.monthlyBudgetCents)} /></label>
+                  <label>Budgetbetrag in EUR<input name="monthlyBudget" inputMode="decimal" defaultValue={formatEuroInput(category.monthlyBudgetCents)} /></label>
+                  <label>Zeitraum<select name="budgetCadence" defaultValue={category.budgetCadence}><option value="MONTHLY">Monatlich</option><option value="YEARLY">Jährlich</option></select></label>
                   <label>Farbe<input name="color" type="color" defaultValue={category.color} /></label>
                   <CategoryIconPicker defaultValue={category.icon} /><input type="hidden" name="forecastExclusionPresent" value="1" /><label className="checkbox-field"><input type="checkbox" name="excludeFromForecast" defaultChecked={category.excludeFromForecast} />Aus Prognose ausschließen (z. B. Auslagen)</label>
                   <input type="hidden" name="scope" value="PRIVATE" />
-                  <button className="button secondary autosave-submit" type="submit">Speichern</button>
+                  <button className="button autosave-submit" type="submit">Speichern</button>
                 </AutosaveForm>
               </FinanceSetupEdit>
               <form action={deleteCategory}>
@@ -426,7 +246,7 @@ export function ExpenseLabelSetupPanel({ allLabels, returnTo = "/ausgaben/setup/
             <div>
               <strong>{label.name}</strong>
               <span className="muted">
-                {label.archivedAt ? "Archiviert" : "Aktiv"}{" · "}{label.budgetCents > 0 ? `Budget: ${formatMoney(label.budgetCents)}` : "Ohne Budget"}{" · "}{label.lastUsedAt ? `Zuletzt genutzt: ${formatDate(label.lastUsedAt)}` : "Noch nicht genutzt"}
+                {label.archivedAt ? "Archiviert" : "Aktiv"}{" · "}{label.budgetCents > 0 ? `Budget: ${formatMoney(label.budgetCents)} · ${budgetCadenceLabel(label.budgetCadence)}` : "Ohne Budget"}{" · "}{label.lastUsedAt ? `Zuletzt genutzt: ${formatDate(label.lastUsedAt)}` : "Noch nicht genutzt"}
               </span>
             </div>
             <div className="label-management-actions">
@@ -435,9 +255,10 @@ export function ExpenseLabelSetupPanel({ allLabels, returnTo = "/ausgaben/setup/
                   <input type="hidden" name="id" value={label.id} />
                   <input type="hidden" name="returnTo" value={returnTo} />
                   <label>Name<input name="name" defaultValue={label.name} required /></label>
-                  <label>Budget in EUR<input name="budget" inputMode="decimal" defaultValue={formatEuroInput(label.budgetCents)} /></label>
+                  <label>Budgetbetrag in EUR<input name="budget" inputMode="decimal" defaultValue={formatEuroInput(label.budgetCents)} /></label>
+                  <label>Zeitraum<select name="budgetCadence" defaultValue={label.budgetCadence}><option value="MONTHLY">Monatlich</option><option value="YEARLY">Jährlich</option><option value="ALL_TIME">Allzeit</option></select></label>
                   <label>Farbe<input name="color" type="color" defaultValue={label.color} /></label>
-                  <button className="button secondary autosave-submit" type="submit">Speichern</button>
+                  <button className="button autosave-submit" type="submit">Speichern</button>
                 </AutosaveForm>
               </FinanceSetupEdit>
               <form action={label.archivedAt ? unarchiveExpenseLabel : archiveExpenseLabel}>

@@ -2,6 +2,8 @@
 
 This folder is the Synology Container Manager handoff bundle. It assumes the full project is copied to:
 
+For an update of an existing installation, start with [QUICK_DEPLOY.md](QUICK_DEPLOY.md). This README describes the fuller setup and recovery details.
+
 ```text
 /volume1/docker/family-app
 ```

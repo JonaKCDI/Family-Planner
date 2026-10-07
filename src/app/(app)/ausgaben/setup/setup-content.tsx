@@ -34,6 +34,13 @@ export const financeSetupSections = [
 export type FinanceSetupSectionId = typeof financeSetupSections[number]["id"];
 export type FinanceSetupContext = Awaited<ReturnType<typeof loadFinanceSetupContext>>;
 
+export function DesktopFinanceSetupNav({ section }: { section?: FinanceSetupSectionId }) {
+  return <nav className="desktop-section-nav" aria-label="Finanz-Setup-Bereiche">
+    <Link href="/ausgaben/setup" className={!section ? "active" : ""} aria-current={!section ? "page" : undefined}>Übersicht</Link>
+    {financeSetupSections.map((item) => <Link href={`/ausgaben/setup/${item.id}`} className={section === item.id ? "active" : ""} aria-current={section === item.id ? "page" : undefined} key={item.id}>{item.title}</Link>)}
+  </nav>;
+}
+
 export async function loadFinanceSetupContext(session: {
   family: { id: string };
   user: { id: string };

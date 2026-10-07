@@ -1,14 +1,14 @@
 import { beforeEach, expect, test, vi } from "vitest";
 
-const mocks=vi.hoisted(()=>({member:vi.fn(),expenses:vi.fn(),categories:vi.fn(),labels:vi.fn(),categoryMaps:vi.fn(),labelMaps:vi.fn(),sources:vi.fn(),generate:vi.fn()}));
+const mocks=vi.hoisted(()=>({member:vi.fn(),members:vi.fn(),expenses:vi.fn(),categories:vi.fn(),labels:vi.fn(),categoryMaps:vi.fn(),labelMaps:vi.fn(),sources:vi.fn(),generate:vi.fn()}));
 vi.mock("@/lib/auth",()=>({requireSession:async()=>({family:{id:"family"},user:{id:"a"},role:"MEMBER"})}));
 vi.mock("@/lib/contract-auto-expenses",()=>({ensureDueContractExpenses:mocks.generate}));
-vi.mock("@/lib/db",()=>({db:{familyMember:{findFirst:mocks.member},expense:{findMany:mocks.expenses},familyFinanceCategory:{findMany:mocks.categories},familyFinanceLabel:{findMany:mocks.labels},familyCategoryMapping:{findMany:mocks.categoryMaps},familyLabelMapping:{findMany:mocks.labelMaps},contract:{findMany:mocks.sources},recurringTransaction:{findMany:mocks.sources}}}));
+vi.mock("@/lib/db",()=>({db:{familyMember:{findFirst:mocks.member,findMany:mocks.members},expense:{findMany:mocks.expenses},familyFinanceCategory:{findMany:mocks.categories},familyFinanceLabel:{findMany:mocks.labels},familyCategoryMapping:{findMany:mocks.categoryMaps},familyLabelMapping:{findMany:mocks.labelMaps},contract:{findMany:mocks.sources},recurringTransaction:{findMany:mocks.sources}}}));
 import {getFamilyFinance} from "../src/lib/family-finance";
 
 beforeEach(()=>{
   vi.resetAllMocks();mocks.member.mockResolvedValue({role:"MEMBER"});
-  for(const mock of [mocks.expenses,mocks.categories,mocks.labels,mocks.categoryMaps,mocks.labelMaps,mocks.sources])mock.mockResolvedValue([]);
+  for(const mock of [mocks.members,mocks.expenses,mocks.categories,mocks.labels,mocks.categoryMaps,mocks.labelMaps,mocks.sources])mock.mockResolvedValue([]);
 });
 test("requires active membership before any finance read",async()=>{
   mocks.member.mockResolvedValue(null);

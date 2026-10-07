@@ -13,6 +13,7 @@ import {
 import { PageHeader } from "@/components/ui";
 import {
   financeSetupReturnTo,
+  DesktopFinanceSetupNav,
   FinanceSetupBackLink,
   financeSetupSections,
   FinanceSetupYearSelect,
@@ -38,16 +39,19 @@ export default async function ExpenseSetupSectionPage({ params, searchParams }: 
   const returnTo = financeSetupReturnTo(sectionId, context.selectedYear);
 
   return (
-    <div className="expense-setup-page-layout">
-      <header className="finance-setup-head"><FinanceSetupBackLink /><PageHeader title={sectionMeta.title} /></header>
-      <FinanceAreaSwitch />
-      {sectionId === "sicherung" ? <FinanceSetupYearSelect selectedYear={context.selectedYear} sectionId={sectionId} years={context.years} /> : null}
-      {sectionId === "sicherung" ? <ExpenseExcelSetupPanel exportYear={context.selectedYear} returnTo={returnTo} /> : null}
-      {sectionId === "anlegen" ? <ExpenseCreateSetupPanel returnTo={returnTo} /> : null}
-      {sectionId === "kategorien" ? <ExpenseCategorySetupPanel categories={context.categories} returnTo={returnTo} /> : null}
-      {sectionId === "labels" ? <ExpenseLabelSetupPanel allLabels={context.allLabels} returnTo={returnTo} /> : null}
-      {sectionId === "zusammenfuehren" ? <ExpenseMergeSetupPanel categories={context.categories} allLabels={context.allLabels} returnTo={returnTo} /> : null}
-      {sectionId === "serien" ? <RecurringTransactionsPanel recurringTransactions={context.recurringTransactions} categories={context.categories} labels={context.labels} /> : null}
+    <div className="desktop-section-layout">
+      <DesktopFinanceSetupNav section={sectionId} />
+      <div className="desktop-section-main expense-setup-page-layout">
+        <header className="finance-setup-head"><FinanceSetupBackLink /><PageHeader title={sectionMeta.title} /></header>
+        <FinanceAreaSwitch />
+        {sectionId === "sicherung" ? <FinanceSetupYearSelect selectedYear={context.selectedYear} sectionId={sectionId} years={context.years} /> : null}
+        {sectionId === "sicherung" ? <ExpenseExcelSetupPanel exportYear={context.selectedYear} returnTo={returnTo} /> : null}
+        {sectionId === "anlegen" ? <ExpenseCreateSetupPanel returnTo={returnTo} /> : null}
+        {sectionId === "kategorien" ? <ExpenseCategorySetupPanel categories={context.categories} returnTo={returnTo} /> : null}
+        {sectionId === "labels" ? <ExpenseLabelSetupPanel allLabels={context.allLabels} returnTo={returnTo} /> : null}
+        {sectionId === "zusammenfuehren" ? <ExpenseMergeSetupPanel categories={context.categories} allLabels={context.allLabels} returnTo={returnTo} /> : null}
+        {sectionId === "serien" ? <RecurringTransactionsPanel recurringTransactions={context.recurringTransactions} categories={context.categories} labels={context.labels} /> : null}
+      </div>
     </div>
   );
 }

@@ -4,7 +4,7 @@ import { buildFamilyFinanceWorkbook } from "../src/lib/family-finance-workbook";
 import { buildExpenseWorkbook, parseExpenseWorkbook } from "../src/lib/expense-formats";
 import { buildExpensesHref } from "../src/lib/expense-filter-url";
 
-const row = {id:"one",kind:"EXPENSE" as const,date:new Date("2026-09-01T00:00:00Z"),currency:"EUR",amountCents:1000,description:"Einkauf",store:"Markt",paymentMethod:"Karte",person:{id:"a",name:"Anna"},categoryId:"food",labelId:null,category:{id:"food",name:"Lebensmittel",color:"#16776f",icon:"tag",monthlyBudgetCents:10000,excludeFromForecast:false,familyId:"family",archivedAt:null},label:null,canEdit:true};
+const row = {id:"one",kind:"EXPENSE" as const,date:new Date("2026-09-01T00:00:00Z"),currency:"EUR",amountCents:1000,description:"Einkauf",store:"Markt",paymentMethod:"Karte",person:{id:"a",name:"Anna"},categoryId:"food",labelId:null,category:{id:"food",name:"Lebensmittel",color:"#16776f",icon:"tag",monthlyBudgetCents:10000,budgetCadence:"MONTHLY" as const,excludeFromForecast:false,familyId:"family",archivedAt:null},label:null,canEdit:true};
 const rows=[row,{...row,id:"two",amountCents:3000,person:{id:"b",name:"Ben"}},{...row,id:"usd",currency:"USD",amountCents:99999}];
 
 describe("family finance calculations",()=>{

@@ -34,6 +34,12 @@ enum CategoryType {
   CONTRACT
 }
 
+enum BudgetCadence {
+  MONTHLY
+  YEARLY
+  ALL_TIME
+}
+
 enum TransactionKind {
   EXPENSE
   INCOME
@@ -119,6 +125,7 @@ enum ExpensePlanningRulePatternType {
 model User {
   id           String         @id @default(cuid())
   developerFeatures Boolean   @default(false)
+  lastSelectedCarId String?
   name         String         @unique
   passwordHash String
   status       UserStatus     @default(ACTIVE)
@@ -257,6 +264,7 @@ model Category {
   color       String       @default("#2f6fed")
   icon        String       @default("tag")
   monthlyBudgetCents Int   @default(0)
+  budgetCadence BudgetCadence @default(MONTHLY)
   excludeFromForecast Boolean @default(false)
   scope       Scope        @default(FAMILY)
   family      Family       @relation(fields: [familyId], references: [id], onDelete: Cascade)
@@ -278,6 +286,7 @@ model ExpenseLabel {
   name        String
   color       String   @default("#16776f")
   budgetCents Int      @default(0)
+  budgetCadence BudgetCadence @default(ALL_TIME)
   archivedAt  DateTime?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -667,6 +676,7 @@ model FamilyFinanceCategory {
   color String @default("#16776f")
   icon String @default("tag")
   monthlyBudgetCents Int @default(0)
+  budgetCadence BudgetCadence @default(MONTHLY)
   excludeFromForecast Boolean @default(false)
   archivedAt DateTime?
   family Family @relation(fields: [familyId], references: [id], onDelete: Cascade)
@@ -692,6 +702,7 @@ model FamilyFinanceLabel {
   name String
   color String @default("#16776f")
   budgetCents Int @default(0)
+  budgetCadence BudgetCadence @default(ALL_TIME)
   archivedAt DateTime?
   family Family @relation(fields: [familyId], references: [id], onDelete: Cascade)
   mappings FamilyLabelMapping[]

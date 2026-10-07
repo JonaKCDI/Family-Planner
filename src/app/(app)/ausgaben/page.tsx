@@ -12,9 +12,8 @@ import {
   buildCategoryRows,
   buildLabelRows,
   buildPeriodRows,
+  budgetCadenceLabel,
   sumByKind,
-  type ExpenseChartDimension,
-  type ExpenseChartMetric,
   type PeriodRow
 } from "@/lib/expense-analytics";
 import { toExpenseDocumentItem, toExpenseListItem } from "@/lib/expense-list";
@@ -33,6 +32,10 @@ import { FinanceTransitionMarker } from "@/components/finance-transition-marker"
 import { CategoryIcon } from "@/components/category-icon";
 import { PeriodNavLink } from "@/components/period-nav-link";
 import { EmptyState, PageHeader } from "@/components/ui";
+import { DesktopDetail, DesktopFacts, DesktopWorkspace, desktopSelectedRecord } from "@/components/desktop-workspace";
+import { DesktopFinanceAnalysisList } from "@/components/desktop-finance-analysis-list";
+import { FinanceDetailAnalysis } from "@/components/finance-detail-analysis";
+import { CategoryDistributionChart } from "@/components/category-distribution-chart";
 
 type ExpensesPageProps = {
   searchParams: Promise<ExpenseFilterParams>;
@@ -79,12 +82,15 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
   const spending = sumByKind(selectedEntries, "EXPENSE");
   const saldo = income - spending;
   const netConsumption = Math.max(0, spending - income);
-  const showBudget = range.mode === "month";
-  const monthBudget = showBudget ? categories.reduce((sum, category) => sum + category.monthlyBudgetCents, 0) : 0;
-  const categoryRows = buildCategoryRows(selectedEntries, categories, spending, showBudget);
-  const labelRows = buildLabelRows(selectedEntries, labels);
+  const showBudget = range.mode !== "all";
+  const budgetHistoryEntries = expenses.filter((entry) => entry.currency === (params.currency || "EUR"));
+  const categoryRows = buildCategoryRows(selectedEntries, categories, spending, range);
+  const desktopMixedCurrencies = !params.currency && new Set(selectedEntries.map((entry) => entry.currency)).size > 1;
+  const labelRows = buildLabelRows(selectedEntries, labels, range, budgetHistoryEntries);
   const categoryAnalysisRows = categoryRows.filter((row) => row.spending > 0 || row.income > 0);
-  const labelAnalysisRows = labelRows.filter((row) => row.spending > 0 || row.income > 0);
+  const labelAnalysisRows = labelRows.filter((row) => row.spending > 0 || row.income > 0 || row.budget > 0);
+  const desktopCategoryId = categoryAnalysisRows.some((row) => (row.id ?? "unassigned") === params.selected) ? params.selected! : (categoryAnalysisRows[0]?.id ?? "unassigned");
+  const desktopLabelId = labelAnalysisRows.some((row) => (row.id ?? "unassigned") === params.selected) ? params.selected! : (labelAnalysisRows[0]?.id ?? "unassigned");
   const monthlyRows = buildPeriodRows(selectedEntries, categories, "month");
   const analysisParams = explicitExpensePeriod(params, range);
   const comparisonRange = getComparisonRange(params, range);
@@ -104,10 +110,48 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
   const expenseListEntries = initialEntries.map(toExpenseListItem);
   const expenseListLoadUrl = buildExpenseListLoadUrl(params);
   const returnTo = getRawExpensesHref(params);
+  const monthBudget = showBudget ? categoryRows.reduce((sum, category) => sum + category.budget, 0) : 0;
   const budgetRemaining = monthBudget - netConsumption;
   const isAnalysisArea = isFinanceAnalysisView(view);
   const summaryMax = Math.max(income, spending, Math.abs(saldo), Math.abs(budgetRemaining), 1);
   const budgetUsageWidth = showBudget && monthBudget > 0 ? `${Math.max(4, Math.min(100, (netConsumption / monthBudget) * 100))}%` : "0%";
+  const desktopEntries = view === "overview" ? recentEntries : sortedEntries;
+  const desktopSelectedExpense = desktopSelectedRecord(desktopEntries, params.selected ?? undefined);
+  const desktopEntryWorkspace = (view === "overview" || view === "entries") ? <DesktopWorkspace
+    ariaLabel="Buchungen und Details"
+    title={view === "overview" ? "Buchungen im Blick" : "Alle Buchungen"}
+    description={`${formatCalendarBound(range.from)} bis ${formatCalendarBound(range.to)}`}
+    controls={view === "entries" ? <>{selectedEntries.length > 0 && <ExpenseSortControl params={params} sortKey={sortKey} modalId="ausgaben-sortierung-desktop" />}<DuplicateReviewPanel groups={duplicateGroups} returnTo={returnTo} modalId="ausgaben-duplikate-desktop" /></> : null}
+    rows={desktopEntries.map((entry) => ({ id: entry.id, title: entry.description || "Ohne Beschreibung", subtitle: `${formatDate(entry.date)} · ${entry.category?.name ?? "Ohne Kategorie"}`, meta: `${entry.kind === "INCOME" ? "+" : "−"}${formatMoney(entry.amountCents, entry.currency)}` }))}
+    selectedId={desktopSelectedExpense?.id}
+    pathname="/ausgaben"
+    params={params}
+    detail={desktopSelectedExpense ? <DesktopDetail title={desktopSelectedExpense.description || "Ohne Beschreibung"} eyebrow="Buchung" actions={<ExpenseEntryList
+        initialEntries={[toExpenseListItem(desktopSelectedExpense)]}
+        totalCount={1}
+        duplicateCounts={{}}
+        categories={categories.map((category) => ({ id: category.id, name: category.name, color: category.color, icon: category.icon }))}
+        labels={labels.map((label) => ({ id: label.id, name: label.name, color: label.color }))}
+        contracts={contracts.map((contract) => ({ id: contract.id, provider: contract.provider, contractType: contract.contractType }))}
+        documentRoots={documentRoots}
+        initialDocumentsByExpense={{ [desktopSelectedExpense.id]: documentsByExpense[desktopSelectedExpense.id] ?? [] }}
+        loadUrl={expenseListLoadUrl}
+        returnTo={returnTo}
+        pageSize={1}
+        inspectorTrigger
+        modalIdPrefix="desktop-expense"
+      />}>
+      <strong className={desktopSelectedExpense.kind === "INCOME" ? "positive" : "negative"}>{desktopSelectedExpense.kind === "INCOME" ? "+" : "−"}{formatMoney(desktopSelectedExpense.amountCents, desktopSelectedExpense.currency)}</strong>
+      <DesktopFacts items={[
+        { label: "Datum", value: formatDate(desktopSelectedExpense.date) },
+        { label: "Kategorie", value: desktopSelectedExpense.category?.name ?? "Ohne Kategorie" },
+        { label: "Label", value: desktopSelectedExpense.label?.name ?? "Kein Label" },
+        { label: "Geschäft", value: desktopSelectedExpense.store || "Nicht angegeben" },
+        { label: "Zahlungsart", value: desktopSelectedExpense.paymentMethod || "Nicht angegeben" },
+        { label: "Art", value: desktopSelectedExpense.kind === "INCOME" ? "Einnahme" : "Ausgabe" }
+      ]} />
+    </DesktopDetail> : null}
+  /> : null;
 
   return (
     <>
@@ -169,7 +213,7 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
 
       {view === "overview" ? (
       <section className="finance-overview-page spacing-top" id="ueberblick">
-        <section className="finance-summary-panel" aria-label="Finanzüberblick">
+        <section className={`finance-summary-panel${desktopMixedCurrencies ? " desktop-mixed-original-summary" : ""}`} aria-label="Finanzüberblick">
           <div className="finance-summary-metric tone-income">
             <div className="finance-summary-card-head">
               <span>Einnahmen</span>
@@ -205,20 +249,21 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
             {showBudget ? (
               <>
                 <strong>{formatMoney(budgetRemaining)}</strong>
-                <small>{formatMoney(netConsumption)} netto verbraucht</small>
+                <small>{formatMoney(netConsumption)} netto im gewählten Zeitraum</small>
                 <div className="finance-summary-spark budget-spark" aria-hidden="true"><b style={{ width: budgetUsageWidth }} /></div>
               </>
             ) : (
               <>
-                <strong>Monat wählen</strong>
-                <small>Budgetreste gibt es in der Monatsansicht</small>
+                <strong>Zeitraum eingrenzen</strong>
+                <small>Budgetvergleiche gibt es für Monat, Jahr und allzeit-Budgets</small>
                 <div className="finance-summary-spark" aria-hidden="true"><b style={{ width: "0%" }} /></div>
               </>
             )}
           </div>
         </section>
+        {desktopMixedCurrencies && <DesktopCurrencySummary entries={selectedEntries} monthBudget={monthBudget} showBudget={showBudget} />}
 
-        <section className="panel finance-overview-snapshot">
+        <section className={`panel finance-overview-snapshot${desktopMixedCurrencies ? " desktop-mixed-currencies" : ""}`}>
           <div className="section-head compact-section-head">
             <div>
               <h2 className="section-title">Ausgaben nach Kategorie</h2>
@@ -227,13 +272,15 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
             <Link className="button secondary" href={financeViewHref(params, "categories")} scroll={false}>Alle</Link>
           </div>
           <BudgetPressureList rows={categoryRows} showBudget={showBudget} />
+          <LabelBudgetPressureList rows={labelRows} />
+          {desktopMixedCurrencies && <DesktopCurrencyCategoryList rows={categoryRows} entries={selectedEntries} showBudget={showBudget} />}
         </section>
 
         <section className="panel finance-overview-snapshot">
           <div className="section-head compact-section-head">
             <div>
               <h2 className="section-title">Letzte Buchungen</h2>
-              <p className="muted">{formatDate(range.from)} bis {formatDate(range.to)}</p>
+              <p className="muted"><span className="mobile-only">{formatDate(range.from)} bis {formatDate(range.to)}</span><span className="desktop-only">{formatCalendarBound(range.from)} bis {formatCalendarBound(range.to)}</span></p>
             </div>
             <Link className="button secondary" href={financeViewHref(params, "entries")} scroll={false}>Alle</Link>
           </div>
@@ -255,16 +302,19 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
           )}
         </section>
 
+        <div className="desktop-finance-workspace">{desktopEntryWorkspace}</div>
         <Link className="finance-inline-analysis-link" href={financeViewHref(params, "categories")} scroll={false}>Detaillierte Analyse ansehen <span aria-hidden="true">→</span></Link>
       </section>
       ) : null}
+
+      {view === "entries" ? <div className="desktop-finance-workspace">{desktopEntryWorkspace}</div> : null}
 
       {view === "entries" ? (
       <section className="panel expense-section" id="eintraege">
         <div className="expense-section-summary">
           <div className="expense-section-heading">
             <h2 className="section-title">Einträge</h2>
-            <p className="muted expense-section-meta">{formatDate(range.from)} bis {formatDate(range.to)} · {selectedEntries.length} Einträge</p>
+            <p className="muted expense-section-meta"><span className="mobile-only">{formatDate(range.from)} bis {formatDate(range.to)}</span><span className="desktop-only">{formatCalendarBound(range.from)} bis {formatCalendarBound(range.to)}</span> · {selectedEntries.length} Einträge</p>
           </div>
           {selectedEntries.length > 0 ? <ExpenseSortControl params={params} sortKey={sortKey} /> : null}
         </div>
@@ -309,20 +359,24 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
             ))}
           </div>
 
+          {categoryAnalysisRows.length > 0 && <><div className="desktop-analysis-overview-list"><DesktopFinanceAnalysisList params={params} dimension="category" selectedId={desktopCategoryId} workspaceView="categories" /></div><div className="desktop-analysis-inline"><FinanceDetailAnalysis params={params} dimension="category" id={desktopCategoryId} /></div></>}
         </section>
+        <CategoryDistributionChart rows={categoryAnalysisRows} currency={params.currency || "EUR"} />
       </section>
       ) : null}
 
       {view === "budgets" ? (
       <section className="analysis-tabs spacing-top" id="budgets">
-        <section className="panel finance-category-page">
+        <section className={`panel finance-category-page${desktopMixedCurrencies ? " desktop-mixed-currencies" : ""}`}>
           <div className="section-head compact-section-head">
             <div>
               <h2 className="section-title">Budgets</h2>
-              <p className="muted">{showBudget ? "Monatliche Budgets und Restbeträge." : "Budgets werden in der Monatsansicht bewertet."}</p>
+              <p className="muted">{showBudget ? "Budgets und Restbeträge für den gewählten Zeitraum." : "Für den Gesamtzeitraum werden nur Allzeit-Labelbudgets verglichen."}</p>
             </div>
           </div>
           <BudgetPressureList rows={categoryRows} showBudget={showBudget} />
+          <LabelBudgetPressureList rows={labelRows} />
+          {desktopMixedCurrencies && <DesktopCurrencyCategoryList rows={categoryRows} entries={selectedEntries} showBudget={showBudget} />}
           <div className="analysis-grid period-analysis-grid finance-mini-periods">
             <div><h3>Monatsübersicht</h3><MiniTable rows={monthlyRows} showBudget /></div>
           </div>
@@ -336,7 +390,7 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
           <div className="section-head compact-section-head">
             <div>
               <h2 className="section-title">Labels</h2>
-              <p className="muted">Projekte und Erstattungen über Kategorien hinweg.</p>
+              <p className="muted">Projekte und Erstattungen über Kategorien hinweg. Budgets zeigen den passenden Zeitraum.</p>
             </div>
           </div>
           <div className="list finance-analysis-list">
@@ -345,6 +399,7 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
               <FinanceAnalysisRow key={row.id ?? row.name} row={row} dimension="label" params={analysisParams} returnParams={params} currency={params.currency || "EUR"} percent={spending > 0 ? row.spending / spending * 100 : 0} />
             ))}
           </div>
+          {labelAnalysisRows.length > 0 && <><div className="desktop-analysis-overview-list"><DesktopFinanceAnalysisList params={params} dimension="label" selectedId={desktopLabelId} workspaceView="labels" /></div><div className="desktop-analysis-inline"><FinanceDetailAnalysis params={params} dimension="label" id={desktopLabelId} /></div></>}
         </section>
       </section>
       ) : null}
@@ -410,7 +465,7 @@ function PeriodComparisonView({ comparison }: { comparison: ReturnType<typeof bu
     }
   ] as const;
   const largestMetric = Math.max(...metrics.flatMap((metric) => [Math.abs(metric.current), Math.abs(metric.compare)]), 1);
-  const largestCategory = Math.max(...comparison.rows.flatMap((row) => [row.currentSpending, row.compareSpending]), 1);
+  const largestCategory = Math.max(...comparison.rows.flatMap((row) => [Math.abs(row.currentSaldo), Math.abs(row.compareSaldo)]), 1);
 
   return (
     <div className="period-comparison">
@@ -450,22 +505,22 @@ function PeriodComparisonView({ comparison }: { comparison: ReturnType<typeof bu
             <h3 className="section-title">Kategorien</h3>
           </div>
         </div>
-        <div className="comparison-category-list" aria-label="Ausgabenvergleich nach Kategorie">
-          {comparison.rows.length === 0 ? <EmptyState>Keine Ausgaben nach Kategorie in den Vergleichszeiträumen.</EmptyState> : null}
+        <div className="comparison-category-list" aria-label="Saldovergleich nach Kategorie">
+          {comparison.rows.length === 0 ? <EmptyState>Keine Buchungen nach Kategorie in den Vergleichszeiträumen.</EmptyState> : null}
           {comparison.rows.map((row) => {
-            const tone = comparisonTone("spending", row.delta);
+            const tone = comparisonTone("saldo", row.delta);
             return (
               <article className={`comparison-category-row tone-${tone}`} key={row.name}>
                 <div className="comparison-category-main">
                   <strong>{row.name}</strong>
-                  <span>{formatPercentDelta(row.delta, row.compareSpending)}</span>
+                  <span>{formatPercentDelta(row.delta, row.compareSaldo)}</span>
                 </div>
                 <div className="comparison-category-values">
-                  <span>Aktuell <b>{formatMoney(row.currentSpending)}</b></span>
-                  <span>Vergleich <b>{formatMoney(row.compareSpending)}</b></span>
+                  <span>Aktueller Saldo <b>{formatMoney(row.currentSaldo)}</b></span>
+                  <span>Vergleichssaldo <b>{formatMoney(row.compareSaldo)}</b></span>
                   <span className="comparison-category-delta"><TrendIcon delta={row.delta} /> <b>{formatSignedMoney(row.delta)}</b></span>
                 </div>
-                <ComparisonBars current={row.currentSpending} compare={row.compareSpending} max={largestCategory} />
+                <ComparisonBars current={row.currentSaldo} compare={row.compareSaldo} max={largestCategory} />
               </article>
             );
           })}
@@ -522,7 +577,7 @@ function formatSignedMoney(amountCents: number) {
 function formatPercentDelta(delta: number, base: number) {
   if (delta === 0) return "0 %";
   if (base === 0) return delta > 0 ? "neu im Zeitraum" : "weggefallen";
-  const value = (delta / base) * 100;
+  const value = (delta / Math.abs(base)) * 100;
   return `${value > 0 ? "+" : ""}${new Intl.NumberFormat("de-DE", { maximumFractionDigits: 0 }).format(value)} %`;
 }
 
@@ -531,27 +586,42 @@ function percentWidth(value: number, max: number) {
   return `${percent}%`;
 }
 
+function LabelBudgetPressureList({ rows }: { rows: ReturnType<typeof buildLabelRows> }) {
+  const visibleRows = rows.filter((row) => row.budget > 0).sort((a, b) => b.budgetUsage - a.budgetUsage || b.budgetConsumption - a.budgetConsumption).slice(0, 6);
+  if (visibleRows.length === 0) return null;
+  return <section className="finance-label-budget-section" aria-label="Labelbudgets">
+    <h3 className="section-title">Labelbudgets</h3>
+    <div className="finance-budget-list">
+      {visibleRows.map((row) => <div className="finance-budget-row" data-has-budget="true" key={row.id ?? row.name}>
+        <span className="finance-budget-icon" style={{ background: row.color }} aria-hidden="true">•</span>
+        <div><strong>{row.name}</strong><span>{budgetCadenceLabel(row.budgetPeriod)} · {row.budgetUsage.toFixed(0)} % genutzt</span><div className="bar-wrap budget-bar"><span style={{ width: `${Math.max(4, row.budgetUsage)}%`, background: row.color }} /></div></div>
+        <div className="amount-column"><strong>{formatMoney(row.spending)}</strong><small className="muted">im Zeitraum</small><small className={row.remaining < 0 ? "negative" : "positive"}>{row.remaining < 0 ? `${formatMoney(Math.abs(row.remaining))} drüber` : `${formatMoney(row.remaining)} frei`}</small></div>
+      </div>)}
+    </div>
+  </section>;
+}
+
 function BudgetPressureList({ rows, showBudget }: { rows: ReturnType<typeof buildCategoryRows>; showBudget: boolean }) {
   const visibleRows = (showBudget
     ? [...rows].sort((a, b) => {
-      const aPressure = a.budget > 0 ? a.budgetUsage : a.spending > 0 ? 1 : 0;
-      const bPressure = b.budget > 0 ? b.budgetUsage : b.spending > 0 ? 1 : 0;
+      const aPressure = a.budget > 0 ? a.budgetUsage : a.saldo !== 0 ? 1 : 0;
+      const bPressure = b.budget > 0 ? b.budgetUsage : b.saldo !== 0 ? 1 : 0;
       return bPressure - aPressure || b.spending - a.spending;
     })
-    : rows.filter((row) => row.spending > 0).sort((a, b) => b.spending - a.spending)).slice(0, 4);
+    : rows.filter((row) => row.spending > 0 || row.income > 0).sort((a, b) => Math.abs(b.saldo) - Math.abs(a.saldo))).slice(0, 4);
   if (visibleRows.length === 0) return <EmptyState>Noch keine Budgetdaten im Zeitraum.</EmptyState>;
   return (
     <div className="finance-budget-list">
       {visibleRows.map((row) => (
-        <div className="finance-budget-row" key={row.name}>
+        <div className="finance-budget-row" data-has-budget={row.budget > 0 ? "true" : "false"} key={row.id ?? row.name}>
           <span className="finance-budget-icon" style={{ background: row.color }} aria-hidden="true"><CategoryIcon icon={row.icon} size={17} /></span>
           <div>
             <strong>{row.name}</strong>
-            <span>{showBudget ? row.budget > 0 ? `${row.budgetUsage.toFixed(0)}% vom Budget genutzt` : "Ohne Budget" : `${row.percent.toFixed(0)}% der Ausgaben`}</span>
-            <div className="bar-wrap budget-bar"><span style={{ width: `${Math.max(4, showBudget ? row.budgetUsage : row.percent)}%`, background: row.color }} /></div>
+            <span>{showBudget ? row.budget > 0 ? `${row.budgetUsage.toFixed(0)}% genutzt · ${formatMoney(row.budget)} im Zeitraum (${budgetCadenceLabel(row.budgetPeriod)})` : "Ohne Budget" : `${row.percent.toFixed(0)}% des Saldos`}</span>
+            {(!showBudget || row.budget > 0) && <div className="bar-wrap budget-bar"><span style={{ width: `${Math.max(4, showBudget ? row.budgetUsage : row.percent)}%`, background: row.color }} /></div>}
           </div>
           <div className="amount-column">
-            <strong>{formatMoney(row.spending)}</strong>
+            <strong className={row.saldo < 0 ? "negative" : "positive"}>{formatMoney(row.saldo)}</strong>
             {showBudget ? <BudgetHint row={row} /> : null}
           </div>
         </div>
@@ -560,7 +630,46 @@ function BudgetPressureList({ rows, showBudget }: { rows: ReturnType<typeof buil
   );
 }
 
-function DuplicateReviewPanel({ groups, returnTo }: { groups: DuplicateGroup[]; returnTo: string }) {
+function DesktopCurrencyCategoryList({ rows, entries, showBudget }: { rows: ReturnType<typeof buildCategoryRows>; entries: ExpenseLike[]; showBudget: boolean }) {
+  return <div className="finance-budget-list desktop-category-budget-list" aria-label="Kategorien nach Währung">
+    <p className="muted">Beträge nach Währung getrennt. Budgets gelten für EUR.</p>
+    {rows.filter((row) => row.spending > 0 || row.income > 0 || (showBudget && row.budget > 0)).slice(0, 8).map((row) => {
+      const categoryEntries = entries.filter((entry) => (entry.categoryId ?? null) === (row.id ?? null));
+      const currencies = [...new Set(categoryEntries.map((entry) => entry.currency))].sort();
+      const eurSpending = categoryEntries.filter((entry) => entry.currency === "EUR" && entry.kind === "EXPENSE").reduce((sum, entry) => sum + entry.amountCents, 0);
+      const eurIncome = categoryEntries.filter((entry) => entry.currency === "EUR" && entry.kind === "INCOME").reduce((sum, entry) => sum + entry.amountCents, 0);
+      const eurUsage = row.budget > 0 ? Math.min(100, Math.max(0, (eurSpending - eurIncome) / row.budget * 100)) : 0;
+      return <div className="finance-budget-row" key={row.id ?? "unassigned"}>
+        <span className="finance-budget-icon" style={{ background: row.color }} aria-hidden="true"><CategoryIcon icon={row.icon} size={17} /></span>
+        <div><strong>{row.name}</strong><span>{row.budget > 0 ? `${eurUsage.toFixed(0)}% vom EUR-Budget genutzt · ${budgetCadenceLabel(row.budgetPeriod)}` : "Ohne Budget"}</span>{row.budget > 0 && <div className="bar-wrap budget-bar"><span style={{ width: `${Math.max(4, eurUsage)}%`, background: row.color }} /></div>}</div>
+        <div className="amount-column">{currencies.map((currency) => {
+          const spending = categoryEntries.filter((entry) => entry.currency === currency && entry.kind === "EXPENSE").reduce((sum, entry) => sum + entry.amountCents, 0);
+          const income = categoryEntries.filter((entry) => entry.currency === currency && entry.kind === "INCOME").reduce((sum, entry) => sum + entry.amountCents, 0);
+          const saldo = income - spending;
+          return <span key={currency}><strong className={saldo < 0 ? "negative" : "positive"}>Saldo {formatMoney(saldo, currency)}</strong></span>;
+        })}</div>
+      </div>;
+    })}
+  </div>;
+}
+
+function DesktopCurrencySummary({ entries, monthBudget, showBudget }: { entries: ExpenseLike[]; monthBudget: number; showBudget: boolean }) {
+  const currencies = [...new Set(entries.map((entry) => entry.currency))].sort();
+  return <div className="desktop-only desktop-currency-summary" role="region" aria-label="Finanzüberblick nach Währung">
+    {currencies.map((currency) => {
+      const currencyEntries = entries.filter((entry) => entry.currency === currency);
+      const income = sumByKind(currencyEntries, "INCOME");
+      const spending = sumByKind(currencyEntries, "EXPENSE");
+      const saldo = income - spending;
+      return <article className="desktop-currency-card" key={currency}>
+        <h2>{currency}</h2>
+        <dl><div><dt>Einnahmen</dt><dd>{formatMoney(income, currency)}</dd></div><div><dt>Ausgaben</dt><dd>{formatMoney(spending, currency)}</dd></div><div><dt>Saldo</dt><dd>{formatMoney(saldo, currency)}</dd></div>{currency === "EUR" && showBudget && <div><dt>Budget übrig · Zeitraum</dt><dd>{formatMoney(monthBudget - Math.max(0, spending - income), "EUR")}</dd></div>}</dl>
+      </article>;
+    })}
+  </div>;
+}
+
+function DuplicateReviewPanel({ groups, returnTo, modalId = "ausgaben-duplikate" }: { groups: DuplicateGroup[]; returnTo: string; modalId?: string }) {
   if (groups.length === 0) return null;
   const duplicateEntryCount = groups.reduce((sum, group) => sum + group.entries.length, 0);
   return (
@@ -569,7 +678,7 @@ function DuplicateReviewPanel({ groups, returnTo }: { groups: DuplicateGroup[]; 
         <strong>Duplikatprüfung</strong>
         <span>{groups.length} Gruppen mit {duplicateEntryCount} ähnlichen Einträgen</span>
       </div>
-      <ActionModal title="Duplikate prüfen" trigger="Duplikate" modalId="ausgaben-duplikate" triggerClassName="button duplicate-action-button" wide>
+      <ActionModal title="Duplikate prüfen" trigger="Duplikate" modalId={modalId} triggerClassName="button duplicate-action-button" wide>
         <div className="duplicate-review">
           <div className="duplicate-review-head">
             <div>
@@ -588,7 +697,7 @@ function DuplicateReviewPanel({ groups, returnTo }: { groups: DuplicateGroup[]; 
                   {group.entries.map((entry) => (
                     <form action={mergeDuplicateExpenses} className="duplicate-choice" key={entry.id}>
                       <input type="hidden" name="keepExpenseId" value={entry.id} />
-                      <input type="hidden" name="returnTo" value={withModalParam(returnTo, "ausgaben-duplikate")} />
+                      <input type="hidden" name="returnTo" value={withModalParam(returnTo, modalId)} />
                       {group.entries.map((duplicate) => <input type="hidden" name="expenseId" value={duplicate.id} key={duplicate.id} />)}
                       <div>
                         <strong>{entry.description || "Ohne Beschreibung"}</strong>
@@ -684,21 +793,6 @@ function MiniTable({ rows, showBudget = false }: { rows: PeriodRow[]; showBudget
 function BudgetHint({ row }: { row: { budget: number; remaining: number } }) {
   if (row.budget <= 0) return <small className="muted">ohne Budget</small>;
   return <small className={row.remaining < 0 ? "negative" : "positive"}>{row.remaining < 0 ? "netto drüber " : "netto frei "}{formatMoney(Math.abs(row.remaining))}</small>;
-}
-
-function AnalysisAmount({ row }: { row: { amount: number; income: number; spending: number; saldo: number } }) {
-  if (row.income <= 0) return <strong>{formatMoney(row.amount)}</strong>;
-  return (
-    <>
-      <strong className={row.saldo < 0 ? "negative" : "positive"}>{formatMoney(row.saldo)}</strong>
-      <small className="muted">Einnahmen {formatMoney(row.income)} · Ausgaben {formatMoney(row.spending)}</small>
-    </>
-  );
-}
-
-function labelRowMeta(row: { budget: number; neverUsed?: boolean }) {
-  const budget = row.budget > 0 ? `Budget ${formatMoney(row.budget)}` : "Ohne Budget";
-  return row.neverUsed ? `Noch nicht genutzt · ${budget}` : budget;
 }
 
 function FilterHiddenFields({
@@ -811,10 +905,12 @@ function ComparisonRangeForm({
 
 function ExpenseSortControl({
   params,
-  sortKey
+  sortKey,
+  modalId = "ausgaben-sortierung"
 }: {
   params: Awaited<ExpensesPageProps["searchParams"]>;
   sortKey: ReturnType<typeof getExpenseSortKey>;
+  modalId?: string;
 }) {
   const activeOption = expenseSortOptions.find((option) => option.value === sortKey) ?? expenseSortOptions[0];
   return (
@@ -824,7 +920,7 @@ function ExpenseSortControl({
         title="Einträge sortieren"
         trigger={<ListFilter aria-hidden="true" size={18} />}
         triggerLabel="Einträge sortieren"
-        modalId="ausgaben-sortierung"
+        modalId={modalId}
         triggerClassName="button secondary expense-sort-trigger"
         panelClassName="expense-sort-sheet"
         sheetSize="compact"
@@ -962,27 +1058,22 @@ function groupBy<T>(items: T[], getKey: (item: T) => string) {
   }, {});
 }
 
-function formatEuroInput(amountCents: number) {
-  if (amountCents === 0) return "";
-  return (amountCents / 100).toFixed(2).replace(".", ",");
-}
-
 function buildPeriodComparison(currentEntries: ExpenseLike[], compareEntries: ExpenseLike[], categories: CategoryLike[], currentRange: ReturnType<typeof getRange>, compareRange: { from: Date; to: Date }) {
   const names = new Set(categories.map((category) => category.name));
   for (const entry of [...currentEntries, ...compareEntries]) {
-    if (entry.kind === "EXPENSE") names.add(entry.category?.name ?? "Ohne Kategorie");
+    if (entry.kind === "EXPENSE" || entry.kind === "INCOME") names.add(entry.category?.name ?? "Ohne Kategorie");
   }
   const rows = [...names].map((name) => {
-    const currentSpending = sumCategoryEntries(currentEntries, name);
-    const compareSpending = sumCategoryEntries(compareEntries, name);
+    const currentSaldo = sumCategorySaldo(currentEntries, name);
+    const compareSaldo = sumCategorySaldo(compareEntries, name);
     return {
       name,
-      currentSpending,
-      compareSpending,
-      delta: currentSpending - compareSpending
+      currentSaldo,
+      compareSaldo,
+      delta: currentSaldo - compareSaldo
     };
-  }).filter((row) => row.currentSpending > 0 || row.compareSpending > 0)
-    .sort((a, b) => Math.max(b.currentSpending, b.compareSpending) - Math.max(a.currentSpending, a.compareSpending));
+  }).filter((row) => row.currentSaldo !== 0 || row.compareSaldo !== 0)
+    .sort((a, b) => Math.max(Math.abs(b.currentSaldo), Math.abs(b.compareSaldo)) - Math.max(Math.abs(a.currentSaldo), Math.abs(a.compareSaldo)));
   const currentIncome = sumByKind(currentEntries, "INCOME");
   const currentSpending = sumByKind(currentEntries, "EXPENSE");
   const compareIncome = sumByKind(compareEntries, "INCOME");
@@ -1009,75 +1100,22 @@ function buildPeriodComparison(currentEntries: ExpenseLike[], compareEntries: Ex
   };
 }
 
-function sumCategoryEntries(entries: ExpenseLike[], categoryName: string) {
+function sumCategorySaldo(entries: ExpenseLike[], categoryName: string) {
   return entries
-    .filter((entry) => entry.kind === "EXPENSE")
     .filter((entry) => (entry.category?.name ?? "Ohne Kategorie") === categoryName)
-    .reduce((sum, entry) => sum + entry.amountCents, 0);
+    .reduce((sum, entry) => sum + (entry.kind === "INCOME" ? entry.amountCents : -entry.amountCents), 0);
 }
 
 function rangeLabel(range: { from: Date; to: Date }) {
   return `${formatDate(range.from)} bis ${formatDate(range.to)}`;
 }
 
+function formatCalendarBound(date: Date) {
+  return new Intl.DateTimeFormat("de-DE", { day: "2-digit", month: "2-digit", year: "numeric", timeZone: "UTC" }).format(date);
+}
+
 function dateInputKey(date: Date) {
   return date.toISOString().slice(0, 10);
-}
-
-function previousSpendingBenchmark(entries: ExpenseLike[], categoryName: string, range: ReturnType<typeof getRange>) {
-  if (range.mode === "month") {
-    const periods = Array.from({ length: 6 }, (_, index) => {
-      const date = new Date(range.from.getFullYear(), range.from.getMonth() - index - 1, 1);
-      const from = new Date(date.getFullYear(), date.getMonth(), 1);
-      const to = endOfDay(new Date(date.getFullYear(), date.getMonth() + 1, 0));
-      return { from, to };
-    });
-    const result = averagePeriodSpending(entries, categoryName, periods, 3);
-    if (!result) return null;
-    return { average: result.average, label: `Ø ${formatMoney(result.average)} pro Monat aus ${result.count} Vormonaten` };
-  }
-
-  if (range.mode === "year") {
-    const year = range.from.getFullYear();
-    const periods = Array.from({ length: 4 }, (_, index) => {
-      const previousYear = year - index - 1;
-      return { from: new Date(previousYear, 0, 1), to: endOfDay(new Date(previousYear, 11, 31)) };
-    });
-    const result = averagePeriodSpending(entries, categoryName, periods, 2);
-    if (!result) return null;
-    return { average: result.average, label: `Ø ${formatMoney(result.average)} pro Jahr aus ${result.count} Vorjahren` };
-  }
-
-  if (range.mode === "custom") {
-    const dayMs = 24 * 60 * 60 * 1000;
-    const days = Math.max(1, Math.round((range.to.getTime() - range.from.getTime()) / dayMs) + 1);
-    const periods = Array.from({ length: 3 }, (_, index) => {
-      const to = endOfDay(new Date(range.from.getTime() - (index * days + 1) * dayMs));
-      const from = new Date(to.getTime() - (days - 1) * dayMs);
-      from.setHours(0, 0, 0, 0);
-      return { from, to };
-    });
-    const result = averagePeriodSpending(entries, categoryName, periods, 2);
-    if (!result) return null;
-    return { average: result.average, label: `Ø ${formatMoney(result.average)} je gleich langem Vorzeitraum aus ${result.count} Vergleichen` };
-  }
-
-  return null;
-}
-
-function averagePeriodSpending(entries: ExpenseLike[], categoryName: string, periods: Array<{ from: Date; to: Date }>, minimumCount: number) {
-  const totals = periods
-    .map((period) => entries
-      .filter((entry) => entry.kind === "EXPENSE")
-      .filter((entry) => (entry.category?.name ?? "Ohne Kategorie") === categoryName)
-      .filter((entry) => isInRange(entry.date, period.from, period.to))
-      .reduce((sum, entry) => sum + entry.amountCents, 0))
-    .filter((total) => total > 0);
-  if (totals.length < minimumCount) return null;
-  return {
-    average: Math.round(totals.reduce((sum, total) => sum + total, 0) / totals.length),
-    count: totals.length
-  };
 }
 
 function getExpenseView(value: unknown): FinanceView {
@@ -1091,38 +1129,6 @@ function getExpenseView(value: unknown): FinanceView {
 
 function isFinanceAnalysisView(view: FinanceView) {
   return view === "categories" || view === "budgets" || view === "labels" || view === "compare";
-}
-
-function getChartDimension(value: unknown): ExpenseChartDimension {
-  return value === "label" ? "label" : "category";
-}
-
-function getChartMetric(value: unknown): ExpenseChartMetric {
-  if (value === "income" || value === "saldo" || value === "net") return value;
-  return "spending";
-}
-
-function getChartTop(value: unknown) {
-  const top = Number(value);
-  return top === 3 || top === 5 || top === 8 ? top : 5;
-}
-
-function getChartMonths(value: unknown) {
-  const months = Number(value);
-  return months === 12 ? 12 : 6;
-}
-
-function formatCompactMoney(amountCents: number) {
-  const amount = Math.abs(amountCents);
-  if (amount >= 100000) return `${Math.round(amountCents / 100000) / 10}k`;
-  return formatMoney(amountCents).replace(",00", "");
-}
-
-function chartMetricLabel(metric: ExpenseChartMetric) {
-  if (metric === "income") return "Einnahmen";
-  if (metric === "saldo") return "Saldo";
-  if (metric === "net") return "Netto-Verbrauch";
-  return "Ausgaben";
 }
 
 function normalizeSearch(value: unknown) {

@@ -7,7 +7,7 @@ import { BanknoteArrowUp, ReceiptText, Scale } from "lucide-react";
 import { CategoryIcon } from "@/components/category-icon";
 import { requireSession } from "@/lib/auth";
 import { getVisibleCategories, getVisibleExpenses } from "@/lib/queries";
-import { monthlyTotals, monthlySaldo, movingAverage, recordedMonths, monthOffset, withoutExcludedCategories, forecastReference, forecastOverview, smoothedForecast } from "@/lib/expense-forecast";
+import { monthlySaldo, movingAverage, recordedMonths, monthOffset, withoutExcludedCategories, forecastReference, forecastOverview, smoothedSaldoForecast } from "@/lib/expense-forecast";
 import { formatMoney } from "@/lib/format";
 import { ForecastChart } from "@/components/expense-forecast-charts";
 import { PageHeader } from "@/components/ui";
@@ -26,9 +26,9 @@ export default async function ExpensePlanningPage({ searchParams }: { searchPara
   const reference = forecastReference(expenses, allowedForecastYear(session, params.year));
   const now = reference.date;
   const ownExpenses = withoutExcludedCategories(expenses, categories);
-  const history = monthlyTotals(ownExpenses, now, 17);
+  const history = monthlySaldo(ownExpenses, now, 17);
   const averages = movingAverage(history);
-  const prediction = smoothedForecast(ownExpenses, now);
+  const prediction = smoothedSaldoForecast(ownExpenses, now);
   const months = recordedMonths(ownExpenses, now);
   const overview = forecastOverview(expenses, categories, now, reference.selectedYear === null ? 1 : 0);
   const forecastMonth = monthOffset(now, reference.selectedYear === null ? 1 : 0);
@@ -40,9 +40,9 @@ export default async function ExpensePlanningPage({ searchParams }: { searchPara
   ];
   const rows = [...categories.map((c) => ({ id: c.id, name: c.name, icon: c.icon, color: c.color, excludeFromForecast: c.excludeFromForecast })), { id: "ohne-kategorie", name: "Ohne Kategorie", icon: "tag", color: "#6b6f76", excludeFromForecast: false }].map((c) => {
     const entries = expenses.filter((e) => (e.categoryId ?? "ohne-kategorie") === c.id);
-    return { ...c, average: monthlyTotals(entries, now, 6).reduce((sum, p) => sum + p.value, 0) / 6 };
+    return { ...c, average: monthlySaldo(entries, now, 6).reduce((sum, p) => sum + p.value, 0) / 6 };
   });
-  return <div className="forecast-page">
+  return <div className={`forecast-page${months === 0 ? " desktop-no-forecast-history" : ""}`}>
     <FinanceTransitionMarker view="planning" />
     <div className="task-page-head finance-page-head">
       <PageHeader title="Finanzen" suffix={<FinanceAreaIndicator />} />
@@ -69,8 +69,9 @@ export default async function ExpensePlanningPage({ searchParams }: { searchPara
     </section>
     {months < 6 && <p className="forecast-note">{months === 0 ? "Noch keine abgeschlossenen Monate erfasst." : `Erst ${months} Monate erfasst · Prognose vorläufig`}</p>}
     {months > 0 && months < 7 && <p className="forecast-note">Für einen geglätteten Trend fehlen noch Monate; vorerst gilt der Durchschnitt.</p>}
-    <section className="panel forecast-tile"><div className="forecast-section-head"><h2>Verlauf</h2><span>12 Monate</span></div>
-      <ForecastChart showMonthlyValues={false} history={history.slice(-12)} spendingLabel="Ausgaben bereinigt" saldo={monthlySaldo(expenses, now, 12)} average={averages.slice(-12)} forecast={prediction} />
+    <section className={`panel forecast-tile${months === 0 ? " desktop-empty-forecast" : ""}`}><div className="forecast-section-head"><h2>Verlauf</h2><span className={months === 0 ? "mobile-only" : undefined}>12 Monate</span>{months === 0 && <span className="desktop-only">Noch keine Daten</span>}</div>
+      {months === 0 && <p className="desktop-only desktop-forecast-empty-message">Noch keine abgeschlossenen Monate erfasst. Der Verlauf erscheint mit den ersten Monatswerten.</p>}
+      <ForecastChart showMonthlyValues={false} history={history.slice(-12)} spendingLabel="Saldo" average={averages.slice(-12)} forecast={prediction} />
     </section>
     <section className="panel finance-category-page forecast-tile"><div className="forecast-section-head"><h2>Kategorien</h2><span>Ø 6 Monate</span></div>
       <div className="list finance-analysis-list">{rows.map((row) => (

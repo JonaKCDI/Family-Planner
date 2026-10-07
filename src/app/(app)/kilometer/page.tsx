@@ -7,8 +7,7 @@ import {
   importFuelFromUploadedXlsx,
   unarchiveCar,
   updateCar,
-  updateFuelExpenseSettings,
-  updateFuelEntry
+  updateFuelExpenseSettings
 } from "@/lib/actions";
 import Link from "next/link";
 import { CalendarCheck, Droplets, Fuel, Pencil, Route, Trash2 } from "lucide-react";
@@ -25,17 +24,21 @@ import {
 } from "@/lib/mileage";
 import { buildMonthSelectOptions, formatMonthKeyLabel, splitMonthKey } from "@/lib/month-options";
 import { isFamilyAdmin } from "@/lib/permissions";
-import { getExpenseLabels, getFuelEntriesForCar, getFuelExpenseSettings, getVisibleCars, getVisibleCategories } from "@/lib/queries";
+import { getDocumentsForLinkedEntities, getExpenseLabels, getFuelEntriesForCar, getFuelExpenseSettings, getVisibleCars, getVisibleCategories, getVisibleDocumentRoots } from "@/lib/queries";
 import { ActionModal } from "@/components/action-modal";
 import { AutosaveForm } from "@/components/autosave-form";
 import { ConfirmSubmitButton } from "@/components/confirm-submit-button";
 import { ExcelProgressPanel } from "@/components/excel-progress-panel";
 import { MileageToolbar } from "@/components/mileage-toolbar";
+import { MileageCarPicker } from "@/components/mileage-car-picker";
 import { PeriodNavLink } from "@/components/period-nav-link";
 import { SearchableSelect } from "@/components/searchable-select";
+import { FuelEntryEditForm } from "@/components/fuel-entry-edit-form";
 import { EmptyState, PageHeader } from "@/components/ui";
+import { DesktopDetail, DesktopFacts, DesktopWorkspace, desktopSelectedRecord } from "@/components/desktop-workspace";
 
 type MileagePageParams = {
+  selected?: string | null;
   car?: string | null;
   month?: string | null;
   year?: string | null;
@@ -53,16 +56,24 @@ export default async function MileagePage({ searchParams }: MileagePageProps) {
   const session = await requireSession();
   const params = cleanMileageParams(await searchParams);
   const isAdmin = isFamilyAdmin(session.role);
-  const [activeCars, allCars, categories, labels, fuelExpenseSettings] = await Promise.all([
+  const [activeCars, allCars, categories, labels, fuelExpenseSettings, documentRoots] = await Promise.all([
     getVisibleCars(session.family.id),
     getVisibleCars(session.family.id, { includeArchived: true }),
     getVisibleCategories(session.family.id, session.user.id, "EXPENSE"),
     getExpenseLabels(session.family.id, session.user.id),
-    getFuelExpenseSettings(session.family.id, session.user.id)
+    getFuelExpenseSettings(session.family.id, session.user.id),
+    getVisibleDocumentRoots(session.family.id, session.user.id, session.role)
   ]);
-  const selectedCar = activeCars.find((car) => car.id === params.car) ?? activeCars[0] ?? null;
+  const selectedCar = activeCars.find((car) => car.id === params.car)
+    ?? activeCars.find((car) => car.id === session.user.lastSelectedCarId)
+    ?? activeCars[0]
+    ?? null;
   const entries = selectedCar ? await getFuelEntriesForCar(session.family.id, selectedCar.id) : [];
   const derivedEntries = addFuelDerivedFields(entries);
+  const fuelExpenseIds = entries.flatMap((entry) => entry.expense?.generatedByFuelEntry ? [entry.expense.id] : []);
+  const fuelDocuments = await getDocumentsForLinkedEntities(session.family.id, session.user.id, "EXPENSE", fuelExpenseIds);
+  const fuelDocumentsByExpenseId = new Map(fuelDocuments.map((document) => [document.linkedEntityId ?? "", document]));
+  const fuelExpensesByEntryId = new Map(entries.flatMap((entry) => entry.expense ? [[entry.id, entry.expense] as const] : []));
   const query = normalizeSearch(params.q);
   const currentMonthKey = getMonthKey();
   const years = [...new Set([new Date().getFullYear(), ...entries.map((entry) => new Date(entry.date).getFullYear())])].sort((a, b) => b - a);
@@ -82,6 +93,32 @@ export default async function MileagePage({ searchParams }: MileagePageProps) {
   const activeFilterChips = buildMileageActiveFilterChips(params, range);
 
   const comparison = buildMileageComparison(derivedEntries, range, query);
+  const desktopSelectedFuel = desktopSelectedRecord(selectedEntries, params.selected ?? undefined);
+  const desktopMileageWorkspace = selectedCar && (view === "overview" || view === "entries") ? <DesktopWorkspace
+    className="desktop-mileage-workspace"
+    ariaLabel="Tankstopps und Details"
+    title="Tankstopps"
+    description={`${selectedCar.name} · ${formatDate(range.from)} bis ${formatDate(range.to)}`}
+    rows={selectedEntries.map((entry) => ({ id: entry.id, title: `${formatDate(entry.date)} · ${formatKilometers(entry.odometerKm)} km`, subtitle: `${formatLiters(entry.litersMilli)} l · ${formatDecimal(entry.litersPer100Km)} l/100 km`, meta: formatMoney(entry.costCents) }))}
+    selectedId={desktopSelectedFuel?.id}
+    pathname="/kilometer"
+    params={params}
+    detail={desktopSelectedFuel ? <DesktopDetail title={selectedCar.name} eyebrow="Tankstopp" actions={<>
+      <FuelEntryEditModal entry={desktopSelectedFuel} expense={fuelExpensesByEntryId.get(desktopSelectedFuel.id)} linkedDocument={fuelDocumentsByExpenseId.get(fuelExpensesByEntryId.get(desktopSelectedFuel.id)?.id ?? "")} selectedCarId={selectedCar.id} selectedCarName={selectedCar.name} returnTo={returnTo} categories={categories} labels={labels} documentRoots={documentRoots} settings={fuelExpenseSettings} desktop />
+      <FuelEntryDeleteButton entryId={desktopSelectedFuel.id} selectedCarId={selectedCar.id} returnTo={returnTo} />
+    </>}>
+      <strong>{formatMoney(desktopSelectedFuel.costCents)}</strong>
+      <DesktopFacts items={[
+        { label: "Datum", value: formatDate(desktopSelectedFuel.date) },
+        { label: "Kilometerstand", value: `${formatKilometers(desktopSelectedFuel.odometerKm)} km` },
+        { label: "Getankt", value: `${formatLiters(desktopSelectedFuel.litersMilli)} l` },
+        { label: "Verbrauch", value: `${formatDecimal(desktopSelectedFuel.litersPer100Km)} l/100 km` },
+        { label: "Gefahren", value: desktopSelectedFuel.drivenKm === null ? "–" : `${formatKilometers(desktopSelectedFuel.drivenKm)} km` },
+        { label: "Preis pro Liter", value: `${formatMoney(Math.round(desktopSelectedFuel.pricePerLiterCents ?? 0))}/l` }
+      ]} />
+      {desktopSelectedFuel.note && <p className="desktop-detail-note">{desktopSelectedFuel.note}</p>}
+    </DesktopDetail> : null}
+  /> : null;
   return (
     <>
       <div className="task-page-head finance-page-head mileage-page-head">
@@ -159,6 +196,7 @@ export default async function MileagePage({ searchParams }: MileagePageProps) {
           {view === "overview" ? (
             <section className="finance-overview-page mileage-overview-page spacing-top">
               <MileageSummaryPanel comparison={comparison} stats={stats} />
+              {desktopMileageWorkspace}
 
               <section className="panel finance-overview-snapshot mileage-overview-snapshot">
                 <div className="section-head compact-section-head">
@@ -168,7 +206,7 @@ export default async function MileagePage({ searchParams }: MileagePageProps) {
                   </div>
                   <Link className="button secondary" href={getMileageHref(params, { view: "entries" })} scroll={false}>Alle</Link>
                 </div>
-                <FuelEntryList entries={recentEntries} selectedCarId={selectedCar.id} selectedCarName={selectedCar.name} returnTo={returnTo} />
+                <FuelEntryList entries={recentEntries} selectedCarId={selectedCar.id} selectedCarName={selectedCar.name} returnTo={returnTo} categories={categories} labels={labels} documentRoots={documentRoots} settings={fuelExpenseSettings} expensesByEntryId={fuelExpensesByEntryId} documentsByExpenseId={fuelDocumentsByExpenseId} />
               </section>
 
               <Link className="finance-inline-analysis-link" href={getMileageHref(params, { view: "analysis" })} scroll={false}>Verbrauchsanalyse ansehen <span aria-hidden="true">→</span></Link>
@@ -183,9 +221,11 @@ export default async function MileagePage({ searchParams }: MileagePageProps) {
                   <p className="muted">{formatDate(range.from)} bis {formatDate(range.to)} · {selectedEntries.length} Einträge</p>
                 </div>
               </div>
-              <FuelEntryList entries={selectedEntries} selectedCarId={selectedCar.id} selectedCarName={selectedCar.name} returnTo={returnTo} />
+              <FuelEntryList entries={selectedEntries} selectedCarId={selectedCar.id} selectedCarName={selectedCar.name} returnTo={returnTo} categories={categories} labels={labels} documentRoots={documentRoots} settings={fuelExpenseSettings} expensesByEntryId={fuelExpensesByEntryId} documentsByExpenseId={fuelDocumentsByExpenseId} />
             </section>
           ) : null}
+
+          {view === "entries" ? desktopMileageWorkspace : null}
 
           {view === "analysis" ? (
             <section className="panel finance-category-page mileage-analysis-page spacing-top">
@@ -261,12 +301,24 @@ function FuelEntryList({
   entries,
   selectedCarId,
   selectedCarName,
-  returnTo
+  returnTo,
+  categories,
+  labels,
+  documentRoots,
+  settings,
+  expensesByEntryId,
+  documentsByExpenseId
 }: {
   entries: ReturnType<typeof addFuelDerivedFields>;
   selectedCarId: string;
   selectedCarName: string;
   returnTo: string;
+  categories: Awaited<ReturnType<typeof getVisibleCategories>>;
+  labels: Awaited<ReturnType<typeof getExpenseLabels>>;
+  documentRoots: { id: string; name: string }[];
+  settings: Awaited<ReturnType<typeof getFuelExpenseSettings>>;
+  expensesByEntryId: Map<string, NonNullable<Awaited<ReturnType<typeof getFuelEntriesForCar>>[number]["expense"]>>;
+  documentsByExpenseId: Map<string, Awaited<ReturnType<typeof getDocumentsForLinkedEntities>>[number]>;
 }) {
   if (entries.length === 0) return <EmptyState>Noch keine Tankstopps im gewählten Zeitraum.</EmptyState>;
 
@@ -290,14 +342,8 @@ function FuelEntryList({
             </span>
             <strong className="mileage-cost">{formatMoney(entry.costCents)}</strong>
           </span>} triggerLabel="Tankstoppdetails öffnen" triggerClassName="mileage-row-detail-trigger" modalId={`fuel-entry-${entry.id}-details`} headerActions={<>
-            <ActionModal title="Tankstopp bearbeiten" trigger={<Pencil size={17} aria-hidden="true" />} triggerLabel="Tankstopp bearbeiten" triggerClassName="task-detail-edit-button mileage-row-edit-button" modalId={`fuel-entry-${entry.id}`} sheetVariant="create" panelClassName="mileage-edit-sheet" wide>
-              <AutosaveForm action={updateFuelEntry} className="form form-grid modal-form finance-create-form fuel-create-form mileage-edit-form" data-fuel-panel="main">
-                <input type="hidden" name="id" value={entry.id} /><input type="hidden" name="carId" value={selectedCarId} /><input type="hidden" name="returnTo" value={returnTo} />
-                <fieldset className="fieldset modal-form-section full-span finance-create-core fuel-create-core"><legend>Tankstopp</legend><div className="form-grid finance-create-grid fuel-create-grid"><label>Auto<input value={selectedCarName} readOnly /></label><label>Datum<input name="date" type="date" defaultValue={toDateInputValue(entry.date)} required /></label><div className="fuel-measure-row full-span"><label>Kilometerstand<input name="odometerKm" type="number" inputMode="numeric" min="0" defaultValue={entry.odometerKm} required /></label><label>Liter<input name="liters" inputMode="decimal" defaultValue={formatLitersInput(entry.litersMilli)} required /></label></div><div className="fuel-booking-row full-span"><label>Betrag in EUR<input name="cost" inputMode="decimal" defaultValue={formatEuroInputFromCents(entry.costCents)} required /></label><div className="finance-kind-toggle finance-kind-compact fuel-expense-segment fuel-edit-expense-hint" aria-label="Ausgabenverknüpfung"><span>Ausgabe wird mit aktualisiert</span></div></div><label className="full-span">Bemerkung<input name="note" defaultValue={entry.note} placeholder="Urlaub, bezahlt von ..., Werkstatt ..." /></label></div></fieldset>
-                <div className="modal-submit-row modal-footer"><button className="button full-span autosave-submit" type="submit">Tankstopp speichern</button></div>
-              </AutosaveForm>
-            </ActionModal>
-            <form action={deleteFuelEntry}><input type="hidden" name="id" value={entry.id} /><input type="hidden" name="carId" value={selectedCarId} /><input type="hidden" name="returnTo" value={returnTo} /><ConfirmSubmitButton className="task-detail-edit-button danger-icon-button" title="Tankstopp löschen?" message="Der Tankstopp wird dauerhaft entfernt. Eine verknüpfte Ausgabe bleibt davon unberührt."><Trash2 size={18} aria-hidden="true" /><span className="sr-only">Tankstopp löschen</span></ConfirmSubmitButton></form>
+            <FuelEntryEditModal entry={entry} expense={expensesByEntryId.get(entry.id)} linkedDocument={documentsByExpenseId.get(expensesByEntryId.get(entry.id)?.id ?? "")} selectedCarId={selectedCarId} selectedCarName={selectedCarName} returnTo={returnTo} categories={categories} labels={labels} documentRoots={documentRoots} settings={settings} />
+            <FuelEntryDeleteButton entryId={entry.id} selectedCarId={selectedCarId} returnTo={returnTo} />
           </>}>
               <div className="mileage-detail-sheet">
                 <div className="mileage-detail-hero">
@@ -322,6 +368,28 @@ function FuelEntryList({
       ))}
     </div>
   );
+}
+
+function FuelEntryEditModal({ entry, expense, linkedDocument, selectedCarId, selectedCarName, returnTo, categories, labels, documentRoots, settings, desktop = false }: {
+  entry: ReturnType<typeof addFuelDerivedFields>[number];
+  expense: NonNullable<Awaited<ReturnType<typeof getFuelEntriesForCar>>[number]["expense"]> | undefined;
+  linkedDocument: Awaited<ReturnType<typeof getDocumentsForLinkedEntities>>[number] | undefined;
+  selectedCarId: string;
+  selectedCarName: string;
+  returnTo: string;
+  categories: Awaited<ReturnType<typeof getVisibleCategories>>;
+  labels: Awaited<ReturnType<typeof getExpenseLabels>>;
+  documentRoots: { id: string; name: string }[];
+  settings: Awaited<ReturnType<typeof getFuelExpenseSettings>>;
+  desktop?: boolean;
+}) {
+  return <ActionModal title="Tankstopp bearbeiten" trigger={<><Pencil size={17} aria-hidden="true" />{desktop && <span>Bearbeiten</span>}</>} triggerLabel="Tankstopp bearbeiten" triggerClassName={desktop ? "button secondary" : "task-detail-edit-button mileage-row-edit-button"} modalId={`fuel-entry-${desktop ? "desktop-" : ""}${entry.id}`} sheetVariant="create" panelClassName="mileage-edit-sheet" wide>
+    <FuelEntryEditForm entry={entry} expense={expense?.generatedByFuelEntry ? expense : undefined} linkedDocument={expense?.generatedByFuelEntry ? linkedDocument : undefined} selectedCarId={selectedCarId} selectedCarName={selectedCarName} returnTo={returnTo} categories={categories} labels={labels} documentRoots={documentRoots} settings={settings} />
+  </ActionModal>;
+}
+
+function FuelEntryDeleteButton({ entryId, selectedCarId, returnTo }: { entryId: string; selectedCarId: string; returnTo: string }) {
+  return <form action={deleteFuelEntry}><input type="hidden" name="id" value={entryId} /><input type="hidden" name="carId" value={selectedCarId} /><input type="hidden" name="returnTo" value={returnTo} /><ConfirmSubmitButton className="task-detail-edit-button danger-icon-button" title="Tankstopp löschen?" message="Der Tankstopp wird dauerhaft entfernt. Eine verknüpfte Ausgabe bleibt davon unberührt."><Trash2 size={18} aria-hidden="true" /><span className="sr-only">Tankstopp löschen</span></ConfirmSubmitButton></form>;
 }
 
 function MileagePeriodNavigator({
@@ -387,17 +455,13 @@ function CarPicker({
 
   return (
     <ActionModal title="Auto auswählen" trigger={cars.find((car) => car.id === selectedCarId)?.name ?? "Auto"} triggerLabel="Auto auswählen" modalId="kilometer-auto" triggerClassName="button secondary mileage-car-trigger" panelClassName="mileage-car-sheet" sheetSize="compact">
-      <div className="mileage-car-menu" role="list" aria-label="Autos">
-        {cars.map((car) => (
-          <a role="listitem" className={selectedCarId === car.id ? "active" : ""} href={getMileageHref(params, { car: car.id })} key={car.id}>
-            <span className="color-dot" style={{ background: car.color }} />
-            <span>
-              <strong>{car.name}</strong>
-              {car.licensePlate ? <small>{car.licensePlate}</small> : null}
-            </span>
-          </a>
-        ))}
-      </div>
+      <MileageCarPicker selectedCarId={selectedCarId} cars={cars.map((car) => ({
+        id: car.id,
+        name: car.name,
+        color: car.color,
+        licensePlate: car.licensePlate,
+        href: getMileageHref(params, { car: car.id })
+      }))} />
     </ActionModal>
   );
 }
@@ -715,7 +779,7 @@ function buildMileageYearNavigationHref(params: MileagePageParams, year: number,
 
 function cleanMileageParams(params: MileagePageParams) {
   const next: MileagePageParams = {};
-  for (const key of ["car", "from", "to", "year", "month", "q", "view"] as const) {
+  for (const key of ["car", "from", "to", "year", "month", "q", "view", "selected"] as const) {
     const value = String(params[key] ?? "").trim();
     if (value) next[key] = value;
   }

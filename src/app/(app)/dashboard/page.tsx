@@ -1,10 +1,10 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { BanknoteArrowUp, CalendarCheck, CarFront, FileText, ReceiptText, Scale, TrendingUp, WalletCards } from "lucide-react";
+import { BanknoteArrowUp, CalendarCheck, CarFront, FileText, ReceiptText, Scale, Tag, TrendingUp, WalletCards } from "lucide-react";
 import { requireSession } from "@/lib/auth";
 import { ensureDueContractExpenses } from "@/lib/contract-auto-expenses";
 import { getContractNextCancellationDate } from "@/lib/contracts";
-import { buildBudgetAlerts, buildCategoryRows, buildLabelRows, sumByKind } from "@/lib/expense-analytics";
+import { buildBudgetAlerts, buildCategoryRows, buildLabelRows, budgetCadenceLabel, monthlyBudget, sumByKind } from "@/lib/expense-analytics";
 import { forecastCurrentMonthEnd } from "@/lib/expense-forecast";
 import { formatDate, formatMoney } from "@/lib/format";
 import {
@@ -47,18 +47,46 @@ export default async function DashboardPage() {
   const today = new Date();
   const greeting = getGreeting(today);
   const monthEntries = expenses.filter((entry) => isSameMonth(entry.date, today));
+  const recentMonthEntries = monthEntries.slice(0, 4);
+  const latestUsedLabel = expenses.find((entry) => entry.label)?.label ?? null;
+  const latestLabel = latestUsedLabel
+    ? labels.find((label) => label.id === latestUsedLabel.id) ?? latestUsedLabel
+    : null;
+  const budgetHistoryEntries = expenses.filter((entry) => entry.currency === "EUR");
+  const budgetMonthEntries = monthEntries.filter((entry) => entry.currency === "EUR");
+  const dashboardBudgetRange = {
+    mode: "month" as const,
+    from: new Date(Date.UTC(today.getFullYear(), today.getMonth(), 1)),
+    to: new Date(Date.UTC(today.getFullYear(), today.getMonth() + 1, 0))
+  };
+  const latestLabelMonthEntries = latestLabel
+    ? budgetMonthEntries.filter((entry) => entry.label?.id === latestLabel.id)
+    : [];
+  const latestLabelMonthSpend = sumByKind(latestLabelMonthEntries, "EXPENSE");
+  const latestLabelAllEntries = latestLabel
+    ? budgetHistoryEntries.filter((entry) => entry.label?.id === latestLabel.id)
+    : [];
+  const latestLabelAllSpend = sumByKind(latestLabelAllEntries, "EXPENSE");
+  const latestLabelBudgetRow = latestLabel
+    ? buildLabelRows(latestLabelMonthEntries, labels, dashboardBudgetRange, budgetHistoryEntries).find((row) => row.id === latestLabel.id)
+    : null;
+  const latestLabelMonthNet = latestLabelBudgetRow?.budgetPeriod === "ALL_TIME"
+    ? Math.max(0, sumByKind(latestLabelMonthEntries, "EXPENSE") - sumByKind(latestLabelMonthEntries, "INCOME"))
+    : latestLabelBudgetRow?.budgetConsumption ?? 0;
+  const latestLabelBudget = latestLabelBudgetRow?.budget ?? 0;
+  const latestLabelBudgetRemaining = latestLabelBudgetRow?.remaining ?? 0;
   const income = sumByKind(monthEntries, "INCOME");
   const spending = sumByKind(monthEntries, "EXPENSE");
   const saldo = income - spending;
   const monthHref = `/ausgaben?month=${getMonthKey(today)}`;
-  const monthBudget = categories.reduce((sum, category) => sum + category.monthlyBudgetCents, 0);
+  const monthBudget = monthlyBudget(categories);
   const netConsumption = Math.max(0, spending - income);
   const budgetRemaining = monthBudget - netConsumption;
   const monthEndForecast = forecastCurrentMonthEnd(expenses, categories, today);
   const projectedBudgetRemaining = monthBudget - monthEndForecast.projectedMonth;
   const budgetAlerts = [
-    ...buildBudgetAlerts(buildCategoryRows(monthEntries, categories, spending, true), "category"),
-    ...buildBudgetAlerts(buildLabelRows(monthEntries, labels), "label")
+    ...buildBudgetAlerts(buildCategoryRows(budgetMonthEntries, categories, sumByKind(budgetMonthEntries, "EXPENSE"), dashboardBudgetRange), "category"),
+    ...buildBudgetAlerts(buildLabelRows(budgetMonthEntries, labels, dashboardBudgetRange, budgetHistoryEntries), "label")
   ].sort((a, b) => {
     if (a.status !== b.status) return a.status === "over" ? -1 : 1;
     return b.budgetUsage - a.budgetUsage || b.netConsumption - a.netConsumption || a.name.localeCompare(b.name, "de");
@@ -73,8 +101,8 @@ export default async function DashboardPage() {
     .map((contract) => ({ ...contract, nextCancellationDate: getContractNextCancellationDate(contract) }))
     .filter((contract) => contract.nextCancellationDate)
     .sort((a, b) => new Date(a.nextCancellationDate ?? 0).getTime() - new Date(b.nextCancellationDate ?? 0).getTime())
-    .slice(0, 3);
-  const vehicleSummaries = await buildVehicleSummaries(session.family.id, cars.slice(0, 2));
+    .slice(0, 4);
+  const vehicleSummaries = await buildVehicleSummaries(session.family.id, cars.slice(0, 3));
 
   return (
     <div className="cockpit-page">
@@ -121,11 +149,11 @@ export default async function DashboardPage() {
           <SectionHead eyebrow="Aufgaben" title="Als Nächstes" href="/aufgaben" />
           <div className="cockpit-task-list">
             {openTasks.length === 0 ? <EmptyState>Alles erledigt.</EmptyState> : null}
-            {openTasks.slice(0, 4).map((task) => {
+            {openTasks.slice(0, 5).map((task, index) => {
               const urgency = taskUrgency(task);
               const assignee = task.assignee?.name ?? "Nicht zugewiesen";
               return (
-                <article className={`cockpit-task-row task-row-trigger ${urgency.className}`} key={task.id}>
+                <article className={`cockpit-task-row task-row-trigger ${urgency.className} ${index >= 4 ? "cockpit-desktop-extra" : ""}`} key={task.id}>
                   <div className="cockpit-task-check">
                     <TaskInlineCheck taskId={task.id} done={false} />
                   </div>
@@ -148,12 +176,30 @@ export default async function DashboardPage() {
 
         <SectionCard className="cockpit-section cockpit-finance">
           <SectionHead eyebrow="Finanzen" title="Dein Monat" href={monthHref} />
+          <div className="cockpit-finance-content">
           <div className="finance-summary-panel cockpit-finance-summary" aria-label="Monatswerte">
             <FinanceSummaryMetric icon={<BanknoteArrowUp size={17} />} label="Einnahmen" value={formatMoney(income)} detail="Geldzufluss im Monat" tone="income" />
             <FinanceSummaryMetric icon={<ReceiptText size={17} />} label="Ausgaben" value={formatMoney(spending)} detail={`${monthEntries.length} Einträge im Monat`} tone="spending" />
             <FinanceSummaryMetric icon={<Scale size={17} />} label="Saldo" value={formatSignedMoney(saldo)} detail={saldo < 0 ? "Mehr ausgegeben" : "Monat im Plus"} tone={saldo < 0 ? "negative" : "positive"} />
             <FinanceSummaryMetric icon={<WalletCards size={17} />} label={monthBudget > 0 ? "Budget übrig" : "Budget"} value={monthBudget > 0 ? formatMoney(budgetRemaining) : "-"} detail={monthBudget > 0 ? `${formatMoney(netConsumption)} netto verbraucht` : "Monatsbudget in Finanzen"} tone={budgetRemaining < 0 && monthBudget > 0 ? "negative" : "neutral"} />
           </div>
+          {latestLabel ? (
+            <Link className={`cockpit-label-budget finance-summary-metric ${latestLabelBudget > 0 && latestLabelBudgetRemaining < 0 ? "tone-negative" : latestLabelBudget > 0 ? "tone-positive" : "tone-neutral"}`} href={`/ausgaben?month=${getMonthKey(today)}&view=labels`}>
+              <div className="finance-summary-card-head">
+                <span className="cockpit-label-budget-heading"><small>Zuletzt genutzt · {budgetCadenceLabel(latestLabelBudgetRow?.budgetPeriod ?? "ALL_TIME")}</small><strong>{latestLabel.name}</strong></span>
+                <i aria-hidden="true"><Tag size={17} /></i>
+              </div>
+              <strong className="cockpit-label-budget-value">{latestLabelBudget > 0 ? formatBudgetDetail(latestLabelBudgetRemaining) : formatMoney(latestLabelMonthSpend)}</strong>
+              <small>{latestLabelBudget > 0
+                ? `${formatMoney(latestLabelMonthSpend)} diesen Monat · ${formatMoney(latestLabelAllSpend)} gesamt · Budget ${formatMoney(latestLabelBudget)}`
+                : `${formatMoney(latestLabelMonthSpend)} diesen Monat · kein Budget festgelegt`}</small>
+              {latestLabelBudget > 0 ? (
+                <span className="cockpit-label-budget-track" aria-label={`${Math.min(100, Math.round((latestLabelBudgetRow?.budgetConsumption ?? latestLabelMonthNet) / latestLabelBudget * 100))} Prozent des Labelbudgets genutzt`}>
+                  <span style={{ width: `${Math.min(100, Math.max(0, (latestLabelBudgetRow?.budgetConsumption ?? latestLabelMonthNet) / latestLabelBudget * 100))}%` }} />
+                </span>
+              ) : null}
+            </Link>
+          ) : null}
           <Link className={`cockpit-month-forecast ${monthBudget > 0 && projectedBudgetRemaining < 0 ? "forecast-over" : monthBudget > 0 && monthEndForecast.projectedMonth >= monthBudget * .8 ? "forecast-near" : ""}`} href="/ausgaben/planung">
             <span className="cockpit-month-forecast-icon" aria-hidden="true"><TrendingUp size={18} /></span>
             <span className="cockpit-month-forecast-copy">
@@ -183,7 +229,7 @@ export default async function DashboardPage() {
                     <span className="cockpit-budget-alert-dot" style={{ background: alert.color }} aria-hidden="true" />
                     <span className="cockpit-budget-alert-copy">
                       <strong>{alert.name}</strong>
-                      <small>{alert.dimension === "category" ? "Kategorie" : "Label"} · {alert.budgetUsage.toFixed(0)} % genutzt</small>
+                      <small>{alert.dimension === "category" ? "Kategorie" : "Label"} · {budgetCadenceLabel(alert.budgetPeriod ?? "MONTHLY")} · {alert.budgetUsage.toFixed(0)} % genutzt</small>
                       <span className="cockpit-bar" aria-hidden="true"><span style={{ width: `${Math.max(4, alert.budgetUsage)}%`, background: overBudget ? "var(--red)" : "#c9821c" }} /></span>
                     </span>
                     <strong>{overBudget ? `${formatMoney(Math.abs(alert.remaining))} über` : alert.remaining === 0 ? "ausgeschöpft" : `${formatMoney(alert.remaining)} frei`}</strong>
@@ -192,14 +238,36 @@ export default async function DashboardPage() {
               })}
             </section>
           ) : null}
+          <section className="cockpit-recent-bookings desktop-only" aria-label="Letzte Buchungen">
+            <div className="cockpit-recent-bookings-head">
+              <strong>Letzte Buchungen</strong>
+              <span>{recentMonthEntries.length} im Monat</span>
+            </div>
+            {recentMonthEntries.length === 0 ? <p className="cockpit-recent-empty">Noch keine Buchungen in diesem Monat.</p> : (
+              <div className="cockpit-recent-booking-list">
+                {recentMonthEntries.map((entry) => (
+                  <Link className="cockpit-recent-booking" href={monthHref} key={entry.id}>
+                    <span className="cockpit-recent-booking-copy">
+                      <strong>{entry.description}</strong>
+                      <small>{formatDate(entry.date)}{entry.store ? ` · ${entry.store}` : ""}</small>
+                    </span>
+                    <strong className={entry.kind === "INCOME" ? "booking-income" : "booking-expense"}>
+                      {formatSignedMoney(entry.kind === "INCOME" ? entry.amountCents : -entry.amountCents)}
+                    </strong>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </section>
+          </div>
         </SectionCard>
 
         <SectionCard className="cockpit-section">
           <SectionHead eyebrow="Verträge" title="Kündigungsfristen" href="/vertraege" />
           <div className="cockpit-list">
             {nextContracts.length === 0 ? <EmptyState>Keine Fristen hinterlegt.</EmptyState> : null}
-            {nextContracts.map((contract) => (
-              <Link className={`cockpit-contract ${contractUrgencyClass(contract.nextCancellationDate)}`} href="/vertraege" key={contract.id}>
+            {nextContracts.map((contract, index) => (
+              <Link className={`cockpit-contract ${contractUrgencyClass(contract.nextCancellationDate)} ${index >= 3 ? "cockpit-desktop-extra" : ""}`} href="/vertraege" key={contract.id}>
                 <span className="cockpit-contract-accent" aria-hidden="true" />
                 <span>
                   <strong>{contract.provider}</strong>
@@ -215,8 +283,8 @@ export default async function DashboardPage() {
           <SectionHead eyebrow="Auto" title="Verbrauch" href="/kilometer" />
           <div className="cockpit-list">
             {vehicleSummaries.length === 0 ? <EmptyState>Noch kein aktives Auto mit Tankdaten.</EmptyState> : null}
-            {vehicleSummaries.map((vehicle) => (
-              <Link className="cockpit-vehicle" href={`/kilometer?car=${vehicle.id}`} key={vehicle.id}>
+            {vehicleSummaries.map((vehicle, index) => (
+              <Link className={`cockpit-vehicle ${index >= 2 ? "cockpit-desktop-extra" : ""}`} href={`/kilometer?car=${vehicle.id}`} key={vehicle.id}>
                 <span className="cockpit-row-icon" aria-hidden="true"><CarFront size={17} /></span>
                 <span>
                   <strong>{vehicle.name}</strong>
@@ -237,8 +305,8 @@ export default async function DashboardPage() {
         <SectionHead eyebrow="Dokumente" title="Zuletzt" href="/dokumente" />
         <div className="cockpit-document-row">
           {documents.length === 0 ? <EmptyState>Noch keine Dokumente.</EmptyState> : null}
-          {documents.slice(0, 3).map((document) => (
-            <a className="document-item" href={dashboardDocumentHref(document)} key={document.id} target={document.referenceType === "LOCAL_FILE" ? undefined : "_blank"} rel={document.referenceType === "LOCAL_FILE" ? undefined : "noreferrer"}>
+          {documents.slice(0, 4).map((document, index) => (
+            <a className={`document-item ${index >= 3 ? "cockpit-desktop-extra" : ""}`} href={dashboardDocumentHref(document)} key={document.id} target={document.referenceType === "LOCAL_FILE" ? undefined : "_blank"} rel={document.referenceType === "LOCAL_FILE" ? undefined : "noreferrer"}>
               <span className="doc-icon" aria-hidden="true"><FileText size={17} /></span>
               <span>
                 <strong>{document.title}</strong>

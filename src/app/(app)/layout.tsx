@@ -7,6 +7,7 @@ import { CreateModal } from "@/components/create-modal";
 import { GlobalSubmitIndicator } from "@/components/global-submit-indicator";
 import { Nav } from "@/components/nav";
 import { OfflineSyncStatus } from "@/components/offline-sync-status";
+import "@/app/desktop.css";
 
 export const dynamic = "force-dynamic";
 

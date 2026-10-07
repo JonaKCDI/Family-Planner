@@ -27,13 +27,13 @@ type SelectedFile = {
   name: string;
 };
 
-export function DocumentFilePicker({ roots }: { roots: DocumentRootOption[] }) {
+export function DocumentFilePicker({ roots, initialSelection }: { roots: DocumentRootOption[]; initialSelection?: SelectedFile | null }) {
   const [open, setOpen] = useState(false);
   const [closing, setClosing] = useState(false);
-  const [rootId, setRootId] = useState(roots[0]?.id ?? "");
+  const [rootId, setRootId] = useState(initialSelection?.rootId ?? roots[0]?.id ?? "");
   const [path, setPath] = useState("");
   const [entries, setEntries] = useState<DocumentFileEntry[]>([]);
-  const [selected, setSelected] = useState<SelectedFile | null>(null);
+  const [selected, setSelected] = useState<SelectedFile | null>(initialSelection ?? null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -77,6 +77,7 @@ export function DocumentFilePicker({ roots }: { roots: DocumentRootOption[] }) {
       relativePath: entry.relativePath,
       name: entry.name
     });
+    closePicker();
   }
 
   function closePicker() {
@@ -117,15 +118,15 @@ export function DocumentFilePicker({ roots }: { roots: DocumentRootOption[] }) {
 
       {open || closing ? (
         <ModalPortal>
-          <div className={closing ? "modal-backdrop action-modal-backdrop is-closing" : "modal-backdrop action-modal-backdrop"} role="presentation">
-            <section className="modal-panel action-modal action-modal-wide document-picker-dialog" role="dialog" aria-modal="true" aria-labelledby="document-picker-title">
+          <div className={closing ? "modal-backdrop document-picker-explorer-backdrop is-closing" : "modal-backdrop document-picker-explorer-backdrop"} role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) closePicker(); }}>
+            <section className={closing ? "modal-panel document-picker-explorer-modal document-picker-dialog is-closing" : "modal-panel document-picker-explorer-modal document-picker-dialog"} role="dialog" aria-modal="true" aria-labelledby="document-picker-title">
               <button className="icon-button modal-close-button" type="button" aria-label="Schließen" title="Schließen" onClick={closePicker}>
                 <X size={20} />
               </button>
               <div className="modal-head">
                 <h2 className="section-title" id="document-picker-title">Datei auswählen</h2>
               </div>
-              <div className="modal-body">
+              <div className="modal-body document-picker-explorer-body">
                 <div className="document-explorer-toolbar document-picker-toolbar">
                   <div className="document-root-switcher" aria-label="Dokumentbereich">
                     <span>Bereich</span>

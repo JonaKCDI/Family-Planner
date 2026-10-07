@@ -147,11 +147,13 @@ export async function createExpenseLabel(formData: FormData) {
       ownerUserId: session.user.id,
       name,
       color: chooseCategoryColor(name, existingLabels, submittedColor),
-      budgetCents: parseOptionalEuroInputToCents(formData.get("budget"))
+      budgetCents: parseOptionalEuroInputToCents(formData.get("budget")),
+      budgetCadence: enumValue(formData, "budgetCadence", ["MONTHLY", "YEARLY", "ALL_TIME"] as const, "ALL_TIME")
     },
     update: {
       color: chooseCategoryColor(name, existingLabels, submittedColor),
       budgetCents: parseOptionalEuroInputToCents(formData.get("budget")),
+      ...(formData.has("budgetCadence") ? { budgetCadence: enumValue(formData, "budgetCadence", ["MONTHLY", "YEARLY", "ALL_TIME"] as const, "ALL_TIME") } : {}),
       archivedAt: null
     }
   });
@@ -178,7 +180,8 @@ export async function quickCreateExpenseLabel(formData: FormData) {
       ownerUserId: session.user.id,
       name,
       color: chooseCategoryColor(name, existingLabels, optionalText(formData, "color")),
-      budgetCents: parseOptionalEuroInputToCents(formData.get("budget"))
+      budgetCents: parseOptionalEuroInputToCents(formData.get("budget")),
+      budgetCadence: enumValue(formData, "budgetCadence", ["MONTHLY", "YEARLY", "ALL_TIME"] as const, "ALL_TIME")
     },
     update: {
       archivedAt: null
@@ -203,7 +206,7 @@ export async function updateExpenseLabel(formData: FormData) {
         familyId: session.family.id,
         ownerUserId: session.user.id
       },
-      select: { id: true, name: true, color: true }
+      select: { id: true, name: true, color: true, budgetCadence: true }
     }),
     db.expenseLabel.findFirst({
       where: {
@@ -223,7 +226,8 @@ export async function updateExpenseLabel(formData: FormData) {
     data: {
       name,
       color: submittedColor ?? label.color,
-      budgetCents: parseOptionalEuroInputToCents(formData.get("budget"))
+      budgetCents: parseOptionalEuroInputToCents(formData.get("budget")),
+      ...(formData.has("budgetCadence") ? { budgetCadence: enumValue(formData, "budgetCadence", ["MONTHLY", "YEARLY", "ALL_TIME"] as const, label.budgetCadence) } : {})
     }
   });
 
@@ -584,6 +588,15 @@ export async function createCar(formData: FormData) {
   revalidatePath("/kilometer");
 }
 
+export async function selectMileageCar(carId: string) {
+  const session = await requireSession();
+  const car = await resolveFamilyCar(session.family.id, carId);
+  await db.user.update({
+    where: { id: session.user.id },
+    data: { lastSelectedCarId: car.id }
+  });
+}
+
 export async function updateCar(formData: FormData) {
   const session = await requireSession();
   requireFamilyAdmin(session.role);
@@ -738,17 +751,59 @@ export async function updateFuelEntry(formData: FormData) {
     where: { id, familyId: session.family.id, carId: car.id },
     data: fuelData
   });
-  await db.expense.updateMany({
-    where: {
-      familyId: session.family.id,
-      fuelEntryId: id,
-      generatedByFuelEntry: true
-    },
-    data: {
-      amountCents: fuelData.costCents,
-      date: fuelData.date
-    }
+  const linkedExpense = await db.expense.findFirst({
+    where: { familyId: session.family.id, fuelEntryId: id, generatedByFuelEntry: true }
   });
+  if (formData.get("createExpenseFromFuel") === "on") {
+    const categoryId = await resolveExpenseCategoryId(session.family.id, session.user.id, optionalText(formData, "expenseCategoryId"));
+    const labelId = await resolveExpenseLabelId(session.family.id, session.user.id, optionalText(formData, "expenseLabelId"));
+    const expenseData = {
+      amountCents: fuelData.costCents,
+      date: fuelData.date,
+      paymentMethod: paymentMethodValue(formData, "expensePaymentMethod"),
+      store: optionalText(formData, "expenseStore") ?? "",
+      categoryId,
+      labelId,
+      description: optionalText(formData, "expenseDescription") ?? "",
+      sharedWithFamily: formData.get("sharedWithFamily") === "on"
+    };
+    let expenseId = linkedExpense?.id;
+    if (linkedExpense) {
+      await db.expense.updateMany({
+        where: { id: linkedExpense.id, familyId: session.family.id, fuelEntryId: id, generatedByFuelEntry: true },
+        data: expenseData
+      });
+    } else {
+      const expense = await db.expense.create({
+        data: {
+          familyId: session.family.id,
+          ownerUserId: session.user.id,
+          kind: "EXPENSE",
+          currency: "EUR",
+          scope: "PRIVATE",
+          fuelEntryId: id,
+          generatedByFuelEntry: true,
+          ...expenseData
+        }
+      });
+      expenseId = expense.id;
+    }
+    if (expenseId) {
+      await syncLinkedDocumentFromForm(formData, {
+        familyId: session.family.id,
+        ownerUserId: session.user.id,
+        linkedEntityType: "EXPENSE",
+        linkedEntityId: expenseId,
+        scope: linkedExpense?.scope ?? "PRIVATE"
+      });
+    }
+  } else if (linkedExpense) {
+    // Keep the existing expense as a regular expense if the user disconnects it from this fuel stop.
+    await db.expense.updateMany({
+      where: { id: linkedExpense.id, familyId: session.family.id, fuelEntryId: id, generatedByFuelEntry: true },
+      data: { fuelEntryId: null, generatedByFuelEntry: false }
+    });
+  }
 
   revalidatePath("/kilometer");
   revalidatePath("/ausgaben");
@@ -880,6 +935,7 @@ export async function createCategory(formData: FormData) {
       icon: normalizeCategoryIcon(formData.get("icon")),
       excludeFromForecast: type === "EXPENSE" && formData.get("excludeFromForecast") === "on",
       monthlyBudgetCents: parseOptionalEuroInputToCents(formData.get("monthlyBudget")),
+      budgetCadence: enumValue(formData, "budgetCadence", ["MONTHLY", "YEARLY"] as const, "MONTHLY"),
       scope: type === "EXPENSE" ? "PRIVATE" : scopeValue(formData)
     }
   });
@@ -907,6 +963,7 @@ export async function quickCreateExpenseCategory(formData: FormData) {
       color: chooseCategoryColor(name, existingCategories, optionalText(formData, "color")),
       icon: normalizeCategoryIcon(formData.get("icon")),
       monthlyBudgetCents: parseOptionalEuroInputToCents(formData.get("monthlyBudget")),
+      budgetCadence: enumValue(formData, "budgetCadence", ["MONTHLY", "YEARLY"] as const, "MONTHLY"),
       scope: "PRIVATE"
     },
     select: { id: true, name: true, color: true, icon: true }
@@ -934,6 +991,7 @@ export async function updateCategory(formData: FormData) {
       color,
       icon,
       monthlyBudgetCents: parseOptionalEuroInputToCents(formData.get("monthlyBudget")),
+      ...(formData.has("budgetCadence") ? { budgetCadence: enumValue(formData, "budgetCadence", ["MONTHLY", "YEARLY"] as const, "MONTHLY") } : {}),
       ...(formData.has("forecastExclusionPresent") ? { excludeFromForecast: formData.get("excludeFromForecast") === "on" } : {}),
       scope: "PRIVATE"
     }
@@ -1759,8 +1817,6 @@ export async function createLocalDocumentReference(formData: FormData) {
 
 export async function updateDocumentReference(formData: FormData) {
   const session = await requireSession();
-  const linkedEntityType = enumValue(formData, "linkedEntityType", ["EXPENSE", "TASK", "CONTRACT", "GENERAL"] as const, "GENERAL");
-  const linkedEntityId = await resolveDocumentLinkedEntityId(session.family.id, session.user.id, linkedEntityType, optionalText(formData, "linkedEntityId"));
   const id = requiredText(formData, "id");
   const existing = await db.documentReference.findFirst({
     where: {
@@ -1770,9 +1826,49 @@ export async function updateDocumentReference(formData: FormData) {
     }
   });
   if (!existing) throw new Error("Der Dokumentverweis ist nicht verfügbar.");
-  const url = existing.referenceType === "LOCAL_FILE" ? existing.url : requiredText(formData, "url");
-  if (existing.referenceType !== "LOCAL_FILE" && !url.startsWith("https://")) {
-    throw new Error("Dokumentverweise müssen als HTTPS-Link gespeichert werden.");
+
+  const linkedEntityType = enumValue(formData, "linkedEntityType", ["EXPENSE", "TASK", "CONTRACT", "GENERAL"] as const, "GENERAL");
+  const linkedEntityId = await resolveDocumentLinkedEntityId(session.family.id, session.user.id, linkedEntityType, optionalText(formData, "linkedEntityId"));
+  const source = formData.get("source") === "link" ? "link" : formData.get("source") === "file" ? "file" : existing.referenceType === "LOCAL_FILE" ? "file" : "link";
+  const referenceType = source === "file"
+    ? "LOCAL_FILE"
+    : enumValue(formData, "referenceType", ["SYNOLOGY_HTTPS", "WEBDAV_HTTPS", "EXTERNAL_URL"] as const, existing.referenceType === "LOCAL_FILE" ? "EXTERNAL_URL" : existing.referenceType);
+  let localFileData: {
+    documentRootId: string | null;
+    relativePath: string | null;
+    fileName: string | null;
+    mimeType: string | null;
+    fileSize: number | null;
+    lastSeenAt: Date | null;
+  } = {
+    documentRootId: null,
+    relativePath: null,
+    fileName: null,
+    mimeType: null,
+    fileSize: null,
+    lastSeenAt: null
+  };
+  let url = "";
+  let title = "";
+
+  if (source === "file") {
+    const documentRoot = await resolveReadableDocumentRoot(session.family.id, session.user.id, session.role, requiredText(formData, "documentRootId"));
+    const file = await resolveDocumentFile(documentRoot.basePath, requiredText(formData, "documentRelativePath", "relativePath"));
+    localFileData = {
+      documentRootId: documentRoot.id,
+      relativePath: file.relativePath,
+      fileName: file.fileName,
+      mimeType: file.mimeType,
+      fileSize: file.fileSize,
+      lastSeenAt: new Date()
+    };
+    title = optionalText(formData, "title") ?? file.fileName;
+  } else {
+    title = requiredText(formData, "title");
+    url = requiredText(formData, "url");
+    if (!url.startsWith("https://")) {
+      throw new Error("Dokumentverweise müssen als HTTPS-Link gespeichert werden.");
+    }
   }
 
   await db.documentReference.updateMany({
@@ -1784,9 +1880,10 @@ export async function updateDocumentReference(formData: FormData) {
     data: {
       linkedEntityType,
       linkedEntityId,
-      title: requiredText(formData, "title", "description"),
-      referenceType: existing.referenceType,
+      title,
+      referenceType,
       url,
+      ...localFileData,
       description: optionalText(formData, "description"),
       scope: scopeValue(formData)
     }

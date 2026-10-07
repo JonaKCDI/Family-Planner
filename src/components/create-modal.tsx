@@ -5,7 +5,7 @@ import { PaymentMethodField } from "@/components/payment-method-field";
 
 import type { ButtonHTMLAttributes, FormEvent, ReactNode } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, ChevronRight, ClipboardCheck, Euro, FileText, Fuel, HandCoins, Plus, Repeat2, ScrollText, X } from "lucide-react";
+import { ArrowLeft, ChevronRight, ClipboardCheck, Euro, FileText, Fuel, HandCoins, Plus, Repeat2, ScrollText } from "lucide-react";
 import { usePathname, useSearchParams } from "next/navigation";
 import {
   createContract,
@@ -22,7 +22,7 @@ import {
 import { createFamilyTransfer } from "@/lib/family-finance-actions";
 import { enqueueOfflineExpenseCreate, enqueueOfflineTaskCreate } from "@/lib/offline-sync";
 import { DocumentFilePicker } from "@/components/document-file-picker";
-import { ModalPortal } from "@/components/modal-portal";
+import { ModalSheet } from "@/components/modal-sheet";
 import { SearchableSelect } from "@/components/searchable-select";
 
 type CreateModalProps = {
@@ -108,6 +108,7 @@ export function CreateModal({ currentUserId, categories, labels, contracts, memb
         onClick={openCreateModal}
       >
         <Plus aria-hidden="true" size={28} strokeWidth={2.4} />
+        <span className="fab-label">Neu</span>
       </FloatingActionButton>
       <BottomSheet
         open={open}
@@ -508,7 +509,7 @@ function TaskForm({
         <label>Priorität<select name="priority" defaultValue="MEDIUM"><option value="LOW">Niedrig</option><option value="MEDIUM">Mittel</option><option value="HIGH">Hoch</option><option value="URGENT">Dringend</option></select></label>
         <label className="full-span">Notiz<textarea name="description" placeholder="Optional" /></label>
       </fieldset>
-      <fieldset className="fieldset modal-form-section full-span" id="create-task-repeat" hidden={taskPanel !== "main" || !isRecurring || step !== "repeat"}>
+      <fieldset className="fieldset modal-form-section full-span" id="create-task-repeat" hidden={taskPanel !== "main" || !isRecurring || step !== "repeat"} disabled={taskPanel !== "main" || !isRecurring || step !== "repeat"}>
         <legend>Wiederholung</legend>
         <div className="task-repeat-grid">
           <label>
@@ -838,22 +839,18 @@ function BottomSheet({
   if (!open && !closing) return null;
 
   return (
-    <ModalPortal>
-      <div className={closing ? "modal-backdrop is-closing" : "modal-backdrop"} role="presentation">
-        <section className={["modal-panel create-dialog create-from-fab", leadingAction ? "has-back-button" : null, wide ? "action-modal-wide" : null, panelClassName].filter(Boolean).join(" ")} role="dialog" aria-modal="true" aria-labelledby={labelledById}>
-          {leadingAction}
-          <button className="icon-button modal-close-button" type="button" aria-label="Schließen" title="Schließen" onClick={closeSheet}>
-            <X size={20} />
-          </button>
-          <div className="modal-head">
-            <div>
-              <h2 id={labelledById}>{title}</h2>
-              {description ? <p className="muted">{description}</p> : null}
-            </div>
-          </div>
-          {children}
-        </section>
-      </div>
-    </ModalPortal>
+    <ModalSheet
+      open={open}
+      closing={closing}
+      onClose={closeSheet}
+      title={title}
+      description={description}
+      leadingAction={leadingAction}
+      wide={wide}
+      labelledById={labelledById}
+      panelClassName={panelClassName}
+    >
+      {children}
+    </ModalSheet>
   );
 }

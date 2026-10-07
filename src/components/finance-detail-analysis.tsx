@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, ChevronRight, List } from "lucide-react";
+import { ArrowLeft, BanknoteArrowUp, ChevronRight, List, ReceiptText, Scale } from "lucide-react";
 import { CategoryIcon } from "@/components/category-icon";
 import { EmptyState } from "@/components/ui";
 import { loadExpenseAnalysis } from "@/lib/expense-analysis-data";
@@ -9,6 +9,7 @@ import { buildExpensesHref, type ExpenseFilterParams } from "@/lib/expense-filte
 import { formatMoney } from "@/lib/format";
 import { dateKey } from "@/lib/expense-range";
 import "@/app/(app)/ausgaben/analyse/analysis.css";
+import { DesktopFinanceAnalysisList } from "@/components/desktop-finance-analysis-list";
 
 export async function FinanceDetailAnalysis({ params, dimension, id }: { params: ExpenseFilterParams; dimension: AnalysisDimension; id: string }) {
   const data = await loadExpenseAnalysis(params, dimension, id);
@@ -17,12 +18,12 @@ export async function FinanceDetailAnalysis({ params, dimension, id }: { params:
   const back = buildAnalysisBackHref(params, dimension);
   const formatDay = (value: string) => new Intl.DateTimeFormat("de-DE", { day: "2-digit", month: "2-digit", year: "numeric", timeZone: "UTC" }).format(new Date(value));
   const currencies = data.currencies.length ? data.currencies : [params.currency || "EUR"];
-  return <div className="finance-detail">
+  return <div className="finance-detail-workspace"><DesktopFinanceAnalysisList params={params} dimension={dimension} selectedId={id} /><div className="finance-detail">
     <header className="finance-detail-head">
-      <Link href={back} className="finance-analysis-icon" aria-label="Zurück zur Analyse"><ArrowLeft size={22} /></Link>
+      <Link href={back} className="finance-analysis-icon" aria-label="Zurück zur Analyse"><ArrowLeft size={22} /><span className="desktop-only">Analyse</span></Link>
       <span className="analysis-row-icon" style={{ background: target.color }} aria-hidden="true"><CategoryIcon icon={"icon" in target ? target.icon : "tag"} size={19} /></span>
       <div className="finance-detail-heading"><h1>{target.name}</h1><p>{params.bereich === "familie" ? "Familie" : "Persönlich"} · {formatDay(dateKey(range.from))}–{formatDay(dateKey(range.to))}</p></div>
-      <Link className="finance-analysis-icon" href={buildExpensesHref(analysisEntryParams(context, dimension, id))} aria-label={`Alle Buchungen: ${target.name}`} title="Buchungen anzeigen"><List size={21} /></Link>
+      <Link className="finance-analysis-icon" href={buildExpensesHref(analysisEntryParams(context, dimension, id))} aria-label={`Alle Buchungen: ${target.name}`} title="Buchungen anzeigen"><List size={21} /><span className="desktop-only">Buchungen</span></Link>
     </header>
     {params.q || params.label || params.category || params.kind || params.paymentMethod || params.source || params.person ? <p className="finance-detail-note">Die Filter aus deiner Analyse bleiben berücksichtigt.</p> : null}
     {currencies.map(currency => {
@@ -30,7 +31,7 @@ export async function FinanceDetailAnalysis({ params, dimension, id }: { params:
       const { periods, granularity } = buildAnalysisPeriods(selected, range);
       const spending = periods.reduce((sum, p) => sum + p.spending, 0);
       const income = periods.reduce((sum, p) => sum + p.income, 0);
-      const count = periods.reduce((sum, p) => sum + p.count, 0);
+      const saldo = income - spending;
       const unit = granularity === "week" ? "Wochen" : granularity === "month" ? "Monate" : "Jahre";
       const money = (value: number) => formatMoney(value, currency);
       const max = Math.max(1, ...periods.map(p => p.spending));
@@ -40,11 +41,11 @@ export async function FinanceDetailAnalysis({ params, dimension, id }: { params:
       const href = (period: { from: string; to: string }) => buildExpensesHref(analysisEntryParams({ ...context, currency, from: period.from, to: period.to }, dimension, id));
       return <section key={currency} aria-label={`Ausgaben in ${currency}`}>
         {currencies.length > 1 && <h2>{currency}</h2>}
-        <dl className="finance-detail-stats">
-          <div><dt>Ausgaben gesamt</dt><dd>{money(spending)}</dd></div>
-          <div><dt>Ausgabenbuchungen</dt><dd>{count}</dd></div>
-          {income > 0 && <div><dt>Einnahmen separat</dt><dd>{money(income)}</dd></div>}
-        </dl>
+        <div className="finance-detail-stats" aria-label="Saldo und Buchungssummen">
+          <article className={`finance-summary-metric ${saldo < 0 ? "tone-negative" : "tone-positive"}`}><div className="finance-summary-card-head"><span>Saldo</span><i aria-hidden="true"><Scale size={18} /></i></div><strong>{money(saldo)}</strong></article>
+          <article className="finance-summary-metric tone-spending"><div className="finance-summary-card-head"><span>Ausgaben</span><i aria-hidden="true"><ReceiptText size={18} /></i></div><strong>{money(spending)}</strong></article>
+          <article className="finance-summary-metric tone-income"><div className="finance-summary-card-head"><span>Einnahmen</span><i aria-hidden="true"><BanknoteArrowUp size={18} /></i></div><strong>{money(income)}</strong></article>
+        </div>
         {!selected.length ? <EmptyState>Keine Buchungen in diesem Zeitraum. Wähle in der Analyse einen anderen Zeitraum oder passe die Filter an.</EmptyState> : <>
           <section className="finance-detail-section" aria-label="Ausgabenverlauf">
             <div className="finance-detail-section-head"><h2>Ausgabenverlauf</h2><span>Nach {unit}</span></div>
@@ -59,7 +60,7 @@ export async function FinanceDetailAnalysis({ params, dimension, id }: { params:
             <p className="finance-detail-note">Tatsächliche Ausgaben{income > 0 ? " · Einnahmen werden nicht abgezogen" : ""}. {periods.some(p => p.partial) ? "Randperioden enthalten nur die Tage im gewählten Zeitraum." : ""}</p>
           </section>
           <section className="finance-detail-section" aria-label="Perioden und Buchungen">
-            <div className="finance-detail-section-head"><h2>{unit} im Detail</h2><span>Tippen für Buchungen</span></div>
+            <div className="finance-detail-section-head"><h2>{unit} im Detail</h2><span className="mobile-only">Tippen für Buchungen</span><span className="desktop-only">Buchungen öffnen</span></div>
             {periods.map(period => <Link className="finance-period-link" href={href(period)} key={period.from}>
               <span>{period.label}{period.partial && <small>Teilzeitraum · {formatDay(period.from)}–{formatDay(period.to)}</small>}</span>
               <span><strong>{money(period.spending)}</strong>{period.income > 0 && <small>+ {money(period.income)} Einnahmen</small>}</span>
@@ -69,5 +70,5 @@ export async function FinanceDetailAnalysis({ params, dimension, id }: { params:
         </>}
       </section>;
     })}
-  </div>;
+  </div></div>;
 }

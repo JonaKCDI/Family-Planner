@@ -49,6 +49,15 @@ export type SettingsSectionId = typeof settingsSections[number]["id"];
 
 export type SettingsContext = Awaited<ReturnType<typeof loadSettingsContext>>;
 
+export function DesktopSettingsNav({ section, isAdmin }: { section?: SettingsSectionId; isAdmin: boolean }) {
+  return <nav className="desktop-section-nav" aria-label="Einstellungsbereiche">
+    <Link href="/einstellungen" className={!section ? "active" : ""} aria-current={!section ? "page" : undefined}>Übersicht</Link>
+    {settingsSections.filter((item) => item.id !== "entwickler" || isAdmin).map((item) => item.adminOnly && !isAdmin
+      ? <span className="is-disabled" key={item.id}>{item.title}<small>Von Admins verwaltet</small></span>
+      : <Link href={`/einstellungen/${item.id}`} className={section === item.id ? "active" : ""} aria-current={section === item.id ? "page" : undefined} key={item.id}>{item.title}<small>{item.description}</small></Link>)}
+  </nav>;
+}
+
 export async function loadSettingsContext(session: {
   family: { id: string };
   user: { id: string; developerFeatures?: boolean };

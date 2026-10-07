@@ -218,7 +218,7 @@ function BottomSheet({
   return (
     <ModalPortal>
       <div className={closing ? "modal-backdrop action-modal-backdrop is-closing" : "modal-backdrop action-modal-backdrop"} role="presentation">
-        <section className={`modal-panel action-modal sheet-${size} task-sheet-modal finance-sheet-modal`} role="dialog" aria-modal="true" aria-labelledby={titleId}>
+        <section className={`modal-panel action-modal sheet-${size} task-sheet-modal finance-sheet-modal finance-filter-sheet`} role="dialog" aria-modal="true" aria-labelledby={titleId}>
           <button className="icon-button modal-close-button" type="button" aria-label="Schließen" title="Schließen" onClick={closeSheet}>
             <X size={20} />
           </button>

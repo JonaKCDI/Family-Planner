@@ -1,22 +1,24 @@
-import { createLocalDocumentReference, deleteDocumentReference, updateDocumentReference } from "@/lib/actions";
+import { createLocalDocumentReference, deleteDocumentReference } from "@/lib/actions";
 import { requireSession } from "@/lib/auth";
 import { listDocumentDirectory, type DocumentFileEntry } from "@/lib/document-files";
 import { formatDate } from "@/lib/format";
 import { getVisibleDocumentRoots, getVisibleDocuments } from "@/lib/queries";
 import { ActionModal } from "@/components/action-modal";
-import { AutosaveForm } from "@/components/autosave-form";
 import { ConfirmSubmitButton } from "@/components/confirm-submit-button";
 import { DocumentFilePreview } from "@/components/document-file-preview";
+import { DocumentEditModal } from "@/components/document-edit-modal";
 import { DocumentSummaryStrip, DocumentToolbar, type DocumentToolbarParams } from "@/components/document-toolbar";
 import { DocumentRootSelect } from "@/components/document-root-select";
 import { EmptyState, PageHeader, ScopeSelect } from "@/components/ui";
-import { CalendarDays, Download, ExternalLink, FileText, Folder, HardDrive, Link as LinkIcon, Lock, Pencil, Save, Tag, Trash2, UserRound } from "lucide-react";
+import { DesktopDetail, DesktopFacts, DesktopWorkspace, desktopSelectedRecord } from "@/components/desktop-workspace";
+import { CalendarDays, Download, ExternalLink, FileText, Folder, HardDrive, Link as LinkIcon, Lock, Save, Tag, Trash2, UserRound } from "lucide-react";
 
 type DocumentsPageProps = {
   searchParams: Promise<DocumentPageParams>;
 };
 
 type DocumentPageParams = {
+  selected?: string;
   q?: string;
   tab?: string;
   root?: string;
@@ -39,6 +41,11 @@ export default async function DocumentsPage({ searchParams }: DocumentsPageProps
   const visibleDocuments = filterDocumentsByTab(searchedDocuments, tab);
   const activeFilterCount = tab === "all" ? 0 : 1;
   const normalizedParams = normalizeDocumentParams(params);
+  const desktopRecords = [
+    ...visibleDocuments.map((document) => ({ id: `ref:${document.id}`, kind: "reference" as const, document })),
+    ...(tab === "all" || tab === "files" ? explorerEntries.filter((entry) => entry.kind === "file" && (!query || entry.name.toLocaleLowerCase("de-DE").includes(query))) : []).map((entry) => ({ id: `file:${selectedRoot?.id ?? ""}:${entry.relativePath}`, kind: "file" as const, entry }))
+  ];
+  const desktopSelected = desktopSelectedRecord(desktopRecords, params.selected);
 
   return (
     <div className="document-page">
@@ -66,6 +73,44 @@ export default async function DocumentsPage({ searchParams }: DocumentsPageProps
         ]}
       />
 
+      <DesktopWorkspace
+        className="desktop-document-workspace"
+        ariaLabel="Dokumente und Details"
+        title="Dokumente"
+        description="Gespeicherte Verweise und Dateien im aktuellen Ordner"
+        rows={desktopRecords.map((record) => record.kind === "reference"
+          ? { id: record.id, title: record.document.title, subtitle: record.document.documentRoot?.name ?? (record.document.referenceType === "LOCAL_FILE" ? "NAS-Datei" : "HTTPS-Link"), meta: formatDate(record.document.createdAt) }
+          : { id: record.id, title: record.entry.name, subtitle: selectedRoot?.name ?? "Datei", meta: formatFileSize(record.entry.fileSize) })}
+        selectedId={desktopSelected?.id}
+        pathname="/dokumente"
+        params={params}
+        detail={desktopSelected?.kind === "reference" ? <DesktopDetail title={desktopSelected.document.title} eyebrow="Gespeicherter Verweis" actions={<>
+          <DocumentEditModal document={desktopSelected.document} documentRoots={roots} />
+          <form action={deleteDocumentReference}><input type="hidden" name="id" value={desktopSelected.document.id} /><ConfirmSubmitButton className="task-detail-edit-button danger-icon-button" title="Dokument löschen?" message="Die Referenz wird entfernt. Die Datei selbst bleibt auf dem NAS erhalten."><Trash2 size={18} aria-hidden="true" /><span className="sr-only">Dokument löschen</span></ConfirmSubmitButton></form>
+        </>}>
+          <DesktopFacts items={[
+            { label: "Besitzer", value: desktopSelected.document.owner.name },
+            { label: "Erstellt", value: formatDate(desktopSelected.document.createdAt) },
+            { label: "Sichtbarkeit", value: desktopSelected.document.scope === "FAMILY" ? "Familie" : "Privat" },
+            { label: "Bezug", value: linkedEntityLabels[desktopSelected.document.linkedEntityType] },
+            { label: "Typ", value: desktopSelected.document.referenceType === "LOCAL_FILE" ? "Lokale Datei" : "HTTPS-Link" },
+            { label: "Bereich", value: desktopSelected.document.documentRoot?.name ?? "–" },
+            ...(desktopSelected.document.referenceType === "LOCAL_FILE" ? [{ label: "Pfad", value: desktopSelected.document.relativePath ?? "–" }] : [])
+          ]} />
+          {desktopSelected.document.description && <p className="desktop-detail-note">{desktopSelected.document.description}</p>}
+          {desktopSelected.document.referenceType === "LOCAL_FILE" ? <div className="document-detail-actions"><DocumentFilePreview href={`/api/documents/file?id=${encodeURIComponent(desktopSelected.document.id)}`} downloadHref={`/api/documents/file?id=${encodeURIComponent(desktopSelected.document.id)}&download=1`} fileName={desktopSelected.document.fileName ?? desktopSelected.document.title} mimeType={desktopSelected.document.mimeType} disabled={!isPreviewableMimeType(desktopSelected.document.mimeType)} /><a className="button secondary" href={`/api/documents/file?id=${encodeURIComponent(desktopSelected.document.id)}&download=1`}>Download</a></div> : <a className="button" href={desktopSelected.document.url} target="_blank" rel="noreferrer">Link öffnen</a>}
+        </DesktopDetail> : desktopSelected?.kind === "file" && selectedRoot ? <DesktopDetail title={desktopSelected.entry.name} eyebrow="NAS-Datei">
+          <DesktopFacts items={[
+            { label: "Bereich", value: selectedRoot.name },
+            { label: "Größe", value: formatFileSize(desktopSelected.entry.fileSize) },
+            { label: "Aktualisiert", value: formatDate(desktopSelected.entry.updatedAt) },
+            { label: "Pfad", value: desktopSelected.entry.relativePath }
+          ]} />
+          <div className="document-detail-actions"><DocumentFilePreview href={`/api/documents/file?rootId=${encodeURIComponent(selectedRoot.id)}&path=${encodeURIComponent(desktopSelected.entry.relativePath)}`} downloadHref={`/api/documents/file?rootId=${encodeURIComponent(selectedRoot.id)}&path=${encodeURIComponent(desktopSelected.entry.relativePath)}&download=1`} fileName={desktopSelected.entry.name} mimeType={desktopSelected.entry.mimeType} disabled={!desktopSelected.entry.previewable} /><a className="button secondary" href={`/api/documents/file?rootId=${encodeURIComponent(selectedRoot.id)}&path=${encodeURIComponent(desktopSelected.entry.relativePath)}&download=1`}>Download</a></div>
+          <ActionModal title="Datei als Verweis speichern" trigger="Als Verweis speichern" triggerClassName="button" sheetVariant="create" wide modalId={`desktop-save-file-${safeModalId(desktopSelected.entry.relativePath)}`}><form action={createLocalDocumentReference} className="form form-grid modal-form document-edit-form"><input type="hidden" name="documentRootId" value={selectedRoot.id} /><input type="hidden" name="relativePath" value={desktopSelected.entry.relativePath} /><label>Titel<input name="title" defaultValue={desktopSelected.entry.name} required /></label><LinkedEntityFields /><ScopeSelect /><label className="full-span">Beschreibung<textarea name="description" /></label><div className="modal-submit-row modal-footer"><button className="button" type="submit">Verweis speichern</button></div></form></ActionModal>
+        </DesktopDetail> : null}
+      />
+
       <section className="document-list-section spacing-top">
         <div className="section-head">
           <div>
@@ -75,7 +120,7 @@ export default async function DocumentsPage({ searchParams }: DocumentsPageProps
         </div>
         <div className="document-priority-list">
           {visibleDocuments.length === 0 ? <EmptyState>{query ? "Keine passenden Dokumente gefunden." : "Noch keine Dokumentverweise gespeichert."}</EmptyState> : null}
-          {visibleDocuments.map((document) => <DocumentReferenceRow document={document} key={document.id} />)}
+          {visibleDocuments.map((document) => <DocumentReferenceRow document={document} documentRoots={roots} key={document.id} />)}
         </div>
       </section>
 
@@ -117,7 +162,7 @@ export default async function DocumentsPage({ searchParams }: DocumentsPageProps
   );
 }
 
-function DocumentReferenceRow({ document }: { document: DocumentLike }) {
+function DocumentReferenceRow({ document, documentRoots }: { document: DocumentLike; documentRoots: { id: string; name: string }[] }) {
   const localFile = document.referenceType === "LOCAL_FILE";
   const pathLabel = localFile
     ? [document.documentRoot?.name, document.relativePath].filter(Boolean).join(" / ")
@@ -138,7 +183,7 @@ function DocumentReferenceRow({ document }: { document: DocumentLike }) {
             <span>{localFile ? "Lokale Datei" : "HTTPS-Link"}</span>
           </div>
           <div className="task-detail-icon-actions">
-            <DocumentEditModal document={document} />
+            <DocumentEditModal document={document} documentRoots={documentRoots} />
             <form action={deleteDocumentReference}>
               <input type="hidden" name="id" value={document.id} />
               <ConfirmSubmitButton className="task-detail-edit-button danger-icon-button" title="Dokument löschen?" message="Die Referenz wird entfernt. Die Datei selbst bleibt auf dem NAS erhalten."><Trash2 size={18} aria-hidden="true" /><span className="sr-only">Dokument löschen</span></ConfirmSubmitButton>
@@ -281,35 +326,6 @@ function DocumentRowContent({
         <small>{sideBottom}</small>
       </span>
     </span>
-  );
-}
-
-function DocumentEditModal({ document }: { document: DocumentLike }) {
-  return (
-    <ActionModal
-      title="Dokument bearbeiten"
-      trigger={<Pencil size={18} aria-hidden="true" />}
-      triggerLabel="Dokument bearbeiten"
-      triggerClassName="task-detail-edit-button document-detail-edit-button"
-      panelClassName="document-edit-dialog"
-      sheetVariant="create"
-      wide
-      modalId={`document-${document.id}-edit`}
-    >
-      <AutosaveForm action={updateDocumentReference} className="form form-grid modal-form document-edit-form">
-        <input type="hidden" name="id" value={document.id} />
-        <label>Titel<input name="title" defaultValue={document.title} required /></label>
-        {document.referenceType === "LOCAL_FILE" ? (
-          <label>Datei<input value={document.relativePath ?? ""} readOnly /></label>
-        ) : (
-          <label>HTTPS-Link<input name="url" type="url" defaultValue={document.url} required /></label>
-        )}
-        <LinkedEntityFields defaultType={document.linkedEntityType} defaultId={document.linkedEntityId ?? ""} />
-        <ScopeSelect defaultValue={document.scope} />
-        <label className="full-span">Beschreibung<textarea name="description" defaultValue={document.description ?? ""} /></label>
-        <div className="modal-submit-row modal-footer"><button className="button" type="submit">Speichern</button></div>
-      </AutosaveForm>
-    </ActionModal>
   );
 }
 

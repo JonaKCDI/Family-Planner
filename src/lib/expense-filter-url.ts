@@ -1,6 +1,7 @@
 import { isExpenseSortKey, type ExpenseSortKey } from "@/lib/expense-sorting";
 
 export type ExpenseFilterParams = {
+  selected?: string | null;
   analysisReturn?: string | null;
   bereich?: string | null;
   person?: string | null;

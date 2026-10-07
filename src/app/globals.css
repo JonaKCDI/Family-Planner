@@ -3152,26 +3152,6 @@ body {
   width: min(100%, 23rem);
 }
 
-.category-management-row .label-management-actions:has(.management-inline-panel) {
-  grid-template-columns: repeat(2, minmax(8rem, 1fr));
-  width: min(100%, 36rem);
-}
-
-.management-inline-panel {
-  grid-column: 1 / -1;
-  grid-row: 2;
-  margin-top: 0.55rem;
-}
-
-.label-management-actions:has(.management-inline-panel) > .button {
-  grid-column: 1;
-  grid-row: 1;
-}
-
-.label-management-actions:has(.management-inline-panel) > form {
-  display: none;
-}
-
 .label-inline-form {
   display: grid;
   grid-template-columns: minmax(10rem, 1.2fr) minmax(7rem, 0.8fr) minmax(5rem, 0.5fr);
@@ -4633,7 +4613,7 @@ details > summary {
   pointer-events: none;
 }
 
-@media (min-width: 901px) and (min-height: 761px) and (min-aspect-ratio: 4/5) {
+@media (min-width: 901px) and (min-height: 560px) and (min-aspect-ratio: 4/5) {
   .topbar {
     position: fixed;
     right: 0;
@@ -6389,10 +6369,17 @@ body { font-family: var(--app-font-family); }
 }
 
 .modal-panel.modal-panel-covered-by-child {
-  opacity: 0;
+  animation: none !important;
+  opacity: 0 !important;
   pointer-events: none;
   transform: translate3d(0, 8px, 0);
   transition: opacity .14s ease, transform .14s ease;
+}
+
+.modal-backdrop:has(> .modal-panel.modal-panel-covered-by-child),
+.action-modal-backdrop:has(> .modal-panel.modal-panel-covered-by-child) {
+  background: transparent !important;
+  pointer-events: none;
 }
 
 .modal-backdrop.is-closing,
@@ -6722,6 +6709,112 @@ body { font-family: var(--app-font-family); }
   grid-column: 4 / 5;
   color: var(--muted);
   font-size: 1.18rem;
+}
+
+.category-distribution {
+  display: grid;
+  gap: .75rem;
+  min-width: 0;
+}
+
+.category-distribution-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: .75rem;
+}
+
+.category-distribution-heading h3 {
+  margin: 0;
+  font-size: .95rem;
+  font-weight: 700;
+}
+
+.category-distribution-heading > span {
+  color: var(--muted);
+  font-size: .78rem;
+  white-space: nowrap;
+}
+
+.category-distribution-content {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  gap: .65rem;
+}
+
+.category-distribution-pie {
+  display: block;
+  width: min(100%, 180px);
+  aspect-ratio: 1;
+  justify-self: center;
+}
+
+.category-distribution-legend {
+  display: grid;
+  gap: 0;
+  min-width: 0;
+  max-height: none;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.category-distribution-legend li {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: .5rem;
+  min-height: 52px;
+  border-bottom: 1px solid #e5ece8;
+  padding: .35rem 0;
+}
+
+.category-distribution-legend li:last-child {
+  border-bottom: 0;
+}
+
+.category-distribution-swatch {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--category-color);
+  color: #17201f;
+}
+
+.category-distribution-copy {
+  display: grid;
+  gap: .08rem;
+  min-width: 0;
+}
+
+.category-distribution-name {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--foreground);
+  font-size: .875rem;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.category-distribution-copy small,
+.category-distribution-amount {
+  color: var(--muted);
+  font-size: .7rem;
+  line-height: 1.3;
+}
+
+.category-distribution-amount {
+  color: var(--foreground);
+  font-size: .82rem;
+  font-weight: 650;
+  text-align: right;
+  white-space: nowrap;
 }
 
 .finance-compact-insights {
@@ -8481,11 +8574,45 @@ body { font-family: var(--app-font-family); }
   white-space: nowrap;
 }
 
+.document-picker-explorer-modal {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: .55rem;
+  min-height: 0;
+  width: min(960px, calc(100vw - 2rem));
+  height: min(88vh, 760px);
+  max-height: calc(100vh - 2rem);
+  overflow: hidden;
+}
+
+.document-picker-explorer-modal .modal-head {
+  padding: .25rem 2.5rem .45rem 0;
+}
+
+.document-picker-explorer-body {
+  display: flex;
+  flex-direction: column;
+  gap: .68rem;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.document-picker-explorer-body .document-file-list {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  align-content: start;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
 .document-picker-dialog .modal-head {
   border-bottom: 0;
 }
 
-.document-picker-dialog .modal-body {
+.document-picker-dialog .document-picker-explorer-body {
   gap: .68rem;
 }
 
@@ -8800,6 +8927,14 @@ body { font-family: var(--app-font-family); }
 .cockpit-finance-summary {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: .55rem;
+  padding: 0;
+}
+
+.cockpit-finance-content {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: .58rem;
+  min-width: 0;
 }
 
 .cockpit-finance-summary .finance-summary-metric {
@@ -9114,6 +9249,26 @@ body { font-family: var(--app-font-family); }
 .cockpit-budget-alert.budget-near > strong {
   color: #98621d;
 }
+
+.cockpit-label-budget {
+  gap: .28rem;
+  color: inherit;
+  text-decoration: none;
+  transition: border-color .16s ease, transform .16s ease;
+}
+
+.cockpit-label-budget:hover { border-color: #bddbd1; transform: translateY(-1px); }
+.cockpit-label-budget .finance-summary-card-head > .cockpit-label-budget-heading { display: flex; flex-direction: column; align-items: flex-start; gap: .16rem; }
+.cockpit-label-budget .finance-summary-card-head small { color: var(--muted); font-size: .68rem; font-weight: 700; }
+.cockpit-label-budget .finance-summary-card-head strong { overflow: hidden; color: var(--foreground); font-size: .9rem; text-overflow: ellipsis; white-space: nowrap; }
+.cockpit-label-budget .cockpit-label-budget-value { line-height: 1.2; }
+.cockpit-label-budget.tone-neutral .cockpit-label-budget-value { color: var(--summary-tone); }
+.cockpit-label-budget.tone-negative .cockpit-label-budget-value { color: var(--red); }
+.cockpit-label-budget-track { display: block; height: 6px; margin-top: .12rem; overflow: hidden; border-radius: 999px; background: color-mix(in srgb, var(--summary-tone) 10%, #e8eef0); }
+.cockpit-label-budget-track > span { display: block; height: 100%; border-radius: inherit; background: var(--summary-tone); transition: width .2s ease; }
+
+.finance-label-budget-section { display: grid; gap: .45rem; margin-top: .85rem; border-top: 1px solid var(--line); padding-top: .75rem; }
+.finance-label-budget-section > .section-title { margin: 0; font-size: .92rem; }
 
 .cockpit-finance-actions a {
   display: inline-flex;
@@ -13344,6 +13499,20 @@ a.document-row-trigger {
   align-content: start;
 }
 
+.document-edit-file-summary {
+  grid-template-columns: minmax(0, 1fr) !important;
+  white-space: normal;
+}
+
+.document-edit-file-summary .document-picker-control {
+  min-width: 0;
+}
+
+.document-edit-file-summary .document-picker-control strong {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
 .document-edit-form .optional-section {
   grid-column: 1 / -1;
 }
@@ -13644,7 +13813,7 @@ a.document-row-trigger {
     overflow: visible !important;
   }
 
-  .modal-panel.create-dialog:has(:is(.finance-create-form, .contract-create-form)) :is(.finance-create-form, .contract-create-form) > .modal-submit-row {
+  .modal-panel.create-dialog:has(.finance-create-form) .finance-create-form > .modal-submit-row {
     position: sticky !important;
     bottom: 0 !important;
     z-index: 6;
@@ -13653,6 +13822,13 @@ a.document-row-trigger {
     background: #fff !important;
     padding: .65rem 1rem calc(.75rem + env(safe-area-inset-bottom)) !important;
   }
+
+  .modal-panel.create-dialog.contract-create-sheet .contract-create-form[data-contract-panel="main"] > .modal-submit-row {
+    position: static !important;
+    bottom: auto !important;
+    margin: .25rem -1rem 0 !important;
+  }
+
 }
 
 /* Contract create sheet: direct overrides, no :has(), so iOS/PWA keeps the same layout. */
@@ -13976,6 +14152,13 @@ a.document-row-trigger {
 
   .modal-panel.create-dialog .document-create-form {
     gap: .55rem;
+    padding-bottom: 0 !important;
+    scroll-padding-bottom: 0 !important;
+  }
+
+  .modal-panel.create-dialog .document-create-source-form {
+    padding-bottom: 0 !important;
+    scroll-padding-bottom: 0 !important;
   }
 
   .modal-panel.create-dialog .document-create-form .document-source-choice {
@@ -14095,6 +14278,16 @@ a.document-row-trigger {
 @media(max-width:600px) { .family-finance-page .family-analysis-row { gap:8px; font-size:.875rem; } .family-finance-page .family-analysis-row > span:nth-child(2) { max-width:40%; } }
 
 body:has(.family-finance-page), .shell:has(.family-finance-page), .content:has(.family-finance-page) { background:#fff; }
+
+/* Keep the category chart visibly separate from the list above it. */
+.category-distribution.finance-chart-widget.panel {
+  margin-top: .25rem;
+  border: 1px solid #cfdcd6;
+  border-radius: 16px;
+  background: #fff;
+  padding: 1rem;
+  box-shadow: 0 4px 16px rgb(23 102 106 / 8%);
+}
 .family-finance-page .finance-summary-metric { border:0; border-radius:0; box-shadow:none; background:transparent; padding:0; }
 .family-finance-page .finance-summary-metric::before { display:none; }
 .family-finance-page .finance-summary-metric span { font-size:.85rem; color:#53635f; }
@@ -14385,8 +14578,545 @@ body:has(.family-finance-page), .shell:has(.family-finance-page), .content:has(.
   pointer-events: none !important;
 }
 
-/* Keep every sheet title on the same visual column and reserve the left
-   action slot for multi-step flows that expose a back button. */
-.modal-panel .modal-head {
-  padding-left: 3.55rem !important;
+/* Balance titles between navigation controls when both corners are occupied. */
+.modal-panel.has-back-button .modal-head {
+  justify-content: center;
+  padding-right: 4rem !important;
+  padding-left: 4rem !important;
+  text-align: center;
+}
+
+/* Desktop workspace layer. It is deliberately isolated behind the same
+   desktop-shaped viewport contract used by the app shell, leaving the mobile
+   PWA (including short landscape screens) untouched. */
+.app-nav-items { display: contents; }
+.app-nav-collapse { display: none; }
+.app-nav-heading,
+.fab-label { display: none; }
+
+@media (min-width: 901px) and (min-height: 761px) and (min-aspect-ratio: 4/5) {
+  :root {
+    --desktop-rail-width: 280px;
+    --desktop-rail-collapsed-width: 80px;
+    --desktop-workspace-gutter: clamp(1.75rem, 3vw, 3.5rem);
+  }
+
+  .app-frame {
+    grid-template-columns: var(--desktop-rail-width) minmax(0, 1fr);
+    padding-top: 72px;
+    transition: grid-template-columns .2s ease;
+  }
+
+  .app-frame:has(.app-nav.is-collapsed) {
+    grid-template-columns: var(--desktop-rail-collapsed-width) minmax(0, 1fr);
+  }
+
+  .app-nav {
+    position: sticky;
+    top: 72px;
+    right: auto;
+    bottom: auto;
+    left: auto;
+    display: grid;
+    grid-template-columns: 1fr;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    align-content: stretch;
+    gap: 1rem;
+    height: calc(100vh - 72px);
+    border-top: 0;
+    padding: 1rem;
+    transition: padding .2s ease;
+  }
+
+  .app-nav-items {
+    display: grid;
+    align-content: start;
+    gap: .45rem;
+    min-height: 0;
+    overflow: auto;
+  }
+
+  .app-nav-heading {
+    display: block;
+    color: var(--muted);
+    font-size: .7rem;
+    font-weight: 900;
+    letter-spacing: .1em;
+    padding: .3rem .65rem .1rem;
+    text-transform: uppercase;
+  }
+
+  .app-nav-collapse {
+    display: inline-flex;
+    min-height: 42px;
+    align-items: center;
+    justify-content: flex-start;
+    gap: .6rem;
+    border: 1px solid transparent;
+    border-radius: 10px;
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+    padding: .55rem .65rem;
+    font-size: .82rem;
+    font-weight: 800;
+  }
+
+  .app-nav-collapse:hover,
+  .app-nav-collapse:focus-visible {
+    border-color: var(--line);
+    background: var(--surface-soft);
+    color: var(--accent-dark);
+    outline: 0;
+  }
+
+  .app-nav.is-collapsed { padding-inline: .7rem; }
+  .app-nav.is-collapsed .app-nav-items { overflow: visible; }
+  .app-nav.is-collapsed a {
+    grid-template-columns: 1fr;
+    justify-content: center;
+    justify-items: center;
+    min-height: 48px;
+    padding-inline: .35rem;
+  }
+  .app-nav.is-collapsed a strong,
+  .app-nav.is-collapsed .app-nav-collapse span,
+  .app-nav.is-collapsed .app-nav-heading { display: none; }
+  .app-nav.is-collapsed .app-nav-collapse { justify-content: center; padding-inline: .35rem; }
+
+  .content {
+    width: min(1540px, 100%);
+    padding: var(--desktop-workspace-gutter);
+    padding-bottom: var(--desktop-workspace-gutter) !important;
+  }
+
+  .topbar {
+    position: fixed;
+    top: 0;
+    right: 0;
+    left: 0;
+    height: 72px;
+    border-bottom-color: #e3eae8;
+    background: rgba(255, 255, 255, .98);
+    padding-inline: clamp(1.5rem, 3vw, 3.5rem);
+  }
+
+  .app-nav {
+    background: #f8fbfa;
+    border-right-color: #e3eae8;
+  }
+
+  .app-nav a { border-radius: 12px; }
+  .app-nav a:hover { background: #edf6f3; color: var(--accent-dark); }
+
+  .fab-button {
+    right: clamp(1.5rem, 3vw, 3.5rem) !important;
+    bottom: clamp(1.5rem, 3vw, 3rem) !important;
+    display: inline-flex;
+    width: auto !important;
+    min-width: 122px;
+    height: 48px !important;
+    align-items: center;
+    gap: .5rem;
+    border-radius: 14px !important;
+    padding-inline: 1rem !important;
+  }
+
+  .fab-label { display: inline; font-size: .9rem; font-weight: 850; }
+
+  .task-page-head,
+  .document-page-head,
+  .contract-page-head,
+  .mileage-page-head {
+    align-items: center;
+    min-height: 58px;
+  }
+
+  .page-head h1 { font-size: clamp(2rem, 2.2vw, 2.7rem); }
+  .panel { border-radius: 16px; }
+
+  /* The cockpit stays a balanced daily overview rather than a large hero. */
+  .cockpit-page { gap: 1.25rem; }
+  .cockpit-metrics { gap: .85rem; }
+  .cockpit-metric { min-height: 124px; padding: 1rem; }
+  .cockpit-grid {
+    grid-template-columns: minmax(340px, .9fr) minmax(420px, 1.1fr) minmax(300px, .75fr);
+    gap: 1rem;
+  }
+  .cockpit-grid > :nth-child(1) { grid-column: 1; }
+  .cockpit-grid > :nth-child(2) { grid-column: 2; }
+  .cockpit-grid > :nth-child(n + 3) { grid-column: 3; }
+  .cockpit-section,
+  .cockpit-documents { padding: 1rem; }
+  .cockpit-document-row { grid-template-columns: 1fr; }
+
+  /* Finance is the primary data workspace: generous overview modules, then
+     compact stable rows for scanning and comparison. */
+  .finance-overview-page {
+    grid-template-columns: minmax(0, 1.15fr) minmax(360px, .85fr);
+    gap: 1rem;
+  }
+  .finance-overview-page > .finance-summary-panel,
+  .finance-overview-page > .finance-inline-analysis-link { grid-column: 1 / -1; }
+  .finance-overview-page > .finance-overview-snapshot { min-height: 100%; }
+  .finance-summary-panel { gap: .85rem; }
+  .finance-summary-metric { min-height: 138px; border-radius: 16px; padding: .95rem; }
+  .finance-summary-metric strong { font-size: 1.35rem; }
+  .expense-row:not(.mileage-row) summary { padding-block: .8rem; }
+  .finance-analysis-list .analysis-row { min-height: 68px; }
+
+  /* Task, contract, mileage, document and settings pages share the same
+     spacious desktop workspace rhythm without changing their mobile rows. */
+  .task-list-section,
+  .document-list-section,
+  .mileage-entry-section,
+  .mileage-analysis-page { gap: .75rem; }
+  .task-row-trigger,
+  .document-row-trigger,
+  a.document-row-trigger { border-radius: 14px; }
+  .task-row-trigger { min-height: 82px; }
+  .mileage-overview-page { gap: 1rem; }
+  .mileage-overview-page .finance-summary-panel { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .document-page { gap: 1rem; }
+  .document-page {
+    grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr);
+    align-items: start;
+  }
+  .document-page > :not(.document-list-section) { grid-column: 1 / -1; }
+  .document-page .document-list-section { padding: 1rem; border: 1px solid var(--line); border-radius: 16px; background: #fff; }
+  .document-page .document-list-section { min-height: 460px; }
+  .document-page #datei-explorer { grid-column: 2; }
+  .document-page .document-explorer-toolbar { align-items: center; }
+  .settings-page-layout { gap: 1.25rem; }
+
+  .content:has(.task-page-head) > .task-summary-strip {
+    max-width: 760px;
+  }
+  .content:has(.task-page-head) > .task-list-section {
+    max-width: 1040px;
+    padding: 1.15rem;
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    background: #fff;
+  }
+
+}
+
+/* Task sorting uses the same quiet, outlined tile treatment as finance widgets. */
+.task-sort-modal .modal-body {
+  padding-top: .35rem;
+}
+
+.task-sort-form {
+  display: block;
+}
+
+.task-sort-widget {
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid #e7edeb;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 2px 8px rgb(23 102 106 / 3%);
+}
+
+.task-sort-widget label {
+  display: grid;
+  gap: .5rem;
+  color: #53635f;
+  font-size: .85rem;
+  font-weight: 650;
+}
+
+.task-sort-widget select {
+  width: 100%;
+  min-height: 46px;
+  border-color: #d8e0e5;
+  border-radius: 12px;
+  background: #fff;
+  color: var(--foreground);
+  font-size: 1rem;
+  font-weight: 500;
+}
+
+.task-filter-modal .modal-body {
+  padding-top: .35rem;
+}
+
+.task-filter-modal .task-filter-layout {
+  gap: .65rem;
+}
+
+.task-filter-modal .task-filter-layout .fieldset {
+  min-width: 0;
+  margin: 0;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none;
+}
+
+.task-filter-modal .task-filter-layout label {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-height: 0;
+  gap: .4rem;
+  color: var(--foreground);
+  font-size: .88rem;
+  font-weight: 650;
+}
+
+.task-filter-modal .task-filter-layout select {
+  width: 100%;
+  min-height: 48px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+  color: var(--foreground);
+  font-size: 1rem;
+  font-weight: 500;
+  padding: .55rem .75rem;
+}
+
+@media (max-width: 900px), (max-height: 760px), (max-aspect-ratio: 4/5) {
+  .modal-panel.sheet-compact.task-sort-modal {
+    height: auto !important;
+    max-height: calc(100dvh - .5rem - env(safe-area-inset-top)) !important;
+  }
+
+  .modal-panel.sheet-large.task-filter-modal {
+    height: min(88dvh, 740px) !important;
+    max-height: min(88dvh, 740px) !important;
+  }
+}
+
+@media (min-width: 901px) and (max-height: 760px) and (hover: hover) and (pointer: fine) {
+  .modal-panel.sheet-large.task-filter-modal {
+    display: flex !important;
+    flex-direction: column !important;
+    height: auto !important;
+    max-height: calc(100dvh - 2rem) !important;
+    grid-template-rows: none !important;
+  }
+
+  .task-filter-modal > .modal-body {
+    flex: 0 1 auto;
+    overflow: auto;
+  }
+
+  .task-filter-modal > .modal-footer {
+    flex: 0 0 auto;
+    align-self: stretch;
+  }
+}
+
+@media (max-width: 900px), (max-height: 760px), (max-aspect-ratio: 4/5) {
+  .modal-panel.has-back-button > .modal-head {
+    min-height: 60px;
+    align-items: center;
+    padding-top: 0;
+    padding-bottom: 0;
+  }
+
+  .modal-panel.create-dialog.has-back-button > .modal-head {
+    padding-left: 3.55rem;
+  }
+}
+
+/* FAB creation sheets end at the viewport edge. Their height follows the
+   visible form content, while long forms scroll above a shared bottom action. */
+@media (max-width: 900px), (max-height: 760px), (max-aspect-ratio: 4/5) {
+  .modal-panel.create-from-fab:has(.modal-submit-row) {
+    height: auto !important;
+    max-height: calc(100dvh - .5rem - env(safe-area-inset-top)) !important;
+    grid-template-rows: auto minmax(0, 1fr) !important;
+    padding-bottom: .5rem !important;
+  }
+
+  .modal-panel.create-from-fab:has(.modal-submit-row) > .create-dialog-body {
+    min-height: 0 !important;
+    max-height: none !important;
+    overflow-y: auto !important;
+    padding-bottom: 0 !important;
+  }
+
+  .modal-panel.create-from-fab:has(.modal-submit-row) .modal-submit-row,
+  .modal-panel.create-from-fab:has(.modal-submit-row) .modal-footer {
+    position: sticky !important;
+    bottom: 0 !important;
+    z-index: 30;
+    padding-bottom: calc(1.25rem + env(safe-area-inset-bottom)) !important;
+  }
+
+  .modal-panel.create-from-fab.contract-create-sheet .contract-create-dialog-body,
+  .modal-panel.create-from-fab.contract-create-sheet .contract-create-form {
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    overflow: visible !important;
+  }
+}
+
+/* The NAS explorer is a separate sheet above document creation, with its own
+   scrollable list so the parent form stays compact and readable. */
+.modal-panel.document-picker-explorer-modal {
+  grid-template-rows: auto minmax(0, 1fr);
+  width: min(960px, calc(100vw - 2rem));
+  height: min(88vh, 760px);
+  max-height: calc(100vh - 2rem);
+  overflow: hidden;
+}
+
+.document-picker-explorer-body {
+  padding: .75rem;
+}
+
+@media (max-width: 900px), (max-height: 760px), (max-aspect-ratio: 4/5) {
+  .modal-panel.document-picker-explorer-modal {
+    --sheet-height: min(94dvh, 900px);
+    grid-template-rows: auto auto minmax(0, 1fr) !important;
+    height: var(--sheet-height) !important;
+    max-height: calc(100dvh - env(safe-area-inset-top)) !important;
+    padding: 0 0 env(safe-area-inset-bottom) !important;
+  }
+
+  .modal-panel.document-picker-explorer-modal .modal-head {
+    position: static !important;
+    min-height: 52px;
+    margin: 0 !important;
+    padding: .6rem 4rem .4rem 1rem !important;
+  }
+
+  .modal-panel.document-picker-explorer-modal .document-picker-explorer-body {
+    min-height: 0 !important;
+    padding: .65rem 1rem calc(.6rem + env(safe-area-inset-bottom)) !important;
+    overflow: hidden !important;
+  }
+}
+
+@media (max-width: 900px), (max-height: 760px), (max-aspect-ratio: 4/5) {
+  .modal-panel.create-from-fab .document-create-source-form {
+    display: grid !important;
+    height: auto !important;
+    min-height: 0 !important;
+  }
+
+  .modal-panel.create-from-fab .document-create-source-form > .modal-submit-row {
+    position: static !important;
+    margin-top: .25rem !important;
+  }
+
+  .modal-panel.create-from-fab:has(.document-create-form) {
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: calc(100dvh - .5rem - env(safe-area-inset-top)) !important;
+    grid-template-rows: auto auto !important;
+    align-content: start !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    left: 0 !important;
+    right: 0 !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+  }
+
+  .modal-panel.create-from-fab:has(.document-create-form) > .create-dialog-body,
+  .modal-panel.create-from-fab .document-create-form,
+  .modal-panel.create-from-fab .document-create-source-form {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    height: auto !important;
+    min-height: 0 !important;
+    overflow-x: hidden !important;
+    padding-bottom: 0 !important;
+    scroll-padding-bottom: 0 !important;
+  }
+}
+
+html.modal-scroll-locked,
+body.modal-scroll-locked {
+  overflow-x: hidden !important;
+}
+
+@media (max-width: 900px), (max-height: 760px), (max-aspect-ratio: 4/5) {
+  .modal-panel.document-picker-explorer-modal {
+    width: 100% !important;
+    max-width: 100% !important;
+    left: 0 !important;
+    right: 0 !important;
+  }
+}
+
+/* Edit sheets use the same bottom-anchored action area as FAB creation. */
+@media (max-width: 900px), (max-height: 760px), (max-aspect-ratio: 4/5) {
+  .modal-panel.create-dialog:has(:is(.task-edit-form, .contract-edit-form, .document-edit-form, .expense-sheet-form, .mileage-edit-form)),
+  .modal-panel.action-modal:has(:is(.task-edit-form, .contract-edit-form, .document-edit-form, .expense-sheet-form, .mileage-edit-form)) {
+    height: auto !important;
+    max-height: calc(100dvh - .5rem - env(safe-area-inset-top)) !important;
+    padding-bottom: .5rem !important;
+  }
+
+  .modal-panel.create-dialog:has(:is(.task-edit-form, .contract-edit-form, .document-edit-form, .expense-sheet-form, .mileage-edit-form)) {
+    grid-template-rows: auto minmax(0, 1fr) !important;
+  }
+
+  .modal-panel.action-modal:has(:is(.task-edit-form, .contract-edit-form, .document-edit-form, .expense-sheet-form, .mileage-edit-form)) {
+    grid-template-rows: auto auto minmax(0, 1fr) !important;
+  }
+
+  .modal-panel.create-dialog:has(:is(.task-edit-form, .contract-edit-form, .document-edit-form, .expense-sheet-form, .mileage-edit-form)) > .create-dialog-body,
+  .modal-panel.action-modal:has(:is(.task-edit-form, .contract-edit-form, .document-edit-form, .expense-sheet-form, .mileage-edit-form)) > .modal-body {
+    min-height: 0 !important;
+    max-height: none !important;
+    overflow-y: auto !important;
+    padding-bottom: 0 !important;
+  }
+
+  .modal-panel:has(:is(.task-edit-form, .contract-edit-form, .document-edit-form, .expense-sheet-form, .mileage-edit-form)) :is(.task-edit-form, .contract-edit-form, .document-edit-form, .expense-sheet-form, .mileage-edit-form) {
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    overflow: visible !important;
+  }
+
+  .modal-panel:has(:is(.task-edit-form, .contract-edit-form, .document-edit-form, .expense-sheet-form, .mileage-edit-form)) .modal-submit-row,
+  .modal-panel:has(:is(.task-edit-form, .contract-edit-form, .document-edit-form, .expense-sheet-form, .mileage-edit-form)) .modal-footer {
+    position: sticky !important;
+    bottom: 0 !important;
+    z-index: 30;
+    padding-bottom: calc(1.25rem + env(safe-area-inset-bottom)) !important;
+  }
+}
+
+/* The finance filter only needs the space its current form content uses. */
+@media (max-width: 900px), (max-height: 760px), (max-aspect-ratio: 4/5) {
+  .modal-panel.finance-filter-sheet,
+  .modal-panel.sheet-large.task-filter-modal {
+    display: flex !important;
+    flex-direction: column !important;
+    height: auto !important;
+    max-height: min(88dvh, 740px) !important;
+    grid-template-rows: none !important;
+  }
+
+  .modal-panel.finance-filter-sheet::before,
+  .modal-panel.sheet-large.task-filter-modal::before {
+    align-self: center;
+    flex: 0 0 auto;
+  }
+
+  .modal-panel.finance-filter-sheet > .modal-body,
+  .modal-panel.sheet-large.task-filter-modal > .modal-body {
+    flex: 0 1 auto;
+    min-height: 0;
+    max-height: calc(88dvh - 180px);
+    overflow-y: auto;
+  }
+
+  .modal-panel.finance-filter-sheet > .modal-footer,
+  .modal-panel.sheet-large.task-filter-modal > .modal-footer {
+    flex: 0 0 auto;
+    align-self: stretch;
+  }
 }

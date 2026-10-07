@@ -42,6 +42,8 @@ type ExpenseEntryListProps = {
   loadUrl: string;
   returnTo: string;
   pageSize?: number;
+  inspectorTrigger?: boolean;
+  modalIdPrefix?: string;
 };
 
 export function ExpenseEntryList({
@@ -55,7 +57,9 @@ export function ExpenseEntryList({
   initialDocumentsByExpense,
   loadUrl,
   returnTo,
-  pageSize = 100
+  pageSize = 100,
+  inspectorTrigger = false,
+  modalIdPrefix = "expense"
 }: ExpenseEntryListProps) {
   const [state, setState] = useState({
     initialEntries,
@@ -110,6 +114,8 @@ export function ExpenseEntryList({
           documentRoots={documentRoots}
           contracts={contracts}
           returnTo={returnTo}
+          inspectorTrigger={inspectorTrigger}
+          modalIdPrefix={modalIdPrefix}
           key={expense.id}
         />
       ))}
@@ -130,7 +136,9 @@ function ExpenseEntryRow({
   labels,
   documentRoots,
   contracts,
-  returnTo
+  returnTo,
+  inspectorTrigger = false,
+  modalIdPrefix = "expense"
 }: {
   expense: ExpenseListItem;
   linkedDocuments: ExpenseDocumentItem[];
@@ -140,8 +148,10 @@ function ExpenseEntryRow({
   documentRoots: { id: string; name: string }[];
   contracts: ExpenseEntryContractOption[];
   returnTo: string;
+  inspectorTrigger?: boolean;
+  modalIdPrefix?: string;
 }) {
-  const [mode, setMode] = useState<"read" | "edit" | "duplicate" | "delete">("read");
+  const [mode, setMode] = useState<"read" | "edit" | "duplicate" | "delete">(inspectorTrigger ? "edit" : "read");
   const primaryDocument = linkedDocuments[0];
   const editableExpense = expense.editExpense ?? expense;
   const categoryOptions = includeSelectedOption(categories, editableExpense.category ? { id: editableExpense.category.id, name: editableExpense.category.name, color: editableExpense.category.color, icon: editableExpense.category.icon } : null);
@@ -159,7 +169,7 @@ function ExpenseEntryRow({
   return (
     <ActionModal
       title={mode === "read" ? "Buchungsdetails" : mode === "edit" ? "Buchung bearbeiten" : mode === "duplicate" ? "Buchung duplizieren" : "Buchung löschen"}
-      trigger={(
+      trigger={inspectorTrigger ? <span className="desktop-expense-edit-trigger">Bearbeiten · Belege</span> : (
         <span className="expense-row-summary">
           <span className="expense-summary-copy">
             <span className="expense-summary-date">{formatDate(expense.date)}</span>
@@ -182,7 +192,7 @@ function ExpenseEntryRow({
         </span>
       )}
       triggerClassName="expense-row-trigger"
-      modalId={`expense-${expense.id}`}
+      modalId={`${modalIdPrefix}-${expense.id}`}
       panelClassName="expense-detail-sheet sheet-large"
       sheetVariant={mode === "edit" || mode === "duplicate" ? "create" : "action"}
       wide

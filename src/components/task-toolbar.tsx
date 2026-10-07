@@ -50,7 +50,8 @@ export function TaskToolbar({ params, members, activeFilterCount }: TaskToolbarP
         open={filterOpen}
         onOpenChange={setFilterOpen}
         title="Aufgaben filtern"
-        size="medium"
+        size="large"
+        className="task-filter-modal"
         footer={(
           <>
             <a className="button secondary" href="/aufgaben">Zurücksetzen</a>
@@ -115,6 +116,7 @@ export function TaskSortControl({ params }: { params: TaskToolbarProps["params"]
         onOpenChange={setSortOpen}
         title="Aufgaben sortieren"
         size="compact"
+        className="task-sort-modal"
         footer={(
           <>
             <a className="button secondary" href={buildTaskHref(params, { sort: undefined })}>Zurücksetzen</a>
@@ -122,20 +124,18 @@ export function TaskSortControl({ params }: { params: TaskToolbarProps["params"]
           </>
         )}
       >
-        <form id="task-sort-form" className="task-filter-form" action="/aufgaben">
+        <form id="task-sort-form" className="task-filter-form task-sort-form" action="/aufgaben">
           <TaskHiddenFields params={params} exclude={["sort"]} />
-          <FilterSheetLayout>
-            <FilterGroup title="Sortierung">
-              <label>
-                <span>Sortieren nach</span>
-                <select name="sort" defaultValue={params.sort ?? "importance"}>
-                  <option value="importance">Wichtigkeit</option>
-                  <option value="date-asc">Datum aufsteigend</option>
-                  <option value="date-desc">Datum absteigend</option>
-                </select>
-              </label>
-            </FilterGroup>
-          </FilterSheetLayout>
+          <div className="task-sort-widget">
+            <label>
+              <span>Sortieren nach</span>
+              <select name="sort" defaultValue={params.sort ?? "importance"}>
+                <option value="importance">Wichtigkeit</option>
+                <option value="date-asc">Datum aufsteigend</option>
+                <option value="date-desc">Datum absteigend</option>
+              </select>
+            </label>
+          </div>
         </form>
       </BottomSheet>
     </>
@@ -257,6 +257,7 @@ function BottomSheet({
   onOpenChange,
   title,
   size = "medium",
+  className,
   footer,
   children
 }: {
@@ -264,6 +265,7 @@ function BottomSheet({
   onOpenChange: (open: boolean) => void;
   title: string;
   size?: "compact" | "medium" | "large";
+  className?: string;
   footer?: ReactNode;
   children: ReactNode;
 }) {
@@ -282,7 +284,7 @@ function BottomSheet({
   return (
     <ModalPortal>
       <div className={closing ? "modal-backdrop action-modal-backdrop is-closing" : "modal-backdrop action-modal-backdrop"} role="presentation">
-        <section className={`modal-panel action-modal sheet-${size} task-sheet-modal`} role="dialog" aria-modal="true" aria-labelledby="task-filter-title">
+        <section className={`modal-panel action-modal sheet-${size} task-sheet-modal ${className ?? ""}`} role="dialog" aria-modal="true" aria-labelledby="task-filter-title">
           <button className="icon-button modal-close-button" type="button" aria-label="Schließen" title="Schließen" onClick={closeSheet}>
             <X size={20} />
           </button>

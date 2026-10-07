@@ -50,11 +50,17 @@ export function monthlyTotals(entries: ForecastExpense[], now: Date, count: numb
 }
 
 export function monthlySaldo(entries: ForecastExpense[], now: Date, count: number): MonthTotal[] {
-  return monthlyTotals(entries.filter((entry) => entry.kind === "INCOME" || entry.kind === "EXPENSE").map((entry) => ({
-    ...entry,
-    kind: "EXPENSE",
-    amountCents: entry.kind === "INCOME" ? entry.amountCents : -entry.amountCents
-  })), now, count);
+  const sums = new Map<string, number>();
+  for (const entry of entries) {
+    if (entry.kind !== "INCOME" && entry.kind !== "EXPENSE") continue;
+    const key = monthKey(entry.date);
+    const sign = entry.kind === "INCOME" ? 1 : -1;
+    sums.set(key, (sums.get(key) ?? 0) + sign * entry.amountCents);
+  }
+  return Array.from({ length: count }, (_, i) => {
+    const month = monthOffset(now, i - count);
+    return { month, value: sums.get(month) ?? 0 };
+  });
 }
 
 export function smoothedForecast(entries: ForecastExpense[], reference: Date): MonthTotal[] {
@@ -69,12 +75,24 @@ export function smoothedForecast(entries: ForecastExpense[], reference: Date): M
   return fitForecast(smoothed, reference);
 }
 
+export function smoothedSaldoForecast(entries: ForecastExpense[], reference: Date): MonthTotal[] {
+  const months = recordedMonths(entries, reference);
+  if (!months) return [];
+  const history = monthlySaldo(entries, reference, Math.max(6, Math.min(11, months)));
+  const smoothed = movingAverage(history).filter((point): point is MonthTotal => point.value !== null);
+  if (smoothed.length < 2) {
+    return [0, 1].map((offset) => ({ month: monthOffset(reference, offset), value: Math.round(smoothed[0].value) }));
+  }
+  return fitForecast(smoothed, reference, true);
+}
+
 export function forecastOverview(entries: ForecastExpense[], categories: { id: string; excludeFromForecast: boolean }[], reference: Date, offset: 0 | 1 = 0) {
   const included = withoutExcludedCategories(entries, categories);
   const spending = smoothedForecast(included, reference)[offset]?.value ?? 0;
   const income = smoothedForecast(included.filter((entry) => entry.kind === "INCOME").map((entry) => ({ ...entry, kind: "EXPENSE" })), reference)[offset]?.value ?? 0;
+  const saldo = smoothedSaldoForecast(included, reference)[offset]?.value ?? 0;
   const hasHistory = included.some((entry) => (entry.kind === "INCOME" || entry.kind === "EXPENSE") && monthKey(entry.date) < monthOffset(reference, 0));
-  return { spending, income, saldo: income - spending, hasHistory };
+  return { spending, income, saldo, hasHistory };
 }
 
 /** Forecasts the month end from money spent so far plus the typical remainder
@@ -114,13 +132,16 @@ export function movingAverage(points: MonthTotal[], window = 6) {
   }));
 }
 
-export function fitForecast(points: MonthTotal[], now: Date) {
+export function fitForecast(points: MonthTotal[], now: Date, allowNegative = false) {
   if (points.length < 2) return [];
   const center = (points.length - 1) / 2;
   const mean = points.reduce((sum, p) => sum + p.value, 0) / points.length;
   const denominator = points.reduce((sum, _, i) => sum + (i - center) ** 2, 0);
   const slope = points.reduce((sum, p, i) => sum + (i - center) * (p.value - mean), 0) / denominator;
-  return [0, 1].map((offset) => ({ month: monthOffset(now, offset), value: Math.max(0, Math.round(mean + slope * (points.length + offset - center))) }));
+  return [0, 1].map((offset) => {
+    const value = Math.round(mean + slope * (points.length + offset - center));
+    return { month: monthOffset(now, offset), value: allowNegative ? value : Math.max(0, value) };
+  });
 }
 
 export function boxStatistics(points: MonthTotal[]) {
@@ -138,7 +159,7 @@ export function boxStatistics(points: MonthTotal[]) {
 }
 
 export function recordedMonths(entries: ForecastExpense[], now: Date) {
-  const dates = entries.filter((e) => e.kind === "EXPENSE" && monthKey(e.date) < monthOffset(now, 0)).map((e) => monthKey(e.date)).sort();
+  const dates = entries.filter((e) => (e.kind === "EXPENSE" || e.kind === "INCOME") && monthKey(e.date) < monthOffset(now, 0)).map((e) => monthKey(e.date)).sort();
   if (!dates.length) return 0;
   const [year, month] = dates[0].split("-").map(Number);
   return (now.getUTCFullYear() - year) * 12 + now.getUTCMonth() - month + 1;

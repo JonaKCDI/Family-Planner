@@ -98,7 +98,7 @@ export async function getFuelEntriesForCar(familyId: string, carId: string) {
       familyId,
       carId
     },
-    include: { car: true, creator: true },
+    include: { car: true, creator: true, expense: true },
     orderBy: [{ date: "desc" }, { odometerKm: "desc" }]
   });
 }

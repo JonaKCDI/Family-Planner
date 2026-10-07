@@ -191,6 +191,21 @@ Detail sheets are read-first. Editing is intentional.
 - Developer features are a personal, default-off admin setting. Ordinary members
   never see this setting or forecast test-year controls, including through URLs.
 
+## Desktop Workspace
+
+- Keep the approved mobile rendering and interactions intact. Desktop-specific
+  composition and styles belong in separate components and `src/app/desktop.css`.
+- At desktop widths, show the same six main areas in the sidebar, settings in the
+  header, and the global create button at the lower right.
+- Use the available width for a scannable list beside its selected detail. Finance
+  overview may also show summary figures and recent bookings at once; analysis
+  keeps categories or labels beside their selected history.
+- Store desktop list selection in the `selected` URL parameter. Resolve the ID
+  only against records already visible to the current user, and fall back to the
+  first visible record when the parameter is missing or invalid.
+- At laptop widths, give the list and detail enough width before adding a third
+  column. Center create and edit dialogs and retain reduced-motion behavior.
+
 ## Settings
 
 - Settings use a white canvas, a compact account row, and grouped navigation lists.

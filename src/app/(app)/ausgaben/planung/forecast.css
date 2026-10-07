@@ -1,4 +1,8 @@
 .forecast-page { display: grid; gap: 16px; min-width: 0; padding-bottom: 24px; }
+@media (min-width: 901px) and (hover: hover) and (pointer: fine) {
+  .forecast-page.forecast-detail-page:not(.family-finance-page) { grid-template-columns: minmax(0, 1fr); }
+  .forecast-page.forecast-detail-page .forecast-chart-scroll:not(.forecast-box) svg { max-height: 400px; }
+}
 /* The grid gap would otherwise be added to the shared finance-header margin. */
 .forecast-page > .finance-page-head { margin-bottom: calc(.75rem - 16px); }
 .forecast-page h2 { font-size: 1rem; margin: 0; font-weight: 650; }

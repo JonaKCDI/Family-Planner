@@ -2,9 +2,22 @@ export type AnalyticsExpense = {
   kind: "EXPENSE" | "INCOME";
   amountCents: number;
   date: Date | string;
-  category?: { id?: string; name: string; color: string; icon?: string | null; monthlyBudgetCents: number } | null;
-  label?: { id?: string; name: string; color: string; budgetCents: number } | null;
+  category?: { id?: string; name: string; color: string; icon?: string | null; monthlyBudgetCents: number; budgetPeriod?: BudgetCadence; budgetCadence?: BudgetCadence } | null;
+  label?: { id?: string; name: string; color: string; budgetCents: number; budgetPeriod?: BudgetCadence; budgetCadence?: BudgetCadence } | null;
 };
+
+export type BudgetCadence = "MONTHLY" | "YEARLY" | "ALL_TIME";
+export type BudgetRange = {
+  mode: "month" | "year" | "custom" | "all";
+  from: Date | string;
+  to: Date | string;
+};
+
+export function budgetCadenceLabel(cadence: BudgetCadence) {
+  if (cadence === "YEARLY") return "jährlich";
+  if (cadence === "ALL_TIME") return "allzeit";
+  return "monatlich";
+}
 
 export type AnalyticsCategory = {
   id?: string;
@@ -12,6 +25,8 @@ export type AnalyticsCategory = {
   color: string;
   icon?: string | null;
   monthlyBudgetCents: number;
+  budgetPeriod?: BudgetCadence;
+  budgetCadence?: BudgetCadence;
 };
 
 export type AnalyticsLabel = {
@@ -19,6 +34,8 @@ export type AnalyticsLabel = {
   name: string;
   color: string;
   budgetCents: number;
+  budgetPeriod?: BudgetCadence;
+  budgetCadence?: BudgetCadence;
   lastUsedAt?: Date | string | null;
 };
 
@@ -73,6 +90,7 @@ export type BudgetAlert = {
   netConsumption: number;
   remaining: number;
   budgetUsage: number;
+  budgetPeriod?: BudgetCadence;
   dimension: "category" | "label";
   status: "near" | "over";
 };
@@ -81,7 +99,61 @@ export function sumByKind(entries: AnalyticsExpense[], kind: "EXPENSE" | "INCOME
   return entries.filter((entry) => entry.kind === kind).reduce((sum, entry) => sum + entry.amountCents, 0);
 }
 
-export function buildCategoryRows(entries: AnalyticsExpense[], categories: AnalyticsCategory[], totalSpending: number, showBudget: boolean) {
+function utcDate(value: Date | string) {
+  const date = value instanceof Date ? value : new Date(value);
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+}
+
+/** Express a recurring budget over the selected calendar window. */
+export function budgetForRange(amountCents: number, cadence: BudgetCadence, range: BudgetRange) {
+  if (amountCents <= 0) return 0;
+  if (cadence === "ALL_TIME") return amountCents;
+  if (range.mode === "month") return Math.round(cadence === "MONTHLY" ? amountCents : amountCents / 12);
+  if (range.mode === "year") return cadence === "MONTHLY" ? amountCents * 12 : amountCents;
+  if (range.mode === "all") return 0;
+
+  const from = utcDate(range.from);
+  const to = utcDate(range.to);
+  if (from > to) return 0;
+  let prorated = 0;
+  if (cadence === "MONTHLY") {
+    const cursor = new Date(Date.UTC(from.getUTCFullYear(), from.getUTCMonth(), 1));
+    while (cursor <= to) {
+      const year = cursor.getUTCFullYear();
+      const month = cursor.getUTCMonth();
+      const monthStart = new Date(Date.UTC(year, month, 1));
+      const monthEnd = new Date(Date.UTC(year, month + 1, 0));
+      const segmentStart = from > monthStart ? from : monthStart;
+      const segmentEnd = to < monthEnd ? to : monthEnd;
+      const selectedDays = Math.floor((segmentEnd.getTime() - segmentStart.getTime()) / 86_400_000) + 1;
+      prorated += amountCents * selectedDays / monthEnd.getUTCDate();
+      cursor.setUTCMonth(cursor.getUTCMonth() + 1);
+    }
+  } else {
+    const cursor = new Date(Date.UTC(from.getUTCFullYear(), 0, 1));
+    while (cursor <= to) {
+      const year = cursor.getUTCFullYear();
+      const yearStart = new Date(Date.UTC(year, 0, 1));
+      const yearEnd = new Date(Date.UTC(year, 11, 31));
+      const segmentStart = from > yearStart ? from : yearStart;
+      const segmentEnd = to < yearEnd ? to : yearEnd;
+      const selectedDays = Math.floor((segmentEnd.getTime() - segmentStart.getTime()) / 86_400_000) + 1;
+      const yearDays = (Date.UTC(year + 1, 0, 1) - Date.UTC(year, 0, 1)) / 86_400_000;
+      prorated += amountCents * selectedDays / yearDays;
+      cursor.setUTCFullYear(cursor.getUTCFullYear() + 1);
+    }
+  }
+  return Math.round(prorated);
+}
+
+function categoryBudget(category: AnalyticsCategory | undefined, range: BudgetRange | boolean) {
+  if (!category) return 0;
+  if (typeof range === "boolean") return range ? category.monthlyBudgetCents : 0;
+  return budgetForRange(category.monthlyBudgetCents, category.budgetPeriod ?? category.budgetCadence ?? "MONTHLY", range);
+}
+
+export function buildCategoryRows(entries: AnalyticsExpense[], categories: AnalyticsCategory[], _totalSpending: number, range: BudgetRange | boolean) {
+  const showBudget = typeof range === "boolean" ? range : true;
   const rows = new Map<string, { income: number; spending: number; color: string; icon?: string | null; category?: AnalyticsCategory; id?: string }>();
   for (const entry of entries) {
     const name = entry.category?.name ?? "Ohne Kategorie";
@@ -105,9 +177,9 @@ export function buildCategoryRows(entries: AnalyticsExpense[], categories: Analy
     }
   }
 
-  return [...rows.entries()].map(([key, row]) => {
+  const mappedRows = [...rows.entries()].map(([key, row]) => {
     const name = row.category?.name ?? key;
-    const budget = showBudget ? row.category?.monthlyBudgetCents ?? 0 : 0;
+    const budget = showBudget ? categoryBudget(row.category, range) : 0;
     const amount = row.spending;
     const saldo = row.income - row.spending;
     const netConsumption = Math.max(0, row.spending - row.income);
@@ -122,19 +194,24 @@ export function buildCategoryRows(entries: AnalyticsExpense[], categories: Analy
       color: row.color,
       icon: row.icon ?? row.category?.icon,
       budget,
+      budgetPeriod: row.category?.budgetPeriod ?? row.category?.budgetCadence ?? "MONTHLY",
       remaining: budget - netConsumption,
       budgetUsage: budget > 0 ? Math.min(100, (netConsumption / budget) * 100) : netConsumption > 0 ? 100 : 0,
-      percent: totalSpending > 0 ? (row.spending / totalSpending) * 100 : 0
+      percent: 0
     };
-  }).sort((a, b) => (b.income + b.spending) - (a.income + a.spending));
+  });
+  const totalAbsoluteSaldo = mappedRows.reduce((sum, row) => sum + Math.abs(row.saldo), 0);
+  return mappedRows.map((row) => ({ ...row, percent: totalAbsoluteSaldo > 0 ? Math.abs(row.saldo) / totalAbsoluteSaldo * 100 : 0 }))
+    .sort((a, b) => Math.abs(b.saldo) - Math.abs(a.saldo));
 }
 
-export function buildLabelRows(entries: AnalyticsExpense[], labels: AnalyticsLabel[]) {
-  const rows = new Map<string, { income: number; spending: number; color: string; budget: number; neverUsed: boolean; id?: string; name: string }>();
+export function buildLabelRows(entries: AnalyticsExpense[], labels: AnalyticsLabel[], range?: BudgetRange, allEntries: AnalyticsExpense[] = entries) {
+  const rows = new Map<string, { income: number; spending: number; color: string; budget: number; budgetPeriod: BudgetCadence; neverUsed: boolean; id?: string; name: string }>();
   const labelsByName = new Map(labels.map((label) => [label.id ?? label.name, label]));
   for (const label of labels) {
-    if (label.lastUsedAt !== null) continue;
-    rows.set(label.id ?? label.name, { name: label.name, income: 0, spending: 0, color: label.color, budget: label.budgetCents, neverUsed: true, id: label.id });
+    const budgetPeriod = label.budgetPeriod ?? label.budgetCadence ?? "ALL_TIME";
+    if (label.lastUsedAt !== null && (label.budgetCents <= 0 || !range)) continue;
+    rows.set(label.id ?? label.name, { name: label.name, income: 0, spending: 0, color: label.color, budget: label.budgetCents, budgetPeriod, neverUsed: true, id: label.id });
   }
   for (const entry of entries) {
     if (!entry.label) continue;
@@ -146,6 +223,7 @@ export function buildLabelRows(entries: AnalyticsExpense[], labels: AnalyticsLab
       spending: 0,
       color: configuredLabel?.color ?? entry.label.color,
       budget: configuredLabel?.budgetCents ?? entry.label.budgetCents,
+      budgetPeriod: configuredLabel?.budgetPeriod ?? configuredLabel?.budgetCadence ?? entry.label.budgetPeriod ?? entry.label.budgetCadence ?? "ALL_TIME",
       neverUsed: false,
       id: configuredLabel?.id ?? entry.label.id
     };
@@ -159,6 +237,14 @@ export function buildLabelRows(entries: AnalyticsExpense[], labels: AnalyticsLab
     const amount = row.spending;
     const saldo = row.income - row.spending;
     const netConsumption = Math.max(0, row.spending - row.income);
+    const comparisonEntries = range && row.budgetPeriod === "ALL_TIME"
+      ? allEntries.filter((entry) => (entry.label?.id ?? entry.label?.name) === (row.id ?? row.name))
+      : entries.filter((entry) => (entry.label?.id ?? entry.label?.name) === (row.id ?? row.name));
+    const budgetConsumption = Math.max(0, sumByKind(comparisonEntries, "EXPENSE") - sumByKind(comparisonEntries, "INCOME"));
+    const budget = range && row.budgetPeriod !== "ALL_TIME"
+      ? range.mode === "custom" || range.mode === "all" ? 0 : budgetForRange(row.budget, row.budgetPeriod, range)
+      : row.budget;
+    const comparedConsumption = range && row.budgetPeriod === "ALL_TIME" ? budgetConsumption : netConsumption;
     return {
       id: row.id,
       name,
@@ -168,12 +254,14 @@ export function buildLabelRows(entries: AnalyticsExpense[], labels: AnalyticsLab
       saldo,
       netConsumption,
       color: row.color,
-      budget: row.budget,
+      budget,
+      budgetPeriod: row.budgetPeriod,
       neverUsed: row.neverUsed,
-      remaining: row.budget - netConsumption,
-      budgetUsage: row.budget > 0 ? Math.min(100, (netConsumption / row.budget) * 100) : netConsumption > 0 ? 100 : 0
+      budgetConsumption: comparedConsumption,
+      remaining: budget - comparedConsumption,
+      budgetUsage: budget > 0 ? Math.min(100, (comparedConsumption / budget) * 100) : comparedConsumption > 0 ? 100 : 0
     };
-  }).filter((row) => row.income > 0 || row.spending > 0 || row.neverUsed).sort((a, b) => (b.income + b.spending) - (a.income + a.spending));
+  }).filter((row) => row.income > 0 || row.spending > 0 || row.neverUsed).sort((a, b) => Math.abs(b.saldo) - Math.abs(a.saldo));
 }
 
 export function buildPeriodRows(entries: AnalyticsExpense[], categories: AnalyticsCategory[], mode: "month" | "year"): PeriodRow[] {
@@ -181,7 +269,10 @@ export function buildPeriodRows(entries: AnalyticsExpense[], categories: Analyti
   for (const entry of entries) {
     const date = new Date(entry.date);
     const label = mode === "month" ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}` : String(date.getFullYear());
-    const row = rows.get(label) ?? { label, income: 0, spending: 0, budget: mode === "month" ? monthlyBudget(categories) : 0, saldo: 0 };
+    const from = mode === "month" ? new Date(Date.UTC(date.getFullYear(), date.getMonth(), 1)) : new Date(Date.UTC(date.getFullYear(), 0, 1));
+    const to = mode === "month" ? new Date(Date.UTC(date.getFullYear(), date.getMonth() + 1, 0)) : new Date(Date.UTC(date.getFullYear(), 11, 31));
+    const budget = categories.reduce((sum, category) => sum + budgetForRange(category.monthlyBudgetCents, category.budgetPeriod ?? category.budgetCadence ?? "MONTHLY", { mode, from, to }), 0);
+    const row = rows.get(label) ?? { label, income: 0, spending: 0, budget, saldo: 0 };
     if (entry.kind === "INCOME") row.income += entry.amountCents;
     if (entry.kind === "EXPENSE") row.spending += entry.amountCents;
     row.saldo = row.income - row.spending;
@@ -191,7 +282,11 @@ export function buildPeriodRows(entries: AnalyticsExpense[], categories: Analyti
 }
 
 export function monthlyBudget(categories: AnalyticsCategory[]) {
-  return categories.reduce((sum, category) => sum + category.monthlyBudgetCents, 0);
+  return categories.reduce((sum, category) => sum + Math.round((category.budgetPeriod ?? category.budgetCadence ?? "MONTHLY") === "YEARLY" ? category.monthlyBudgetCents / 12 : category.monthlyBudgetCents), 0);
+}
+
+export function annualBudget(categories: AnalyticsCategory[]) {
+  return categories.reduce((sum, category) => sum + ((category.budgetPeriod ?? category.budgetCadence ?? "MONTHLY") === "YEARLY" ? category.monthlyBudgetCents : category.monthlyBudgetCents * 12), 0);
 }
 
 /** Returns configured budgets that need attention. A refund/income assigned to the
@@ -203,8 +298,10 @@ export function buildBudgetAlerts(
     color: string;
     budget: number;
     netConsumption: number;
+    budgetConsumption?: number;
     remaining: number;
     budgetUsage: number;
+    budgetPeriod?: BudgetCadence;
   }>,
   dimension: BudgetAlert["dimension"],
   warningThreshold = 80
@@ -213,6 +310,7 @@ export function buildBudgetAlerts(
     .filter((row) => row.budget > 0 && row.budgetUsage >= warningThreshold)
     .map((row) => ({
       ...row,
+      netConsumption: row.budgetConsumption ?? row.netConsumption,
       dimension,
       status: row.remaining < 0 ? "over" as const : "near" as const
     }))

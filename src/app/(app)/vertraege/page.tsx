@@ -1,25 +1,24 @@
-import { DocumentFilePicker } from "@/components/document-file-picker";
-import { deleteContract, quickCreateExpenseCategory, quickCreateExpenseLabel, updateContract } from "@/lib/actions";
+import { deleteContract } from "@/lib/actions";
 import { requireSession } from "@/lib/auth";
 import { ensureDueContractExpenses } from "@/lib/contract-auto-expenses";
-import { getContractNextCancellationDate, toAnnualCancellationInputValue } from "@/lib/contracts";
-import { formatDate, formatMoney, toDateInputValue } from "@/lib/format";
+import { getContractNextCancellationDate } from "@/lib/contracts";
+import { formatDate, formatMoney } from "@/lib/format";
 import { getVisibleDocumentRoots, getDocumentsForLinkedEntities, getExpenseLabels, getVisibleCategories, getVisibleContractPayments, getVisibleContractsWithExpenseDetails } from "@/lib/queries";
 import { ActionModal } from "@/components/action-modal";
-import { AutosaveForm } from "@/components/autosave-form";
+import { ContractEditForm } from "@/components/contract-edit-form";
 import { ConfirmSubmitButton } from "@/components/confirm-submit-button";
 import { ContractPayments } from "@/components/contract-payments";
 import { ContractSummaryStrip, type ContractSummaryView } from "@/components/contract-summary-strip";
 import { ContractToolbar, type ContractToolbarParams } from "@/components/contract-toolbar";
-import { SearchableSelect } from "@/components/searchable-select";
-import { EmptyState, PageHeader, ScopeSelect } from "@/components/ui";
+import { EmptyState, PageHeader } from "@/components/ui";
+import { DesktopDetail, DesktopFacts, DesktopWorkspace } from "@/components/desktop-workspace";
 import { CalendarClock, CreditCard, FileText, Lock, Pencil, Repeat, ShieldCheck, Trash2, UserRound } from "lucide-react";
 
 type ContractsPageProps = {
   searchParams: Promise<ContractPageParams>;
 };
 
-type ContractPageParams = ContractToolbarParams;
+type ContractPageParams = ContractToolbarParams & { selected?: string };
 
 export default async function ContractsPage({ searchParams }: ContractsPageProps) {
   const session = await requireSession();
@@ -87,6 +86,10 @@ export default async function ContractsPage({ searchParams }: ContractsPageProps
     sort
   });
   const toolbarParams = normalizeContractParams(params, view);
+  const desktopSelectedContract = visibleContracts.find((entry) => entry.contract.id === params.selected) ?? visibleContracts[0] ?? null;
+  const desktopContract = desktopSelectedContract?.contract;
+  const desktopDocuments = desktopContract ? documentsByContract[desktopContract.id] ?? [] : [];
+  const desktopPayments = desktopContract ? paymentsByContract[desktopContract.id] ?? [] : [];
 
   return (
     <>
@@ -133,6 +136,42 @@ export default async function ContractsPage({ searchParams }: ContractsPageProps
           <strong>{attentionContracts.length}</strong>
         </div>
       </section>
+
+      <DesktopWorkspace
+        className="desktop-contract-workspace"
+        ariaLabel="Verträge und Details"
+        title={contractViewTitles[view]}
+        description="Verträge und Fristen nebeneinander prüfen"
+        rows={visibleContracts.map((entry) => ({
+          id: entry.contract.id,
+          title: entry.contract.provider,
+          subtitle: `${entry.contract.contractType} · ${entry.contract.owner.name}`,
+          meta: formatMoney(entry.contract.costCents, entry.contract.currency),
+          tone: entry.urgencyClass === "task-critical" ? "attention" : undefined
+        }))}
+        selectedId={desktopContract?.id}
+        pathname="/vertraege"
+        params={params}
+        detail={desktopContract && desktopSelectedContract ? <DesktopDetail title={desktopContract.provider} eyebrow={desktopContract.contractType} actions={<>
+          <ContractEditModal documentRoots={documentRoots} contract={desktopContract} categories={categories} labels={labels} primaryDocument={desktopDocuments[0]} currentPricePhase={desktopContract.pricePhases.at(-1)} />
+          <form action={deleteContract}><input type="hidden" name="id" value={desktopContract.id} /><ConfirmSubmitButton className="task-detail-edit-button danger-icon-button" title="Vertrag löschen?" message="Der Vertrag wird dauerhaft entfernt. Bestehende Ausgaben bleiben erhalten, aber ohne Vertragsverknüpfung."><Trash2 size={18} aria-hidden="true" /><span className="sr-only">Vertrag löschen</span></ConfirmSubmitButton></form>
+        </>}>
+          <DesktopFacts items={[
+            { label: "Kosten", value: `${formatMoney(desktopContract.costCents, desktopContract.currency)} · ${billingLabels[desktopContract.billingInterval]}` },
+            { label: "Kündigung", value: formatDate(desktopSelectedContract.nextCancellation) },
+            { label: "Verlängerung", value: desktopContract.autoRenewal ? renewalLabels[desktopContract.renewalInterval] : "Keine automatische Verlängerung" },
+            { label: "Sichtbarkeit", value: desktopContract.scope === "FAMILY" ? "Familie" : "Privat" },
+            { label: "Besitzer", value: desktopContract.owner.name },
+            { label: "Status", value: statusLabels[desktopContract.status] },
+            { label: "Aktualisiert", value: formatDate(desktopContract.updatedAt) }
+          ]} />
+          <div className="desktop-detail-group"><h4>Automatische Ausgabe</h4><p>{desktopContract.autoCreateExpenses ? `Einzug am ${desktopContract.expensePaymentDay ?? new Date(desktopContract.startDate).getDate()}. · Kategorie: ${categories.find((category) => category.id === desktopContract.expenseCategoryId)?.name ?? "Keine Kategorie"} · Label: ${labels.find((label) => label.id === desktopContract.expenseLabelId)?.name ?? "Kein Label"}` : "Nicht aktiv"}</p></div>
+          <div className="desktop-detail-group"><h4>Preisentwicklung</h4>{desktopContract.pricePhases.length ? desktopContract.pricePhases.map((phase) => <p key={phase.id}>{formatMoney(phase.amountCents, phase.currency)} · {billingLabels[phase.billingInterval]} · ab {formatDate(phase.validFrom)}</p>) : <p>Keine Preisphasen</p>}</div>
+          <div className="desktop-detail-group"><h4>Dokumente</h4>{desktopDocuments.length ? desktopDocuments.map((document) => <a href={document.referenceType === "LOCAL_FILE" ? `/api/documents/file?id=${encodeURIComponent(document.id)}&download=1` : document.url ?? "#"} target="_blank" rel="noreferrer" key={document.id}>{document.title}</a>) : <p>Keine Nachweise verknüpft</p>}</div>
+          {desktopContract.description && <p className="desktop-detail-note">{desktopContract.description}</p>}
+          <ContractPayments payments={desktopPayments.map((payment) => ({ id: payment.id, date: payment.date.toISOString(), description: payment.description, amountCents: payment.amountCents, currency: payment.currency }))} totalCents={desktopPayments.reduce((sum, payment) => sum + payment.amountCents, 0)} currency={desktopContract.currency} />
+        </DesktopDetail> : null}
+      />
 
       <section className="task-list-section contract-list-section spacing-top">
         <div className="section-head">
@@ -296,93 +335,14 @@ function ContractEditModal({
       wide
       modalId={`contract-${contract.id}-edit`}
     >
-      <AutosaveForm action={updateContract} className="form form-grid modal-form task-create-form contract-edit-form">
-        <input type="hidden" name="id" value={contract.id} />
-        <fieldset className="fieldset modal-form-section full-span task-create-core">
-          <legend>Vertrag</legend>
-          <div className="form-grid">
-            <label>Anbieter<input name="provider" defaultValue={contract.provider} required /></label>
-            <label>Vertragsart<input name="contractType" defaultValue={contract.contractType} required /></label>
-            <label>Startdatum<input name="startDate" type="date" defaultValue={toDateInputValue(contract.startDate)} required /></label>
-            <label>
-              Status
-              <select name="status" defaultValue={contract.status}>
-                <option value="ACTIVE">Aktiv</option>
-                <option value="DRAFT">Entwurf</option>
-                <option value="CANCELLED">Gekündigt</option>
-                <option value="EXPIRED">Ausgelaufen</option>
-              </select>
-            </label>
-            <ScopeSelect defaultValue={contract.scope} />
-          </div>
-        </fieldset>
-
-        <fieldset className="fieldset modal-form-section full-span">
-          <legend>Kosten & Abbuchung</legend>
-          <div className="form-grid">
-            <label>Kosten in EUR<input name="cost" inputMode="decimal" defaultValue={formatEuroInput(contract.costCents)} required /></label>
-            <label>Preis gilt ab<input name="priceValidFrom" type="date" defaultValue={toDateInputValue(currentPricePhase?.validFrom ?? contract.startDate)} required /></label>
-            <input type="hidden" name="priceChangeMode" value="NEW_PHASE" />
-            <label>
-              Zahlungsrhythmus
-              <select name="billingInterval" defaultValue={contract.billingInterval}>
-                <option value="MONTHLY">Monatlich</option>
-                <option value="YEARLY">Jährlich</option>
-                <option value="QUARTERLY">Quartalsweise</option>
-                <option value="ONCE">Einmalig</option>
-                <option value="OTHER">Sonstiges</option>
-              </select>
-            </label>
-          </div>
-          <p className="muted">Die App legt daraus automatisch eine Preisphase an. Bereits erzeugte Auto-Ausgaben bleiben unverändert, solange die Option nicht aktiv ist.</p>
-          <label className="checkbox-field contract-price-sync-toggle"><input name="updateGeneratedExpenses" type="checkbox" /> Auto-Ausgaben ab „Preis gilt ab“ anpassen</label>
-        </fieldset>
-
-        <fieldset className="fieldset modal-form-section full-span">
-          <legend>Automatik</legend>
-          <div className="form-grid">
-            <label className="checkbox-field full-span"><input name="expenseSharedWithFamily" type="checkbox" defaultChecked={contract.expenseSharedWithFamily}/> Neue Ausgaben mit Familie teilen</label>
-            <label className="checkbox-field full-span"><input name="autoCreateExpenses" type="checkbox" defaultChecked={contract.autoCreateExpenses} /> Automatisch als Ausgabe eintragen</label>
-            <label>Einzugstag<input name="expensePaymentDay" type="number" min="1" max="31" defaultValue={contract.expensePaymentDay ?? new Date(contract.startDate).getDate()} /></label>
-            <SearchableSelect name="expenseCategoryId" label="Ausgaben-Kategorie" options={categories} defaultValue={contract.expenseCategoryId} emptyLabel="Keine Kategorie" placeholder="Kategorie suchen oder auswählen" quickAddLabel="+ Neue Kategorie hinzufügen" quickAddAction={quickCreateExpenseCategory} />
-            <SearchableSelect name="expenseLabelId" label="Label / Projekt" options={labels} defaultValue={contract.expenseLabelId} emptyLabel="Kein Label" placeholder="Label suchen oder auswählen" quickAddLabel="+ Neues Label hinzufügen" quickAddAction={quickCreateExpenseLabel} />
-          </div>
-        </fieldset>
-
-        <fieldset className="fieldset modal-form-section full-span">
-          <legend>Laufzeit & Kündigung</legend>
-          <div className="form-grid">
-            <label>Ende/Laufzeit bis<input name="endDate" type="date" defaultValue={toDateInputValue(contract.endDate)} /></label>
-            <label>Kündigung spätestens am<input name="cancellationDeadline" type="date" defaultValue={toAnnualCancellationInputValue(contract.cancellationDeadlineMonth, contract.cancellationDeadlineDay)} /></label>
-            <label>Kündigungsfrist in Tagen<input name="cancellationNoticeDays" type="number" min="0" defaultValue={contract.cancellationNoticeDays ?? ""} /></label>
-            <input type="hidden" name="renewalAnchorDay" value={contract.renewalAnchorDay ?? ""} />
-            <label className="checkbox-field"><input name="autoRenewal" type="checkbox" defaultChecked={contract.autoRenewal} /> Verlängert sich automatisch</label>
-            <label>
-              Verlängerungsrhythmus
-              <select name="renewalInterval" defaultValue={contract.renewalInterval}>
-                <option value="MONTHLY">Monatlich</option>
-                <option value="QUARTERLY">Quartalsweise</option>
-                <option value="YEARLY">Jährlich</option>
-              </select>
-            </label>
-          </div>
-        </fieldset>
-
-        <label className="full-span">Notizen<textarea name="description" defaultValue={contract.description ?? ""} /></label>
-        <DocumentFilePicker roots={documentRoots} />
-        <details className="optional-section full-span" open={Boolean(primaryDocument)}>
-          <summary>Beleg / Drive-Link hinzufügen</summary>
-          <input type="hidden" name="documentId" value={primaryDocument?.id ?? ""} />
-          {primaryDocument && !primaryDocument.url ? <p className="muted full-span">Verknüpfte NAS-Datei: {primaryDocument.title}. Weitere Belege können hinzugefügt werden.</p> : null}
-          <div className="form-grid">
-            <label>Dokumenttitel<input name="documentTitle" defaultValue={primaryDocument?.url ? primaryDocument.title : ""} placeholder="Vertrag, Rechnung, Nachweis ..." /></label>
-            <label>HTTPS-Link<input name="documentUrl" type="url" defaultValue={primaryDocument?.url ?? ""} placeholder="https://drive.google.com/..." /></label>
-          </div>
-        </details>
-        <div className="modal-submit-row full-span">
-          <button className="button autosave-submit" type="submit">Speichern</button>
-        </div>
-      </AutosaveForm>
+      <ContractEditForm
+        contract={contract}
+        categories={categories}
+        labels={labels}
+        documentRoots={documentRoots}
+        primaryDocument={primaryDocument}
+        currentPriceValidFrom={currentPricePhase?.validFrom ?? contract.startDate}
+      />
     </ActionModal>
   );
 }
@@ -483,11 +443,6 @@ function compareOptionalDates(a: Date | null, b: Date | null) {
 
 function normalizeSearch(value: unknown) {
   return String(value ?? "").trim().toLowerCase();
-}
-
-function formatEuroInput(amountCents: number) {
-  if (amountCents === 0) return "";
-  return (amountCents / 100).toFixed(2).replace(".", ",");
 }
 
 function getContractView(params: ContractPageParams): ContractSummaryView {

@@ -59,14 +59,14 @@ export function ForecastChart({ history, forecast = [], average = [], saldo = []
   </>;
 }
 
-export function ExpenseBoxPlot({ points }: { points: MonthTotal[] }) {
+export function ExpenseBoxPlot({ points, valueLabel = "Ausgaben" }: { points: MonthTotal[]; valueLabel?: string }) {
   const stats = boxStatistics(points);
   if (!stats) return <p>Keine Daten vorhanden.</p>;
   const min = Math.min(0, ...points.map((p) => p.value));
   const max = Math.max(min + 100, ...points.map((p) => p.value));
   const x = (value: number) => 28 + (value - min) / (max - min) * 304;
   return <>
-    <div className="forecast-chart-scroll forecast-box"><svg viewBox="0 0 360 140" role="img" aria-label="Boxplot der monatlichen Ausgaben mit Median, Quartilen, Whiskern und einzelnen Ausreißern">
+    <div className="forecast-chart-scroll forecast-box"><svg viewBox="0 0 360 140" role="img" aria-label={`Boxplot des monatlichen ${valueLabel.toLowerCase()} mit Median, Quartilen, Whiskern und einzelnen Ausreißern`}>
       <line x1={x(stats.low)} x2={x(stats.high)} y1="65" y2="65" stroke="#16776f" strokeWidth="2" />
       {[stats.low, stats.high].map((v, i) => <line key={i} x1={x(v)} x2={x(v)} y1="48" y2="82" stroke="#16776f" strokeWidth="2" />)}
       <rect x={x(stats.q1)} y="40" width={Math.max(1, x(stats.q3) - x(stats.q1))} height="50" fill="#d9eeea" stroke="#16776f" />
@@ -74,7 +74,7 @@ export function ExpenseBoxPlot({ points }: { points: MonthTotal[] }) {
       {stats.outliers.map((p, i) => <circle key={p.month} cx={x(p.value)} cy={60 + (i % 3) * 7} r="4" fill="#b94242"><title>{`${monthLabel(p.month)}: ${stableMoney(p.value)}`}</title></circle>)}
       {[0, 0.5, 1].map((f) => <text key={f} x={x(min + f * (max - min))} y="118" textAnchor={f === 0 ? "start" : f === 1 ? "end" : "middle"}>{stableCompactEuro((min + f * (max - min)) / 100)} €</text>)}
     </svg></div>
-    <div className="forecast-box-summary"><span>Median <strong>{stableMoney(stats.median)}</strong></span><span>{stats.outliers.length} Ausreißer</span></div>
+    <div className="forecast-box-summary"><span>Median {valueLabel.toLowerCase()} <strong>{stableMoney(stats.median)}</strong></span><span>{stats.outliers.length} Ausreißer</span></div>
   </>;
 }
 

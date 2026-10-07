@@ -50,7 +50,10 @@
 
 ## Update Check
 
+- [ ] Follow [`QUICK_DEPLOY.md`](QUICK_DEPLOY.md) for the existing-data update procedure.
 - [ ] Confirm a fresh SQL backup exists before updating.
+- [ ] Keep the existing `family_app_postgres` volume; never run `docker compose down -v` for an update.
+- [ ] If possible, restore the dump into a separate temporary database and verify migrations before updating production.
 - [ ] Copy new project files to the NAS.
 - [ ] Rebuild/restart the Container Manager project.
 - [ ] Confirm migrations complete in app logs.

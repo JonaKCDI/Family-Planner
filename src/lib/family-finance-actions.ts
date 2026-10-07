@@ -19,13 +19,16 @@ export async function saveFamilyTerm(form: FormData) {
   const admin = session.role === "ADMIN";
   const budget = admin ? parseOptionalEuroInputToCents(form.get("budget")) ?? 0 : 0;
   if (budget < 0) throw new Error("Das Budget darf nicht negativ sein.");
+  const cadenceValue = String(form.get("budgetCadence") ?? (category ? "MONTHLY" : "ALL_TIME"));
+  const allowedCadences = category ? ["MONTHLY", "YEARLY"] : ["MONTHLY", "YEARLY", "ALL_TIME"];
+  if (!allowedCadences.includes(cadenceValue)) throw new Error("Bitte einen gültigen Budgetzeitraum auswählen.");
   const data = { name, color, ...(admin ? { archivedAt: form.get("archived") === "on" ? new Date() : null } : {}) };
   if (category) {
-    const values = { ...data, icon: normalizeCategoryIcon(form.get("icon")), monthlyBudgetCents: budget, excludeFromForecast: admin && form.get("excludeFromForecast") === "on" };
+    const values = { ...data, icon: normalizeCategoryIcon(form.get("icon")), monthlyBudgetCents: budget, budgetCadence: cadenceValue as "MONTHLY" | "YEARLY", excludeFromForecast: admin && form.get("excludeFromForecast") === "on" };
     if (id) await db.familyFinanceCategory.updateMany({ where: { id, familyId }, data: values });
     else await db.familyFinanceCategory.create({ data: { ...values, familyId } });
   } else {
-    const values = { ...data, budgetCents: budget };
+    const values = { ...data, budgetCents: budget, budgetCadence: cadenceValue as "MONTHLY" | "YEARLY" | "ALL_TIME" };
     if (id) await db.familyFinanceLabel.updateMany({ where: { id, familyId }, data: values });
     else await db.familyFinanceLabel.create({ data: { ...values, familyId } });
   }
