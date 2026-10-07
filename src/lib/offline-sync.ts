@@ -84,6 +84,7 @@ export async function enqueueOfflineExpenseCreate(formData: FormData) {
     changedAt: new Date().toISOString(),
     data: {
       id: localId,
+      sharedWithFamily: formData.get("kind") !== "INCOME" && formData.get("sharedWithFamily") === "on",
       kind: enumValue(formData.get("kind"), ["EXPENSE", "INCOME"], "EXPENSE"),
       amountCents: parseEuroToCents(formData.get("amount")),
       currency: "EUR",

@@ -10,6 +10,7 @@ type SyncSession = {
 };
 
 const expenseDataSchema = z.object({
+  sharedWithFamily: z.boolean().optional(),
   id: z.string().optional(),
   kind: z.enum(["EXPENSE", "INCOME"]).default("EXPENSE"),
   amountCents: z.unknown().transform((value) => parseSyncAmountCents(value)),
@@ -88,7 +89,7 @@ export async function buildSyncPull(session: SyncSession, since: string | null) 
         ownerUserId: session.user.id,
         updatedAt: { gt: sinceDate }
       },
-      include: { category: true, label: true, contract: true, recurringTransaction: true, fuelEntry: { include: { car: true } }, owner: true },
+      include: { category: true, label: true, contract: true, recurringTransaction: { include: { pricePhases: { orderBy: { validFrom: "asc" } } } }, fuelEntry: { include: { car: true } }, owner: true },
       orderBy: { updatedAt: "asc" }
     }),
     db.task.findMany({
@@ -167,6 +168,7 @@ async function applyExpenseChange(session: SyncSession, change: z.infer<typeof s
   const persisted = {
     familyId: session.family.id,
     ownerUserId: session.user.id,
+    ...(data.kind === "INCOME" ? { sharedWithFamily: false } : data.sharedWithFamily === undefined ? {} : { sharedWithFamily: data.sharedWithFamily }),
     kind: data.kind,
     amountCents: data.amountCents,
     currency: data.currency,
@@ -291,6 +293,7 @@ async function applyTaskChange(session: SyncSession, change: z.infer<typeof sync
 
 function serializeExpense(expense: Awaited<ReturnType<typeof getVisibleExpenses>>[number]) {
   return {
+    sharedWithFamily: expense.sharedWithFamily,
     id: expense.id,
     kind: expense.kind,
     amountCents: expense.amountCents,
@@ -320,7 +323,22 @@ function serializeExpense(expense: Awaited<ReturnType<typeof getVisibleExpenses>
   };
 }
 
-function serializeTask(task: Awaited<ReturnType<typeof getVisibleTasks>>[number]) {
+function serializeTask(task: {
+  id: string;
+  title: string;
+  description: string | null;
+  status: string;
+  priority: string;
+  dueDate: Date | null;
+  recurringTaskId: string | null;
+  recurringTaskDueDate: Date | null;
+  recurringTask: { id: string; title: string; intervalCount: number; intervalUnit: string } | null;
+  scope: string;
+  assignedToUserId: string | null;
+  updatedAt: Date;
+  owner: { id: string; name: string };
+  assignee: { id: string; name: string } | null;
+}) {
   return {
     id: task.id,
     title: task.title,

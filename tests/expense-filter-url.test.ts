@@ -148,4 +148,99 @@ describe("expense filter URLs", () => {
       sort: "pricey"
     })).toBe("/ausgaben?month=2026-06");
   });
+
+  test("finance view is stable in URLs and invalid views are removed", () => {
+    expect(buildExpensesHref({
+      month: "2026-07",
+      view: "categories",
+      label: "label_1"
+    }, {
+      view: "categories"
+    })).toBe("/ausgaben?month=2026-07&label=label_1&view=categories");
+
+    expect(getCanonicalExpensesHref({
+      month: "2026-07",
+      view: "compare"
+    })).toBe("/ausgaben?month=2026-07&view=compare");
+
+    expect(getCanonicalExpensesHref({
+      month: "2026-07",
+      view: "budgets"
+    })).toBe("/ausgaben?month=2026-07&view=budgets");
+
+    expect(getCanonicalExpensesHref({
+      month: "2026-07",
+      view: "details"
+    })).toBe("/ausgaben?month=2026-07");
+  });
+
+  test("comparison view keeps its secondary date range", () => {
+    expect(buildExpensesHref({
+      month: "2026-07"
+    }, {
+      view: "compare",
+      compareFrom: "2026-06-01",
+      compareTo: "2026-06-30"
+    })).toBe("/ausgaben?month=2026-07&view=compare&compareMode=custom&compareFrom=2026-06-01&compareTo=2026-06-30");
+  });
+
+  test("comparison view supports month and year shortcuts", () => {
+    expect(buildExpensesHref({
+      month: "2026-07",
+      compareFrom: "2026-05-01",
+      compareTo: "2026-05-31"
+    }, {
+      view: "compare",
+      compareMode: "month",
+      compareMonth: "2026-06"
+    })).toBe("/ausgaben?month=2026-07&view=compare&compareMode=month&compareMonth=2026-06");
+
+    expect(buildExpensesHref({
+      year: "2026",
+      compareMonth: "2026-06"
+    }, {
+      view: "compare",
+      compareMode: "year",
+      compareYear: "2025"
+    })).toBe("/ausgaben?year=2026&view=compare&compareMode=year&compareYear=2025");
+  });
+
+  test("finance chart controls are stable and invalid values are removed", () => {
+    expect(buildExpensesHref({
+      month: "2026-07",
+      view: "overview"
+    }, {
+      chartDimension: "label",
+      chartMetric: "net",
+      chartTop: "6",
+      chartMonths: "12"
+    })).toBe("/ausgaben?month=2026-07&view=overview&chartDimension=label&chartMetric=net&chartTop=6&chartMonths=12");
+
+    expect(getCanonicalExpensesHref({
+      month: "2026-07",
+      view: "overview",
+      chartDimension: "store",
+      chartMetric: "profit",
+      chartTop: "99",
+      chartMonths: "3"
+    })).toBe("/ausgaben?month=2026-07&view=overview");
+  });
+
+  test("finance facet filters support kind and multiple selected values", () => {
+    expect(buildExpensesHref({
+      month: "2026-07",
+      category: ["food", "mobility", "food"],
+      label: ["urlaub", "familie"],
+      paymentMethod: ["Karte", "Bar"],
+      source: ["manual", "contract"],
+      kind: "expense"
+    })).toBe("/ausgaben?month=2026-07&label=urlaub&label=familie&category=food&category=mobility&kind=expense&paymentMethod=Karte&paymentMethod=Bar&source=manual&source=contract");
+
+    expect(getCanonicalExpensesHref({
+      month: "2026-07",
+      kind: "refund",
+      paymentMethod: ["", "Karte", "Karte"],
+      source: ["manual", "unknown", "fuel"]
+    })).toBe("/ausgaben?month=2026-07&paymentMethod=Karte&source=manual&source=fuel");
+  });
 });

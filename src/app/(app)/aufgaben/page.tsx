@@ -1,16 +1,33 @@
-import { archiveRecurringTask, pauseRecurringTask, resumeRecurringTask, updateRecurringTask, updateTask } from "@/lib/actions";
+﻿import { pauseRecurringTask, resumeRecurringTask } from "@/lib/actions";
+import { CalendarDays, Flag, Lock, Pencil, RotateCcw, UserRound } from "lucide-react";
+import { deleteRecurringTask, deleteTask } from "@/lib/actions";
+import { Trash2 } from "lucide-react";
 import { requireSession } from "@/lib/auth";
 import { formatDate, toDateInputValue } from "@/lib/format";
-import { getFamilyMembers, getVisibleRecurringTasks, getVisibleTasks } from "@/lib/queries";
+import { getFamilyMembers, getVisibleDocumentRoots, getVisibleRecurringTasks, getVisibleTasks } from "@/lib/queries";
 import { ensureDueRecurringTasks } from "@/lib/recurring-tasks";
 import { daysUntil, getRecurringTaskIntervalLabel, taskRank, taskUrgency } from "@/lib/tasks";
 import { ActionModal } from "@/components/action-modal";
-import { AutosaveForm } from "@/components/autosave-form";
-import { TaskStatusControl } from "@/components/task-status-control";
-import { EmptyState, PageHeader, ScopeSelect } from "@/components/ui";
+import { ConfirmSubmitButton } from "@/components/confirm-submit-button";
+import { RecurringTaskEditForm, TaskEditForm } from "@/components/task-edit-form";
+import { TaskInlineCheck } from "@/components/task-inline-check";
+import { TaskSummaryStrip } from "@/components/task-summary-strip";
+import { TaskSortControl, TaskToolbar } from "@/components/task-toolbar";
+import { EmptyState, PageHeader } from "@/components/ui";
+import { DesktopDetail, DesktopFacts, DesktopWorkspace, desktopSelectedRecord } from "@/components/desktop-workspace";
 
 type TasksPageProps = {
-  searchParams: Promise<{ q?: string }>;
+  searchParams: Promise<TaskPageParams>;
+};
+
+type TaskPageParams = {
+  selected?: string;
+  q?: string;
+  view?: string;
+  priority?: string;
+  person?: string;
+  recurring?: string;
+  sort?: string;
 };
 
 export default async function TasksPage({ searchParams }: TasksPageProps) {
@@ -18,216 +35,503 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
   await ensureDueRecurringTasks(session.family.id, session.user.id);
   const params = await searchParams;
   const query = normalizeSearch(params.q);
-  const [tasks, recurringTasks, members] = await Promise.all([
+  const view = getTaskView(params.view);
+  const filters = getTaskFilters(params);
+  const sort = getTaskSort(params.sort);
+  const [tasks, recurringTasks, members, documentRoots] = await Promise.all([
     getVisibleTasks(session.family.id, session.user.id),
     getVisibleRecurringTasks(session.family.id, session.user.id),
-    getFamilyMembers(session.family.id)
+    getFamilyMembers(session.family.id),
+    getVisibleDocumentRoots(session.family.id, session.user.id, session.role)
   ]);
-  const searchedTasks = query ? tasks.filter((task) => matchesTask(task, query)) : tasks;
-  const sortedTasks = [...searchedTasks].sort((a, b) => taskRank(b) - taskRank(a));
+  const searchedTasks = tasks
+    .filter((task) => !query || matchesTask(task, query))
+    .filter((task) => matchesTaskFilters(task, filters));
+  const sortedTasks = sortTasks(searchedTasks, sort);
   const activeTasks = sortedTasks.filter((task) => task.status === "IN_PROGRESS" || task.status === "OPEN");
   const completedTasks = sortedTasks.filter((task) => task.status === "DONE" || task.status === "ARCHIVED");
-  const plannedTasks = recurringTasks.filter((task) => task.nextDueDate && matchesRecurringTask(task, query));
+  const plannedTasks = sortRecurringTasks(
+    recurringTasks
+      .filter((task) => task.nextDueDate && matchesRecurringTask(task, query))
+      .filter((task) => matchesRecurringTaskFilters(task, filters)),
+    sort
+  );
+  const activeFilterCount = countActiveTaskFilters(params);
+  const overdueTasks = activeTasks.filter((task) => daysUntil(task.dueDate) < 0);
+  const todayTasks = activeTasks.filter((task) => daysUntil(task.dueDate) === 0);
+  const visibleActiveTasks = view === "today"
+    ? todayTasks
+    : view === "overdue"
+      ? overdueTasks
+      : activeTasks;
+  const desktopTaskRecords = [
+    ...((view === "active" || view === "today" || view === "overdue" || view === "all") ? visibleActiveTasks.map((task) => ({ id: `task:${task.id}`, kind: "task" as const, task })) : []),
+    ...((view === "planned" || view === "all") ? plannedTasks.map((task) => ({ id: `recurring:${task.id}`, kind: "recurring" as const, task })) : []),
+    ...((view === "done" || view === "all") ? completedTasks.map((task) => ({ id: `task:${task.id}`, kind: "task" as const, task })) : [])
+  ];
+  const desktopSelectedTask = desktopSelectedRecord(desktopTaskRecords, params.selected);
 
   return (
     <>
-      <PageHeader title="Aufgaben" />
+      <div className="task-page-head">
+        <PageHeader title="Aufgaben" />
+        <TaskToolbar params={normalizeTaskParams(params)} members={members} activeFilterCount={activeFilterCount} />
+      </div>
 
-      <form className="search-bar">
-        <label>
-          <span>Aufgaben durchsuchen</span>
-          <input name="q" type="search" defaultValue={params.q ?? ""} placeholder="Titel, Beschreibung, Person ..." />
-        </label>
-        <button className="button secondary" type="submit">Suchen</button>
-        {query ? <a className="button secondary" href="/aufgaben">Zurücksetzen</a> : null}
-      </form>
+      {activeFilterCount > 0 || query ? (
+        <div className="active-filter-row task-active-filters" aria-label="Aktive Aufgabenfilter">
+          {query ? <a className="filter-chip" href={buildTasksHref(params, { q: undefined })}><span>Suche: {params.q}</span><strong aria-hidden="true">×</strong></a> : null}
+          {filters.priority ? <a className="filter-chip" href={buildTasksHref(params, { priority: undefined })}><span>{priorityLabels[filters.priority]}</span><strong aria-hidden="true">×</strong></a> : null}
+          {filters.person ? <a className="filter-chip" href={buildTasksHref(params, { person: undefined })}><span>{filterPersonLabel(filters.person, members)}</span><strong aria-hidden="true">×</strong></a> : null}
+          {filters.recurring ? <a className="filter-chip" href={buildTasksHref(params, { recurring: undefined })}><span>Wiederkehrend</span><strong aria-hidden="true">×</strong></a> : null}
+          {sort !== "importance" ? <a className="filter-chip" href={buildTasksHref(params, { sort: undefined })}><span>{sortLabels[sort]}</span><strong aria-hidden="true">×</strong></a> : null}
+          <a className="filter-chip clear-all" href="/aufgaben">Alle löschen</a>
+        </div>
+      ) : null}
 
-      <section className="stats">
-        <div className="stat"><span>In Arbeit</span><strong>{activeTasks.filter((task) => task.status === "IN_PROGRESS").length}</strong></div>
-        <div className="stat"><span>Offen</span><strong>{activeTasks.filter((task) => task.status === "OPEN").length}</strong></div>
-        <div className="stat"><span>Heute / überfällig</span><strong>{activeTasks.filter((task) => daysUntil(task.dueDate) <= 0).length}</strong></div>
-        <div className="stat"><span>Geplant</span><strong>{plannedTasks.length}</strong></div>
-      </section>
-
-      <section className="panel">
+      <TaskSummaryStrip
+        key={view}
+        view={view}
+        items={[
+          { count: activeTasks.length, href: buildTasksHref(params, { view: view === "active" ? "all" : "active" }), label: "offen", view: "active" },
+          { count: overdueTasks.length, href: buildTasksHref(params, { view: view === "overdue" ? "all" : "overdue" }), label: "überfällig", view: "overdue" },
+          { count: todayTasks.length, href: buildTasksHref(params, { view: view === "today" ? "all" : "today" }), label: "heute", view: "today" },
+          { count: plannedTasks.length, href: buildTasksHref(params, { view: view === "planned" ? "all" : "planned" }), label: "geplant", view: "planned" }
+        ]}
+      />
+      <DesktopWorkspace
+        className="desktop-task-workspace"
+        ariaLabel="Aufgaben und Details"
+        title={view === "planned" ? "Geplante Aufgaben" : view === "done" ? "Erledigte Aufgaben" : "Aufgaben"}
+        description="Auswählen, prüfen und direkt weiterarbeiten"
+        controls={<TaskSortControl params={normalizeTaskParams(params)} />}
+        rows={desktopTaskRecords.map((record) => ({
+          id: record.id,
+          title: record.task.title,
+          subtitle: record.kind === "recurring" ? `Geplant · ${record.task.assignee?.name ?? "Nicht zugewiesen"}` : `${record.task.assignee?.name ?? "Nicht zugewiesen"} · ${priorityLabels[record.task.priority]}`,
+          meta: formatDate(record.kind === "recurring" ? record.task.nextDueDate : record.task.dueDate),
+          tone: record.kind === "task" && daysUntil(record.task.dueDate) < 0 ? "attention" : undefined
+        }))}
+        selectedId={desktopSelectedTask?.id}
+        pathname="/aufgaben"
+        params={params}
+        detail={desktopSelectedTask?.kind === "task" ? <DesktopTaskDetail task={desktopSelectedTask.task} members={members} documentRoots={documentRoots} /> : desktopSelectedTask?.kind === "recurring" ? <DesktopRecurringTaskDetail task={desktopSelectedTask.task} members={members} /> : null}
+      />
+      {(view === "active" || view === "today" || view === "overdue" || view === "all") ? (
+      <section className="task-list-section spacing-top">
         <div className="section-head">
           <div>
-            <h2 className="section-title">Priorisierte Aufgaben</h2>
+            <h2 className="section-title">{view === "today" ? "Heute fällig" : view === "overdue" ? "Überfällig" : view === "all" ? "Alle Aufgaben" : "Priorisierte Aufgaben"}</h2>
           </div>
+          <TaskSortControl params={normalizeTaskParams(params)} />
         </div>
         <div className="task-priority-list">
-          {activeTasks.length === 0 ? <EmptyState>{query ? "Keine passenden offenen Aufgaben." : "Keine offenen Aufgaben."}</EmptyState> : null}
-          {activeTasks.map((task) => <TaskCard task={task} members={members} key={task.id} />)}
+          {visibleActiveTasks.length === 0 ? <EmptyState>{query ? "Keine passenden offenen Aufgaben." : "Keine offenen Aufgaben."}</EmptyState> : null}
+          {visibleActiveTasks.map((task) => <TaskCard task={task} members={members} documentRoots={documentRoots} key={task.id} />)}
         </div>
       </section>
+      ) : null}
 
-      <section className="panel spacing-top">
+      {(view === "planned" || view === "all") ? (
+      <section className="task-list-section spacing-top">
         <div className="section-head">
           <div>
             <h2 className="section-title">Geplante Aufgaben</h2>
           </div>
+          <TaskSortControl params={normalizeTaskParams(params)} />
         </div>
         <div className="task-priority-list">
           {plannedTasks.length === 0 ? <EmptyState>{query ? "Keine passenden geplanten Aufgaben." : "Keine geplanten Aufgaben."}</EmptyState> : null}
           {plannedTasks.map((task) => <PlannedTaskCard task={task} members={members} key={task.id} />)}
         </div>
       </section>
+      ) : null}
 
-      <details className="panel spacing-top">
-        <summary className="section-title">Erledigte Aufgaben</summary>
+      {(view === "done" || view === "all") ? (
+      <section className="task-list-section spacing-top task-done-section">
+        <div className="section-head">
+          <div>
+            <h2 className="section-title">Erledigte Aufgaben</h2>
+          </div>
+          <TaskSortControl params={normalizeTaskParams(params)} />
+        </div>
         <div className="task-priority-list">
           {completedTasks.length === 0 ? <EmptyState>{query ? "Keine passenden erledigten Aufgaben." : "Noch keine erledigten Aufgaben."}</EmptyState> : null}
-          {completedTasks.map((task) => <TaskCard task={task} members={members} completed key={task.id} />)}
+          {completedTasks.map((task) => <TaskCard task={task} members={members} documentRoots={documentRoots} completed key={task.id} />)}
         </div>
-      </details>
+      </section>
+      ) : null}
     </>
   );
 }
 
-function TaskCard({ task, members, completed = false }: { task: TaskLike; members: MemberLike[]; completed?: boolean }) {
-  const urgency = taskUrgency(task);
+function DesktopTaskDetail({ task, members, documentRoots }: { task: TaskLike; members: MemberLike[]; documentRoots: DocumentRootLike[] }) {
+  const done = task.status === "DONE" || task.status === "ARCHIVED";
+  return <DesktopDetail title={task.title} eyebrow="Aufgabe" actions={<>
+    <TaskInlineCheck taskId={task.id} done={done} />
+    <TaskEditModal task={task} members={members} documentRoots={documentRoots} />
+    <form action={deleteTask}><input type="hidden" name="id" value={task.id} /><ConfirmSubmitButton className="task-detail-edit-button danger-icon-button" title="Aufgabe löschen?" message="Die Aufgabe wird dauerhaft entfernt."><Trash2 size={18} aria-hidden="true" /><span className="sr-only">Aufgabe löschen</span></ConfirmSubmitButton></form>
+  </>}>
+    <DesktopFacts items={[
+      { label: "Zuständig", value: task.assignee?.name ?? "Nicht zugewiesen" },
+      { label: "Fällig", value: task.dueDate ? formatDate(task.dueDate) : "Ohne Datum" },
+      { label: "Priorität", value: priorityLabels[task.priority] },
+      { label: "Sichtbarkeit", value: task.scope === "FAMILY" ? "Familie" : "Privat" },
+      { label: "Status", value: taskStatusTone(task.status).label },
+      ...(task.recurringTask ? [{ label: "Serie", value: `${task.recurringTask.title} · ${getRecurringTaskIntervalLabel(task.recurringTask)}` }] : [])
+    ]} />
+    {task.description && <p className="desktop-detail-note">{task.description}</p>}
+    <p className="desktop-detail-note">Erstellt von {task.owner.name} · Aktualisiert {formatDate(task.updatedAt)}</p>
+  </DesktopDetail>;
+}
+
+function DesktopRecurringTaskDetail({ task, members }: { task: RecurringTaskLike; members: MemberLike[] }) {
+  return <DesktopDetail title={task.title} eyebrow="Wiederkehrende Aufgabe" actions={<>
+    <RecurringTaskEditModal task={task} members={members} />
+    <form action={deleteRecurringTask}><input type="hidden" name="id" value={task.id} /><ConfirmSubmitButton className="task-detail-edit-button danger-icon-button" title="Wiederkehrende Aufgabe löschen?" message="Die Serie und ihre erzeugten Aufgaben werden dauerhaft entfernt."><Trash2 size={18} aria-hidden="true" /><span className="sr-only">Wiederkehrende Aufgabe löschen</span></ConfirmSubmitButton></form>
+  </>}>
+    <DesktopFacts items={[
+      { label: "Zuständig", value: task.assignee?.name ?? "Nicht zugewiesen" },
+      { label: "Nächste Fälligkeit", value: task.nextDueDate ? formatDate(task.nextDueDate) : "Ohne Datum" },
+      { label: "Wiederholung", value: getRecurringTaskIntervalLabel(task) },
+      { label: "Priorität", value: priorityLabels[task.priority] },
+      { label: "Sichtbarkeit", value: task.scope === "FAMILY" ? "Familie" : "Privat" },
+      { label: "Status", value: task.status === "PAUSED" ? "Pausiert" : "Aktiv" }
+    ]} />
+    {task.description && <p className="desktop-detail-note">{task.description}</p>}
+    <form action={task.status === "PAUSED" ? resumeRecurringTask : pauseRecurringTask}><input type="hidden" name="id" value={task.id} /><button className="button secondary" type="submit">{task.status === "PAUSED" ? "Fortsetzen" : "Pausieren"}</button></form>
+  </DesktopDetail>;
+}
+
+function getTaskView(value: unknown): "active" | "today" | "overdue" | "planned" | "done" | "all" {
+  if (value === "today" || value === "overdue" || value === "planned" || value === "done" || value === "all") return value;
+  return "active";
+}
+
+function buildTasksHref(params: TaskPageParams, next: Partial<TaskPageParams>) {
+  const search = new URLSearchParams();
+  const merged = { ...params, ...next };
+  if (merged.q) search.set("q", merged.q);
+  if (getTaskView(merged.view) !== "active") search.set("view", getTaskView(merged.view));
+  if (isTaskPriority(merged.priority)) search.set("priority", merged.priority);
+  if (merged.person) search.set("person", merged.person);
+  if (merged.recurring === "recurring") search.set("recurring", merged.recurring);
+  if (getTaskSort(merged.sort) !== "importance") search.set("sort", getTaskSort(merged.sort));
+  const query = search.toString();
+  return query ? `/aufgaben?${query}` : "/aufgaben";
+}
+
+function normalizeTaskParams(params: TaskPageParams) {
+  const normalized: TaskPageParams = {};
+  if (params.q) normalized.q = params.q;
+  const view = getTaskView(params.view);
+  if (view !== "active") normalized.view = view;
+  if (isTaskPriority(params.priority)) normalized.priority = params.priority;
+  if (params.person) normalized.person = params.person;
+  if (params.recurring === "recurring") normalized.recurring = params.recurring;
+  const sort = getTaskSort(params.sort);
+  if (sort !== "importance") normalized.sort = sort;
+  return normalized;
+}
+
+function getTaskFilters(params: TaskPageParams) {
+  return {
+    priority: isTaskPriority(params.priority) ? params.priority : null,
+    person: params.person || null,
+    recurring: params.recurring === "recurring"
+  };
+}
+
+function matchesTaskFilters(task: TaskLike, filters: ReturnType<typeof getTaskFilters>) {
+  if (filters.priority && task.priority !== filters.priority) return false;
+  if (filters.person === "unassigned" && task.assignedToUserId) return false;
+  if (filters.person && filters.person !== "unassigned" && task.assignedToUserId !== filters.person) return false;
+  if (filters.recurring && !task.recurringTask) return false;
+  return true;
+}
+
+function matchesRecurringTaskFilters(task: RecurringTaskLike, filters: ReturnType<typeof getTaskFilters>) {
+  if (filters.priority && task.priority !== filters.priority) return false;
+  if (filters.person === "unassigned" && task.assignedToUserId) return false;
+  if (filters.person && filters.person !== "unassigned" && task.assignedToUserId !== filters.person) return false;
+  return true;
+}
+
+function getTaskSort(value: unknown): "importance" | "date-asc" | "date-desc" {
+  if (value === "date-asc" || value === "date-desc") return value;
+  return "importance";
+}
+
+function sortTasks(tasks: TaskLike[], sort: ReturnType<typeof getTaskSort>) {
+  return [...tasks].sort((a, b) => {
+    if (sort === "date-asc") return compareDates(a.dueDate, b.dueDate, "asc") || taskRank(b) - taskRank(a);
+    if (sort === "date-desc") return compareDates(a.dueDate, b.dueDate, "desc") || taskRank(b) - taskRank(a);
+    return taskRank(b) - taskRank(a);
+  });
+}
+
+function sortRecurringTasks(tasks: RecurringTaskLike[], sort: ReturnType<typeof getTaskSort>) {
+  return [...tasks].sort((a, b) => {
+    if (sort === "date-desc") return compareDates(a.nextDueDate, b.nextDueDate, "desc");
+    return compareDates(a.nextDueDate, b.nextDueDate, "asc");
+  });
+}
+
+function compareDates(a: Date | string | null, b: Date | string | null, direction: "asc" | "desc") {
+  const aTime = a ? new Date(a).getTime() : Number.POSITIVE_INFINITY;
+  const bTime = b ? new Date(b).getTime() : Number.POSITIVE_INFINITY;
+  return direction === "asc" ? aTime - bTime : bTime - aTime;
+}
+
+function countActiveTaskFilters(params: TaskPageParams) {
+  return [
+    isTaskPriority(params.priority),
+    Boolean(params.person),
+    params.recurring === "recurring",
+    getTaskSort(params.sort) !== "importance"
+  ].filter(Boolean).length;
+}
+
+function filterPersonLabel(value: string, members: MemberLike[]) {
+  if (value === "unassigned") return "Nicht zugewiesen";
+  return members.find((member) => member.userId === value)?.user.name ?? "Person";
+}
+
+function isTaskPriority(value: unknown): value is keyof typeof priorityLabels {
+  return value === "LOW" || value === "MEDIUM" || value === "HIGH" || value === "URGENT";
+}
+
+function TaskRow({ task, urgency }: { task: TaskLike; urgency?: ReturnType<typeof taskUrgency> }) {
+  const assignee = task.assignee?.name ?? "Nicht zugewiesen";
+  const dueDateLabel = task.dueDate ? formatDate(task.dueDate) : "Ohne Datum";
+  const sideLabel = urgency && urgency.className !== "task-calm" ? urgency.label : priorityLabels[task.priority];
   return (
-    <article className={`priority-task ${completed ? "task-completed" : urgency.className}`}>
-      <span className="priority-task-accent" />
-      <div className="priority-task-body">
-        <div>
-          <div className="task-title-row">
-            <strong>{task.title}</strong>
-          </div>
-          <span className="muted">
-            {task.assignee?.name ?? "Nicht zugewiesen"} · Fällig: {formatDate(task.dueDate)} · {priorityLabels[task.priority]}
-          </span>
-          {task.description ? <p>{task.description}</p> : null}
-          <div className="badge-row">
-            <span className="badge">{task.scope === "FAMILY" ? "Familie" : "Privat"}</span>
-            {task.recurringTask ? <span className="badge">Wiederholt</span> : null}
-            {!completed ? <span className={`status-chip ${urgency.chipClass}`}>{urgency.label}</span> : null}
+    <span className="task-row">
+      <span className={`task-checkmark ${task.status === "DONE" || task.status === "ARCHIVED" ? "is-done" : ""}`} aria-hidden="true" />
+      <span className="task-row-main">
+        <strong>{task.title}</strong>
+        <span className="task-row-person">
+          <InitialAvatar name={assignee} />
+          <small>{assignee}</small>
+        </span>
+      </span>
+      <span className="task-row-side">
+        <time dateTime={task.dueDate?.toISOString()}>{dueDateLabel}</time>
+        <span>{sideLabel}</span>
+      </span>
+    </span>
+  );
+}
+
+function PlannedTaskRow({ task }: { task: RecurringTaskLike }) {
+  const assignee = task.assignee?.name ?? "Nicht zugewiesen";
+  const nextDueDateLabel = task.nextDueDate ? formatDate(task.nextDueDate) : "Ohne Datum";
+  return (
+    <span className="task-row">
+      <span className="task-checkmark is-planned" aria-hidden="true" />
+      <span className="task-row-main">
+        <strong>{task.title}</strong>
+        <span className="task-row-person">
+          <InitialAvatar name={assignee} />
+          <small>{assignee}</small>
+        </span>
+      </span>
+      <span className="task-row-side">
+        <time dateTime={task.nextDueDate?.toISOString()}>{nextDueDateLabel}</time>
+        <span>Geplant</span>
+      </span>
+    </span>
+  );
+}
+
+function InitialAvatar({ name }: { name: string }) {
+  const initial = name.trim().charAt(0).toUpperCase() || "?";
+  return <span className="task-avatar" aria-label={name}>{initial}</span>;
+}
+
+function TaskEditModal({ task, members, documentRoots }: { task: TaskLike; members: MemberLike[]; documentRoots: DocumentRootLike[] }) {
+  return (
+    <ActionModal
+      title="Aufgabe bearbeiten"
+      trigger={<Pencil size={18} aria-hidden="true" />}
+      triggerLabel="Aufgabe bearbeiten"
+      triggerClassName="task-detail-edit-button"
+      panelClassName="task-edit-dialog"
+      sheetVariant="create"
+      wide
+      modalId={`task-${task.id}-edit`}
+    >
+      <TaskEditForm
+        task={{
+          id: task.id,
+          title: task.title,
+          dueDate: toDateInputValue(task.dueDate),
+          assignedToUserId: task.assignedToUserId ?? "",
+          priority: task.priority,
+          description: task.description ?? "",
+          scope: task.scope,
+          recurrenceLabel: task.recurringTask ? `${task.recurringTask.title} · ${getRecurringTaskIntervalLabel(task.recurringTask)}` : null,
+          recurrence: task.recurringTask ? {
+            id: task.recurringTask.id,
+            title: task.recurringTask.title,
+            startDate: toDateInputValue(task.recurringTask.startDate),
+            endDate: toDateInputValue(task.recurringTask.endDate),
+            assignedToUserId: task.recurringTask.assignedToUserId ?? "",
+            priority: task.recurringTask.priority,
+            description: task.recurringTask.description ?? "",
+            scope: task.recurringTask.scope,
+            intervalCount: String(recurringTaskEditInterval(task.recurringTask).count),
+            intervalUnit: recurringTaskEditInterval(task.recurringTask).unit,
+            leadTimeDays: String(task.recurringTask.leadTimeDays),
+            status: task.recurringTask.status
+          } : null
+        }}
+        members={members}
+        documentRoots={documentRoots}
+      />
+    </ActionModal>
+  );
+}
+
+function RecurringTaskEditModal({ task, members }: { task: RecurringTaskLike; members: MemberLike[] }) {
+  const editInterval = recurringTaskEditInterval(task);
+  return (
+    <ActionModal
+      title="Wiederkehrende Aufgabe bearbeiten"
+      trigger={<Pencil size={18} aria-hidden="true" />}
+      triggerLabel="Geplante Aufgabe bearbeiten"
+      triggerClassName="task-detail-edit-button"
+      panelClassName="task-edit-dialog"
+      sheetVariant="create"
+      wide
+      modalId={`recurring-task-${task.id}-edit`}
+    >
+      <RecurringTaskEditForm
+        task={{
+          id: task.id,
+          title: task.title,
+          nextDueDate: toDateInputValue(task.nextDueDate),
+          startDate: toDateInputValue(task.startDate),
+          endDate: toDateInputValue(task.endDate),
+          assignedToUserId: task.assignedToUserId ?? "",
+          priority: task.priority,
+          description: task.description ?? "",
+          scope: task.scope,
+          intervalCount: String(editInterval.count),
+          intervalUnit: editInterval.unit,
+          leadTimeDays: String(task.leadTimeDays),
+          status: task.status,
+          recurrenceLabel: getRecurringTaskIntervalLabel(task)
+        }}
+        members={members}
+      />
+    </ActionModal>
+  );
+}
+
+function TaskCard({ task, members, documentRoots, completed = false }: { task: TaskLike; members: MemberLike[]; documentRoots: DocumentRootLike[]; completed?: boolean }) {
+  const urgency = taskUrgency(task);
+  const done = task.status === "DONE" || task.status === "ARCHIVED";
+  return (
+    <div className="task-row-shell">
+      <ActionModal
+        title="Aufgabendetails"
+        trigger={<TaskRow task={task} urgency={urgency} />}
+        triggerClassName={`task-row-trigger ${completed ? "task-completed" : urgency.className}`}
+        modalId={`task-${task.id}`}
+      >
+        <div className="task-expanded-content task-detail-sheet">
+          <div className="task-detail-read">
+            <div className="task-detail-head">
+              <div className="task-detail-check">
+                <TaskInlineCheck taskId={task.id} done={done} />
+              </div>
+              <div className="task-detail-title-block">
+                <h3>{task.title}</h3>
+                {urgency.className !== "task-calm" ? <span className={`task-detail-urgency ${urgency.className}`}>{urgency.label}</span> : null}
+              </div>
+              <div className="task-detail-icon-actions">
+                <TaskEditModal task={task} members={members} documentRoots={documentRoots} />
+                <form action={deleteTask}><input type="hidden" name="id" value={task.id} /><ConfirmSubmitButton className="task-detail-edit-button danger-icon-button" title="Aufgabe löschen?" message="Die Aufgabe wird dauerhaft entfernt."><Trash2 size={18} aria-hidden="true" /><span className="sr-only">Aufgabe löschen</span></ConfirmSubmitButton></form>
+              </div>
+            </div>
+            <dl className="task-detail-meta">
+              <div><UserRound size={18} aria-hidden="true" /><dt>Zuständig</dt><dd>{task.assignee ? <><InitialAvatar name={task.assignee.name} /> {task.assignee.name}</> : "Nicht zugewiesen"}</dd></div>
+              <div><CalendarDays size={18} aria-hidden="true" /><dt>Fällig</dt><dd>{task.dueDate ? formatDate(task.dueDate) : "Ohne Datum"}</dd></div>
+              <div><Flag size={18} aria-hidden="true" /><dt>Priorität</dt><dd>{priorityLabels[task.priority]}</dd></div>
+              <div><Lock size={18} aria-hidden="true" /><dt>Sichtbarkeit</dt><dd>{task.scope === "FAMILY" ? "Familie" : "Privat"}</dd></div>
+              {task.recurringTask ? <div><RotateCcw size={18} aria-hidden="true" /><dt>Serie</dt><dd>{task.recurringTask.title} · {getRecurringTaskIntervalLabel(task.recurringTask)}</dd></div> : null}
+            </dl>
+            {task.description ? <div className="task-detail-note"><span>Notiz</span><p>{task.description}</p></div> : null}
+            <div className="task-detail-footnote">
+              <span>Erstellt von {task.owner.name}</span>
+              <time>Aktualisiert {formatDate(task.updatedAt)}</time>
+            </div>
           </div>
         </div>
-        <div className="task-actions">
-          <TaskStatusControl taskId={task.id} initialStatus={task.status} />
-          <ActionModal title="Aufgabe bearbeiten" trigger="Bearbeiten" modalId={`task-${task.id}`}>
-            <AutosaveForm action={updateTask} className="form form-grid modal-form">
-              <input type="hidden" name="id" value={task.id} />
-              <label>Titel<input name="title" defaultValue={task.title} required /></label>
-              <label>
-                Zuweisen an
-                <select name="assignedToUserId" defaultValue={task.assignedToUserId ?? ""}>
-                  <option value="">Nicht zugewiesen</option>
-                  {members.map((member) => <option value={member.userId} key={member.id}>{member.user.name}</option>)}
-                </select>
-              </label>
-              <label>Deadline<input name="dueDate" type="date" defaultValue={toDateInputValue(task.dueDate)} /></label>
-              <label>
-                Priorität
-                <select name="priority" defaultValue={task.priority}>
-                  <option value="LOW">Niedrig</option>
-                  <option value="MEDIUM">Mittel</option>
-                  <option value="HIGH">Hoch</option>
-                  <option value="URGENT">Dringend</option>
-                </select>
-              </label>
-              <label>Beschreibung<textarea name="description" defaultValue={task.description ?? ""} /></label>
-              <ScopeSelect defaultValue={task.scope} />
-              <button className="button full-span autosave-submit" type="submit">Speichern</button>
-            </AutosaveForm>
-          </ActionModal>
-        </div>
+      </ActionModal>
+      <div className="task-check-form">
+        <TaskInlineCheck taskId={task.id} done={done} />
       </div>
-    </article>
+    </div>
   );
 }
 
 function PlannedTaskCard({ task, members }: { task: RecurringTaskLike; members: MemberLike[] }) {
-  const editInterval = recurringTaskEditInterval(task);
-
   return (
-    <article className={`priority-task ${task.status === "PAUSED" ? "task-completed" : "task-calm"}`}>
-      <span className="priority-task-accent" />
-      <div className="priority-task-body">
-        <div>
-          <div className="task-title-row">
-            <strong>{task.title}</strong>
+    <ActionModal
+      title="Geplante Aufgabe"
+      trigger={<PlannedTaskRow task={task} />}
+      triggerClassName={`task-row-trigger ${task.status === "PAUSED" ? "task-completed" : "task-calm"}`}
+      modalId={`recurring-task-${task.id}`}
+    >
+      <div className="task-expanded-content task-detail-sheet">
+        <div className="task-detail-read">
+          <div className="task-detail-head task-detail-head-plain">
+            <div className="task-detail-title-block">
+              <div className={`task-detail-status ${task.status === "PAUSED" ? "task-warning" : "task-calm"}`}>
+                <RotateCcw size={15} aria-hidden="true" />
+              <span>{task.status === "PAUSED" ? "Pausiert" : "Aktiv"}</span>
+              </div>
+              <h3>{task.title}</h3>
+            </div>
+            <div className="task-detail-icon-actions">
+              <RecurringTaskEditModal task={task} members={members} />
+              <form action={deleteRecurringTask}><input type="hidden" name="id" value={task.id} /><ConfirmSubmitButton className="task-detail-edit-button danger-icon-button" title="Wiederkehrende Aufgabe löschen?" message="Die Serie und ihre erzeugten Aufgaben werden dauerhaft entfernt."><Trash2 size={18} aria-hidden="true" /><span className="sr-only">Wiederkehrende Aufgabe löschen</span></ConfirmSubmitButton></form>
+            </div>
           </div>
-          <span className="muted">
-            {task.assignee?.name ?? "Nicht zugewiesen"} · Nächste Aufgabe: {formatDate(task.nextDueDate)} · {getRecurringTaskIntervalLabel(task)}
-          </span>
-          {task.description ? <p>{task.description}</p> : null}
-          <div className="badge-row">
-            <span className="badge">{task.scope === "FAMILY" ? "Familie" : "Privat"}</span>
-            <span className={`status-chip ${task.status === "PAUSED" ? "status-done" : "calm-chip"}`}>
-              {task.status === "PAUSED" ? "Pausiert" : "Geplant"}
-            </span>
+          <dl className="task-detail-meta">
+            <div><UserRound size={18} aria-hidden="true" /><dt>Zuständig</dt><dd>{task.assignee ? <><InitialAvatar name={task.assignee.name} /> {task.assignee.name}</> : "Nicht zugewiesen"}</dd></div>
+            <div><CalendarDays size={18} aria-hidden="true" /><dt>Nächste Fälligkeit</dt><dd>{task.nextDueDate ? formatDate(task.nextDueDate) : "Ohne Datum"}</dd></div>
+            <div><RotateCcw size={18} aria-hidden="true" /><dt>Wiederholung</dt><dd>{getRecurringTaskIntervalLabel(task)}</dd></div>
+            <div><Flag size={18} aria-hidden="true" /><dt>Priorität</dt><dd>{priorityLabels[task.priority]}</dd></div>
+            <div><Lock size={18} aria-hidden="true" /><dt>Sichtbarkeit</dt><dd>{task.scope === "FAMILY" ? "Familie" : "Privat"}</dd></div>
+          </dl>
+          {task.description ? <div className="task-detail-note"><span>Notiz</span><p>{task.description}</p></div> : null}
+          <div className="task-detail-footnote">
+            <span>Erstellt von {task.owner.name}</span>
+            <time>Aktualisiert {formatDate(task.updatedAt)}</time>
           </div>
-        </div>
-        <div className="task-actions">
-          {task.status === "PAUSED" ? (
-            <form action={resumeRecurringTask}>
-              <input type="hidden" name="id" value={task.id} />
-              <button className="button secondary" type="submit">Fortsetzen</button>
-            </form>
-          ) : (
-            <form action={pauseRecurringTask}>
-              <input type="hidden" name="id" value={task.id} />
-              <button className="button secondary" type="submit">Pausieren</button>
-            </form>
-          )}
-          <ActionModal title="Geplante Aufgabe bearbeiten" trigger="Bearbeiten" modalId={`recurring-task-${task.id}`}>
-            <AutosaveForm action={updateRecurringTask} className="form form-grid modal-form">
-              <input type="hidden" name="id" value={task.id} />
-              <label>Titel<input name="title" defaultValue={task.title} required /></label>
-              <label>
-                Zuweisen an
-                <select name="assignedToUserId" defaultValue={task.assignedToUserId ?? ""}>
-                  <option value="">Nicht zugewiesen</option>
-                  {members.map((member) => <option value={member.userId} key={member.id}>{member.user.name}</option>)}
-                </select>
-              </label>
-              <label>Startdatum<input name="startDate" type="date" defaultValue={toDateInputValue(task.startDate)} required /></label>
-              <label>Enddatum optional<input name="endDate" type="date" defaultValue={toDateInputValue(task.endDate)} /></label>
-              <label>Alle<input name="intervalCount" type="number" min="1" max={editInterval.unit === "WEEK" ? 52 : 365} defaultValue={editInterval.count} required /></label>
-              <label>
-                Einheit
-                <select name="intervalUnit" defaultValue={editInterval.unit}>
-                  <option value="DAY">Tage</option>
-                  <option value="WEEK">Wochen</option>
-                  <option value="MONTH">Monate</option>
-                  <option value="YEAR">Jahre</option>
-                </select>
-              </label>
-              <label>
-                Priorität
-                <select name="priority" defaultValue={task.priority}>
-                  <option value="LOW">Niedrig</option>
-                  <option value="MEDIUM">Mittel</option>
-                  <option value="HIGH">Hoch</option>
-                  <option value="URGENT">Dringend</option>
-                </select>
-              </label>
-              <label>
-                Status
-                <select name="status" defaultValue={task.status}>
-                  <option value="ACTIVE">Aktiv</option>
-                  <option value="PAUSED">Pausiert</option>
-                  <option value="ARCHIVED">Archiviert</option>
-                </select>
-              </label>
-              <label>Beschreibung<textarea name="description" defaultValue={task.description ?? ""} /></label>
-              <ScopeSelect defaultValue={task.scope} />
-              <button className="button full-span autosave-submit" type="submit">Speichern</button>
-            </AutosaveForm>
-            <form action={archiveRecurringTask} className="form compact spacing-top">
-              <input type="hidden" name="id" value={task.id} />
-              <button className="button secondary" type="submit">Archivieren</button>
-            </form>
-          </ActionModal>
+          <div className="task-actions task-detail-actions">
+            {task.status === "PAUSED" ? (
+              <form action={resumeRecurringTask}>
+                <input type="hidden" name="id" value={task.id} />
+                <button className="button secondary" type="submit">Fortsetzen</button>
+              </form>
+            ) : (
+              <form action={pauseRecurringTask}>
+                <input type="hidden" name="id" value={task.id} />
+                <button className="button secondary" type="submit">Pausieren</button>
+              </form>
+            )}
+          </div>
         </div>
       </div>
-    </article>
+    </ActionModal>
   );
 }
 
-function recurringTaskEditInterval(task: Pick<RecurringTaskLike, "intervalCount" | "intervalUnit">) {
+function recurringTaskEditInterval(task: Pick<RecurringTaskLike, "intervalCount" | "intervalUnit">): { count: number; unit: "DAY" | "WEEK" | "MONTH" | "YEAR" } {
   if (task.intervalUnit === "DAY" && task.intervalCount >= 7 && task.intervalCount % 7 === 0) {
     return { count: task.intervalCount / 7, unit: "WEEK" };
   }
@@ -275,6 +579,13 @@ const priorityLabels = {
   URGENT: "Dringend"
 };
 
+const sortLabels = {
+  importance: "Wichtigkeit",
+  "date-asc": "Datum aufsteigend",
+  "date-desc": "Datum absteigend"
+};
+
 type TaskLike = Awaited<ReturnType<typeof getVisibleTasks>>[number];
 type RecurringTaskLike = Awaited<ReturnType<typeof getVisibleRecurringTasks>>[number];
 type MemberLike = Awaited<ReturnType<typeof getFamilyMembers>>[number];
+type DocumentRootLike = Awaited<ReturnType<typeof getVisibleDocumentRoots>>[number];

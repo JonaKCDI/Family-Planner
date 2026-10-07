@@ -1,10 +1,13 @@
 "use client";
 
-import { type KeyboardEvent, useId, useMemo, useRef, useState } from "react";
+import { type KeyboardEvent, useId, useMemo, useRef, useState, useTransition } from "react";
+import { CategoryIcon } from "@/components/category-icon";
 
 export type SearchableSelectOption = {
   id: string;
   name: string;
+  color?: string;
+  icon?: string | null;
   meta?: string;
 };
 
@@ -16,6 +19,8 @@ type SearchableSelectProps = {
   emptyLabel: string;
   placeholder: string;
   required?: boolean;
+  quickAddLabel?: string;
+  quickAddAction?: (formData: FormData) => Promise<SearchableSelectOption>;
 };
 
 export function SearchableSelect({
@@ -25,7 +30,9 @@ export function SearchableSelect({
   defaultValue,
   emptyLabel,
   placeholder,
-  required = false
+  required = false,
+  quickAddLabel,
+  quickAddAction
 }: SearchableSelectProps) {
   const fieldId = useId();
   const listboxId = `${fieldId}-listbox`;
@@ -34,11 +41,16 @@ export function SearchableSelect({
   const [inputValue, setInputValue] = useState(initialOption?.name ?? "");
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
+  const [localOptions, setLocalOptions] = useState<SearchableSelectOption[]>([]);
+  const [adding, setAdding] = useState(false);
+  const [quickAddName, setQuickAddName] = useState("");
+  const [isPending, startTransition] = useTransition();
   const inputRef = useRef<HTMLInputElement>(null);
+  const mergedOptions = useMemo(() => mergeOptions(options, localOptions), [options, localOptions]);
 
   const filteredOptions = useMemo(() => {
-    return filterOptions(options, inputValue);
-  }, [inputValue, options]);
+    return filterOptions(mergedOptions, inputValue);
+  }, [inputValue, mergedOptions]);
   const visibleOptions = useMemo(() => {
     return required ? filteredOptions : [null, ...filteredOptions];
   }, [filteredOptions, required]);
@@ -55,7 +67,7 @@ export function SearchableSelect({
   function handleInput(value: string) {
     setInputValue(value);
     setOpen(true);
-    const exactMatch = options.find((option) => normalize(option.name) === normalize(value));
+    const exactMatch = mergedOptions.find((option) => normalize(option.name) === normalize(value));
     setSelectedId(exactMatch?.id ?? "");
     setActiveIndex(-1);
   }
@@ -63,6 +75,19 @@ export function SearchableSelect({
   function handleFocus() {
     setOpen(true);
     setActiveIndex(preferredActiveIndex(filteredOptions, required, selectedId));
+  }
+
+  function submitQuickAdd() {
+    if (!quickAddAction || !quickAddName.trim()) return;
+    const formData = new FormData();
+    formData.set("name", quickAddName.trim());
+    startTransition(async () => {
+      const option = await quickAddAction(formData);
+      setLocalOptions((current) => mergeOptions([option], current));
+      choose(option);
+      setQuickAddName("");
+      setAdding(false);
+    });
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLInputElement>) {
@@ -165,16 +190,45 @@ export function SearchableSelect({
                 onClick={() => choose(option)}
                 key={option.id}
               >
-                <span>{option.name}</span>
+                <span className="combobox-option-main">
+                  {option.icon ? (
+                    <i className="combobox-option-icon" style={{ background: option.color ?? "#eef3f5" }} aria-hidden="true">
+                      <CategoryIcon icon={option.icon} size={14} />
+                    </i>
+                  ) : option.color ? (
+                    <i className="combobox-option-color" style={{ background: option.color }} aria-hidden="true" />
+                  ) : null}
+                  <span>{option.name}</span>
+                </span>
                 {option.meta ? <small>{option.meta}</small> : null}
               </button>
               );
             })}
+            {quickAddAction && quickAddLabel ? (
+              <button className="combobox-option combobox-quick-add" type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => { setAdding(true); setQuickAddName(inputValue); }}>
+                <span>{quickAddLabel}</span>
+              </button>
+            ) : null}
           </div>
         ) : null}
       </div>
+      {adding ? (
+        <div className="combobox-quick-add-panel">
+          <input value={quickAddName} onChange={(event) => setQuickAddName(event.currentTarget.value)} placeholder={quickAddLabel} />
+          <div>
+            <button className="button secondary" type="button" onClick={() => setAdding(false)}>Zurück</button>
+            <button className="button" type="button" disabled={isPending || !quickAddName.trim()} onClick={submitQuickAdd}>{isPending ? "Speichert ..." : "Hinzufügen"}</button>
+          </div>
+        </div>
+      ) : null}
     </label>
   );
+}
+
+function mergeOptions(options: SearchableSelectOption[], extra: SearchableSelectOption[]) {
+  const byId = new Map<string, SearchableSelectOption>();
+  for (const option of [...extra, ...options]) byId.set(option.id, option);
+  return [...byId.values()];
 }
 
 function filterOptions(options: SearchableSelectOption[], value: string) {

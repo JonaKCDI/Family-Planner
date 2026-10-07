@@ -1,20 +1,26 @@
 ﻿"use server";
 
+import { enrichPersonalExport, restorePersonalMappings } from "@/lib/family-finance-backup";
+
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { cleanupExpiredSessions, createSession, destroySession, hashPassword, requireSession, verifyPassword } from "@/lib/auth";
+import { normalizeCategoryIcon } from "@/lib/category-icon-options";
 import { resolveContractCancellationSchedule } from "@/lib/contracts";
 import { db } from "@/lib/db";
 import { ensureDueContractExpenses } from "@/lib/contract-auto-expenses";
+import { isLocalDocumentsFallback } from "@/lib/document-root-default";
 import { ensureDueRecurringTasks } from "@/lib/recurring-tasks";
+import { createPlanningRuleFromExpense, type ExpensePlanningTreatmentType, type PlanningExpense } from "@/lib/expense-planning-analysis";
 import { buildExpenseWorkbook, parseExpenseWorkbook, type ExpenseFormatRow } from "@/lib/expense-formats";
 import { buildFuelWorkbook, inferCarNameFromFuelFileName, parseFuelWorkbook, type FuelFormatRow } from "@/lib/mileage-formats";
 import { safeFilePart } from "@/lib/file-names";
+import { resolveDocumentFile, resolveDocumentPath } from "@/lib/document-files";
 import { isFamilyAdmin, ownedExpenseWhere } from "@/lib/permissions";
-import { resolveDocumentLinkedEntityId, resolveExpenseCategoryId, resolveExpenseLabelId, resolveTaskAssigneeId, resolveVisibleContractId } from "@/lib/relations";
+import { resolveDocumentLinkedEntityId, resolveExpenseCategoryId, resolveExpenseLabelId, resolveReadableDocumentRoot, resolveTaskAssigneeId, resolveVisibleContractId } from "@/lib/relations";
 import { defaultRecurringTaskLeadTimeDays } from "@/lib/tasks";
 import { parseDecimalInputToMilli, parseEuroInputToCents, parseOptionalDateInput, parseOptionalEuroInputToCents, parseOptionalIntegerInput, parseRequiredDateInput, parseRequiredIntegerInput } from "@/lib/validation";
 
@@ -92,6 +98,7 @@ export async function createExpense(formData: FormData) {
     data: {
       familyId: session.family.id,
       ownerUserId: session.user.id,
+      sharedWithFamily: formData.get("kind") !== "INCOME" && formData.get("sharedWithFamily") === "on",
       kind: enumValue(formData, "kind", ["EXPENSE", "INCOME"] as const, "EXPENSE"),
       amountCents: parseEuroInputToCents(formData.get("amount")),
       currency: "EUR",
@@ -102,13 +109,14 @@ export async function createExpense(formData: FormData) {
       labelId: labelId || null,
       contractId,
       description: optionalText(formData, "description") ?? "",
-      scope: "PRIVATE"
+      scope: expenseScopeValue(formData)
     }
   });
 
   await createLinkedDocumentIfPresent(formData, {
     familyId: session.family.id,
     ownerUserId: session.user.id,
+    role: session.role,
     linkedEntityType: "EXPENSE",
     linkedEntityId: expense.id,
     scope: expense.scope
@@ -139,17 +147,50 @@ export async function createExpenseLabel(formData: FormData) {
       ownerUserId: session.user.id,
       name,
       color: chooseCategoryColor(name, existingLabels, submittedColor),
-      budgetCents: parseOptionalEuroInputToCents(formData.get("budget"))
+      budgetCents: parseOptionalEuroInputToCents(formData.get("budget")),
+      budgetCadence: enumValue(formData, "budgetCadence", ["MONTHLY", "YEARLY", "ALL_TIME"] as const, "ALL_TIME")
     },
     update: {
       color: chooseCategoryColor(name, existingLabels, submittedColor),
       budgetCents: parseOptionalEuroInputToCents(formData.get("budget")),
+      ...(formData.has("budgetCadence") ? { budgetCadence: enumValue(formData, "budgetCadence", ["MONTHLY", "YEARLY", "ALL_TIME"] as const, "ALL_TIME") } : {}),
       archivedAt: null
     }
   });
 
   revalidatePath("/ausgaben");
   redirectToReturnToIfPresent(formData);
+}
+
+export async function quickCreateExpenseLabel(formData: FormData) {
+  const session = await requireSession();
+  const name = requiredText(formData, "name");
+  const existingLabels = await db.expenseLabel.count({
+    where: { familyId: session.family.id, ownerUserId: session.user.id }
+  });
+  const label = await db.expenseLabel.upsert({
+    where: {
+      ownerUserId_name: {
+        ownerUserId: session.user.id,
+        name
+      }
+    },
+    create: {
+      familyId: session.family.id,
+      ownerUserId: session.user.id,
+      name,
+      color: chooseCategoryColor(name, existingLabels, optionalText(formData, "color")),
+      budgetCents: parseOptionalEuroInputToCents(formData.get("budget")),
+      budgetCadence: enumValue(formData, "budgetCadence", ["MONTHLY", "YEARLY", "ALL_TIME"] as const, "ALL_TIME")
+    },
+    update: {
+      archivedAt: null
+    },
+    select: { id: true, name: true }
+  });
+
+  revalidatePath("/ausgaben");
+  return label;
 }
 
 export async function updateExpenseLabel(formData: FormData) {
@@ -165,7 +206,7 @@ export async function updateExpenseLabel(formData: FormData) {
         familyId: session.family.id,
         ownerUserId: session.user.id
       },
-      select: { id: true, name: true, color: true }
+      select: { id: true, name: true, color: true, budgetCadence: true }
     }),
     db.expenseLabel.findFirst({
       where: {
@@ -185,7 +226,8 @@ export async function updateExpenseLabel(formData: FormData) {
     data: {
       name,
       color: submittedColor ?? label.color,
-      budgetCents: parseOptionalEuroInputToCents(formData.get("budget"))
+      budgetCents: parseOptionalEuroInputToCents(formData.get("budget")),
+      ...(formData.has("budgetCadence") ? { budgetCadence: enumValue(formData, "budgetCadence", ["MONTHLY", "YEARLY", "ALL_TIME"] as const, label.budgetCadence) } : {})
     }
   });
 
@@ -307,6 +349,7 @@ async function importExpenseRows(familyId: string, userId: string, rows: Expense
     const data = {
       familyId,
       ownerUserId: userId,
+      ...(row.kind === "INCOME" ? { sharedWithFamily: false } : row.sharedWithFamily === undefined ? {} : { sharedWithFamily: row.sharedWithFamily }),
       kind: row.kind,
       amountCents: row.amountCents,
       currency: row.currency || "EUR",
@@ -336,6 +379,7 @@ async function importExpenseRows(familyId: string, userId: string, rows: Expense
     } else {
       await db.expense.create({ data });
     }
+    await restorePersonalMappings(row, familyId, userId, categoryId, labelId);
   }
 }
 
@@ -350,7 +394,7 @@ export async function importExpensesFromUploadedXlsx(formData: FormData) {
   await importExpenseRows(session.family.id, session.user.id, rows);
   revalidatePath("/ausgaben");
   revalidatePath("/dashboard");
-  redirect(`/ausgaben?year=${primaryImportedYear(rows)}`);
+  redirect(actionReturnTo(formData, `/ausgaben?year=${primaryImportedYear(rows)}`));
 }
 
 export async function importExpensesFromSynologyExcel(formData: FormData) {
@@ -362,7 +406,7 @@ export async function importExpensesFromSynologyExcel(formData: FormData) {
   await importExpenseRows(session.family.id, session.user.id, rows);
   revalidatePath("/ausgaben");
   revalidatePath("/dashboard");
-  redirect(`/ausgaben?year=${primaryImportedYear(rows)}`);
+  redirect(actionReturnTo(formData, `/ausgaben?year=${primaryImportedYear(rows)}`));
 }
 
 export async function updateExpense(formData: FormData) {
@@ -378,6 +422,7 @@ export async function updateExpense(formData: FormData) {
       ownerUserId: session.user.id
     },
     data: {
+      sharedWithFamily: formData.get("kind") !== "INCOME" && formData.get("sharedWithFamily") === "on",
       kind: enumValue(formData, "kind", ["EXPENSE", "INCOME"] as const, "EXPENSE"),
       amountCents: parseEuroInputToCents(formData.get("amount")),
       currency: "EUR",
@@ -388,7 +433,7 @@ export async function updateExpense(formData: FormData) {
       labelId: labelId || null,
       contractId,
       description: optionalText(formData, "description") ?? "",
-      scope: "PRIVATE"
+      scope: expenseScopeValue(formData)
     }
   });
 
@@ -398,13 +443,91 @@ export async function updateExpense(formData: FormData) {
       ownerUserId: session.user.id,
       linkedEntityType: "EXPENSE",
       linkedEntityId: requiredText(formData, "id"),
-      scope: "PRIVATE"
+      scope: expenseScopeValue(formData)
     });
   }
 
   revalidatePath("/ausgaben");
   revalidatePath("/dashboard");
   redirect(actionReturnTo(formData, "/ausgaben"));
+}
+
+export async function applyExpensePlanningTreatment(formData: FormData) {
+  const session = await requireSession();
+  const expenseId = optionalText(formData, "expenseId");
+  const groupKey = optionalText(formData, "groupKey");
+  const expenseIds = formData.getAll("expenseIds").map((value) => String(value)).filter(Boolean);
+  const treatment = enumValue(formData, "treatment", [
+    "NORMAL",
+    "FIXED_COST",
+    "SPECIAL_EFFECT",
+    "REIMBURSEMENT",
+    "IGNORE_FOR_PLANNING",
+    "SAVINGS_INVESTMENT"
+  ] as const, "NORMAL") satisfies ExpensePlanningTreatmentType;
+  const note = optionalText(formData, "note") ?? "";
+  const learnRule = formData.get("learnRule") === "on";
+  const firstExpenseId = expenseId ?? expenseIds[0];
+  const sourceExpense = firstExpenseId ? await db.expense.findFirst({
+    where: {
+      id: firstExpenseId,
+      familyId: session.family.id,
+      ownerUserId: session.user.id
+    },
+    include: { category: true }
+  }) : null;
+
+  if (!expenseId && !groupKey) throw new Error("Für die Planungsregel fehlt der Bezug.");
+  if (expenseId && !sourceExpense) throw new Error("Diese Ausgabe ist nicht verfügbar.");
+
+  await db.expensePlanningTreatment.deleteMany({
+    where: {
+      familyId: session.family.id,
+      ownerUserId: session.user.id,
+      ...(expenseId ? { expenseId } : { groupKey })
+    }
+  });
+  const planningTreatment = await db.expensePlanningTreatment.create({
+    data: {
+      familyId: session.family.id,
+      ownerUserId: session.user.id,
+      expenseId: expenseId ?? null,
+      groupKey: groupKey ?? null,
+      treatment,
+      note
+    }
+  });
+
+  if (learnRule && sourceExpense) {
+    const rule = createPlanningRuleFromExpense(toPlanningExpense(sourceExpense), treatment);
+    if (rule) {
+      await db.expensePlanningRule.deleteMany({
+        where: {
+          familyId: session.family.id,
+          ownerUserId: session.user.id,
+          patternType: rule.patternType,
+          patternValue: rule.patternValue,
+          categoryId: rule.categoryId
+        }
+      });
+      await db.expensePlanningRule.create({
+        data: {
+          familyId: session.family.id,
+          ownerUserId: session.user.id,
+          patternType: rule.patternType,
+          patternValue: rule.patternValue,
+          categoryId: rule.categoryId,
+          treatment: rule.treatment,
+          confidence: 78,
+          sourceTreatmentId: planningTreatment.id
+        }
+      });
+    }
+  }
+
+  revalidatePath("/ausgaben");
+  revalidatePath("/ausgaben/planung");
+  redirect(actionReturnTo(formData, "/ausgaben/planung"));
 }
 
 export async function exportExpensesToSynologyExcel(formData: FormData) {
@@ -425,6 +548,7 @@ export async function exportExpensesToSynologyExcel(formData: FormData) {
   });
   const rows = [
     ...expenses.map((expense) => ({
+      sharedWithFamily: expense.sharedWithFamily,
       id: expense.id,
       kind: expense.kind,
       amountCents: expense.amountCents,
@@ -443,7 +567,7 @@ export async function exportExpensesToSynologyExcel(formData: FormData) {
   ];
 
   await mkdir(dirname(excelPath), { recursive: true });
-  await writeFile(excelPath, Buffer.from(await buildExpenseWorkbook(rows, year)));
+  await writeFile(excelPath, Buffer.from(await buildExpenseWorkbook(await enrichPersonalExport(rows, session.family.id, session.user.id), year)));
   revalidatePath("/ausgaben");
 }
 
@@ -462,6 +586,15 @@ export async function createCar(formData: FormData) {
   });
 
   revalidatePath("/kilometer");
+}
+
+export async function selectMileageCar(carId: string) {
+  const session = await requireSession();
+  const car = await resolveFamilyCar(session.family.id, carId);
+  await db.user.update({
+    where: { id: session.user.id },
+    data: { lastSelectedCarId: car.id }
+  });
 }
 
 export async function updateCar(formData: FormData) {
@@ -517,6 +650,7 @@ export async function updateFuelExpenseSettings(formData: FormData) {
     create: {
       familyId: session.family.id,
       userId: session.user.id,
+      sharedWithFamily: formData.get("sharedWithFamily") === "on",
       autoCreateExpense: formData.get("autoCreateExpense") === "on",
       defaultCategoryId: categoryId,
       defaultLabelId: labelId,
@@ -525,6 +659,7 @@ export async function updateFuelExpenseSettings(formData: FormData) {
       defaultDescription: optionalText(formData, "defaultDescription") ?? ""
     },
     update: {
+      sharedWithFamily: formData.get("sharedWithFamily") === "on",
       autoCreateExpense: formData.get("autoCreateExpense") === "on",
       defaultCategoryId: categoryId,
       defaultLabelId: labelId,
@@ -575,6 +710,7 @@ export async function createFuelEntry(formData: FormData) {
           description: expenseDescription,
           scope: "PRIVATE",
           fuelEntryId: fuelEntry.id,
+          sharedWithFamily: formData.get("sharedWithFamily") === "on",
           generatedByFuelEntry: true
         }
       });
@@ -582,6 +718,7 @@ export async function createFuelEntry(formData: FormData) {
     await createLinkedDocumentIfPresent(formData, {
       familyId: session.family.id,
       ownerUserId: session.user.id,
+      role: session.role,
       linkedEntityType: "EXPENSE",
       linkedEntityId: expense.id,
       scope: expense.scope
@@ -614,17 +751,59 @@ export async function updateFuelEntry(formData: FormData) {
     where: { id, familyId: session.family.id, carId: car.id },
     data: fuelData
   });
-  await db.expense.updateMany({
-    where: {
-      familyId: session.family.id,
-      fuelEntryId: id,
-      generatedByFuelEntry: true
-    },
-    data: {
-      amountCents: fuelData.costCents,
-      date: fuelData.date
-    }
+  const linkedExpense = await db.expense.findFirst({
+    where: { familyId: session.family.id, fuelEntryId: id, generatedByFuelEntry: true }
   });
+  if (formData.get("createExpenseFromFuel") === "on") {
+    const categoryId = await resolveExpenseCategoryId(session.family.id, session.user.id, optionalText(formData, "expenseCategoryId"));
+    const labelId = await resolveExpenseLabelId(session.family.id, session.user.id, optionalText(formData, "expenseLabelId"));
+    const expenseData = {
+      amountCents: fuelData.costCents,
+      date: fuelData.date,
+      paymentMethod: paymentMethodValue(formData, "expensePaymentMethod"),
+      store: optionalText(formData, "expenseStore") ?? "",
+      categoryId,
+      labelId,
+      description: optionalText(formData, "expenseDescription") ?? "",
+      sharedWithFamily: formData.get("sharedWithFamily") === "on"
+    };
+    let expenseId = linkedExpense?.id;
+    if (linkedExpense) {
+      await db.expense.updateMany({
+        where: { id: linkedExpense.id, familyId: session.family.id, fuelEntryId: id, generatedByFuelEntry: true },
+        data: expenseData
+      });
+    } else {
+      const expense = await db.expense.create({
+        data: {
+          familyId: session.family.id,
+          ownerUserId: session.user.id,
+          kind: "EXPENSE",
+          currency: "EUR",
+          scope: "PRIVATE",
+          fuelEntryId: id,
+          generatedByFuelEntry: true,
+          ...expenseData
+        }
+      });
+      expenseId = expense.id;
+    }
+    if (expenseId) {
+      await syncLinkedDocumentFromForm(formData, {
+        familyId: session.family.id,
+        ownerUserId: session.user.id,
+        linkedEntityType: "EXPENSE",
+        linkedEntityId: expenseId,
+        scope: linkedExpense?.scope ?? "PRIVATE"
+      });
+    }
+  } else if (linkedExpense) {
+    // Keep the existing expense as a regular expense if the user disconnects it from this fuel stop.
+    await db.expense.updateMany({
+      where: { id: linkedExpense.id, familyId: session.family.id, fuelEntryId: id, generatedByFuelEntry: true },
+      data: { fuelEntryId: null, generatedByFuelEntry: false }
+    });
+  }
 
   revalidatePath("/kilometer");
   revalidatePath("/ausgaben");
@@ -753,8 +932,10 @@ export async function createCategory(formData: FormData) {
       type,
       name,
       color: chooseCategoryColor(name, existingCategories, submittedColor),
-      icon: optionalText(formData, "icon") ?? "tag",
+      icon: normalizeCategoryIcon(formData.get("icon")),
+      excludeFromForecast: type === "EXPENSE" && formData.get("excludeFromForecast") === "on",
       monthlyBudgetCents: parseOptionalEuroInputToCents(formData.get("monthlyBudget")),
+      budgetCadence: enumValue(formData, "budgetCadence", ["MONTHLY", "YEARLY"] as const, "MONTHLY"),
       scope: type === "EXPENSE" ? "PRIVATE" : scopeValue(formData)
     }
   });
@@ -763,28 +944,63 @@ export async function createCategory(formData: FormData) {
   redirectToReturnToIfPresent(formData);
 }
 
+export async function quickCreateExpenseCategory(formData: FormData) {
+  const session = await requireSession();
+  const name = requiredText(formData, "name");
+  const existingCategories = await db.category.count({
+    where: {
+      familyId: session.family.id,
+      type: "EXPENSE",
+      ...scopeWhereForCategoryColor(session.user.id)
+    }
+  });
+  const category = await db.category.create({
+    data: {
+      familyId: session.family.id,
+      ownerUserId: session.user.id,
+      type: "EXPENSE",
+      name,
+      color: chooseCategoryColor(name, existingCategories, optionalText(formData, "color")),
+      icon: normalizeCategoryIcon(formData.get("icon")),
+      monthlyBudgetCents: parseOptionalEuroInputToCents(formData.get("monthlyBudget")),
+      budgetCadence: enumValue(formData, "budgetCadence", ["MONTHLY", "YEARLY"] as const, "MONTHLY"),
+      scope: "PRIVATE"
+    },
+    select: { id: true, name: true, color: true, icon: true }
+  });
+
+  revalidatePath("/ausgaben");
+  return category;
+}
+
 export async function updateCategory(formData: FormData) {
   const session = await requireSession();
   const id = requiredText(formData, "id");
   const name = requiredText(formData, "name");
   const color = optionalText(formData, "color") ?? "#16776f";
+  const icon = normalizeCategoryIcon(formData.get("icon"));
 
   await db.category.updateMany({
     where: {
       id,
       familyId: session.family.id,
-      ...(session.role === "ADMIN" ? {} : { ownerUserId: session.user.id })
+      ownerUserId: session.user.id
     },
     data: {
       name,
       color,
+      icon,
       monthlyBudgetCents: parseOptionalEuroInputToCents(formData.get("monthlyBudget")),
-      scope: scopeValue(formData)
+      ...(formData.has("budgetCadence") ? { budgetCadence: enumValue(formData, "budgetCadence", ["MONTHLY", "YEARLY"] as const, "MONTHLY") } : {}),
+      ...(formData.has("forecastExclusionPresent") ? { excludeFromForecast: formData.get("excludeFromForecast") === "on" } : {}),
+      scope: "PRIVATE"
     }
   });
 
   revalidatePath("/ausgaben");
   revalidatePath("/dashboard");
+  revalidatePath("/ausgaben/planung", "layout");
+  revalidatePath("/ausgaben/setup", "layout");
   redirectToReturnToIfPresent(formData);
 }
 
@@ -795,7 +1011,7 @@ export async function deleteCategory(formData: FormData) {
     id,
     familyId: session.family.id,
     type: "EXPENSE" as const,
-    ...(session.role === "ADMIN" ? {} : { ownerUserId: session.user.id })
+    ownerUserId: session.user.id
   };
   const [category, expenseCount, settingsCount] = await Promise.all([
     db.category.findFirst({
@@ -939,7 +1155,7 @@ export async function createTask(formData: FormData) {
   const assignedToUserId = await resolveTaskAssigneeId(session.family.id, optionalText(formData, "assignedToUserId"));
   const dueDate = optionalText(formData, "dueDate");
 
-  await db.task.create({
+  const task = await db.task.create({
     data: {
       familyId: session.family.id,
       ownerUserId: session.user.id,
@@ -951,6 +1167,15 @@ export async function createTask(formData: FormData) {
       dueDate: parseOptionalDateInput(dueDate),
       scope: scopeValue(formData)
     }
+  });
+
+  await createLinkedDocumentIfPresent(formData, {
+    familyId: session.family.id,
+    ownerUserId: session.user.id,
+    role: session.role,
+    linkedEntityType: "TASK",
+    linkedEntityId: task.id,
+    scope: task.scope
   });
 
   revalidatePath("/aufgaben");
@@ -980,7 +1205,7 @@ export async function updateTask(formData: FormData) {
     ? enumValue(formData, "status", ["OPEN", "IN_PROGRESS", "DONE", "ARCHIVED"] as const, "OPEN")
     : undefined;
 
-  await db.task.updateMany({
+  const result = await db.task.updateMany({
     where: {
       id: requiredText(formData, "id"),
       familyId: session.family.id,
@@ -997,6 +1222,30 @@ export async function updateTask(formData: FormData) {
     }
   });
 
+  if (result.count > 0) {
+    await createLinkedDocumentIfPresent(formData, {
+      familyId: session.family.id,
+      ownerUserId: session.user.id,
+      role: session.role,
+      linkedEntityType: "TASK",
+      linkedEntityId: requiredText(formData, "id"),
+      scope: scopeValue(formData)
+    });
+  }
+
+  revalidatePath("/aufgaben");
+  revalidatePath("/dashboard");
+}
+
+export async function deleteTask(formData: FormData) {
+  const session = await requireSession();
+  await db.task.deleteMany({
+    where: {
+      id: requiredText(formData, "id"),
+      familyId: session.family.id,
+      OR: [{ ownerUserId: session.user.id }, { assignedToUserId: session.user.id }]
+    }
+  });
   revalidatePath("/aufgaben");
   revalidatePath("/dashboard");
 }
@@ -1021,7 +1270,7 @@ export async function createRecurringTask(formData: FormData) {
       endDate,
       intervalCount: interval.intervalCount,
       intervalUnit: interval.intervalUnit,
-      leadTimeDays: defaultRecurringTaskLeadTimeDays(interval.intervalCount, interval.intervalUnit),
+      leadTimeDays: parseOptionalIntegerInput(formData.get("leadTimeDays"), { min: 0, max: 365 }) ?? defaultRecurringTaskLeadTimeDays(interval.intervalCount, interval.intervalUnit),
       nextDueDate: startDate,
       status: "ACTIVE"
     }
@@ -1064,7 +1313,7 @@ export async function updateRecurringTask(formData: FormData) {
       endDate,
       intervalCount: interval.intervalCount,
       intervalUnit: interval.intervalUnit,
-      leadTimeDays: defaultRecurringTaskLeadTimeDays(interval.intervalCount, interval.intervalUnit),
+      leadTimeDays: parseOptionalIntegerInput(formData.get("leadTimeDays"), { min: 0, max: 365 }) ?? defaultRecurringTaskLeadTimeDays(interval.intervalCount, interval.intervalUnit),
       nextDueDate: startDate,
       status
     }
@@ -1073,6 +1322,25 @@ export async function updateRecurringTask(formData: FormData) {
   if (status === "ACTIVE") {
     await ensureDueRecurringTasks(session.family.id, session.user.id, new Date(), { force: true });
   }
+  revalidatePath("/aufgaben");
+  revalidatePath("/dashboard");
+}
+
+export async function deleteRecurringTask(formData: FormData) {
+  const session = await requireSession();
+  const existing = await db.recurringTask.findFirst({
+    where: {
+      id: requiredText(formData, "id"),
+      familyId: session.family.id,
+      OR: [{ ownerUserId: session.user.id }, { assignedToUserId: session.user.id }]
+    }
+  });
+  if (!existing) throw new Error("Diese geplante Aufgabe ist nicht verfügbar.");
+
+  await db.$transaction([
+    db.task.deleteMany({ where: { recurringTaskId: existing.id, familyId: session.family.id } }),
+    db.recurringTask.delete({ where: { id: existing.id } })
+  ]);
   revalidatePath("/aufgaben");
   revalidatePath("/dashboard");
 }
@@ -1113,10 +1381,12 @@ export async function createRecurringTransaction(formData: FormData) {
   const categoryId = await resolveExpenseCategoryId(session.family.id, session.user.id, optionalText(formData, "categoryId"));
   const labelId = await resolveExpenseLabelId(session.family.id, session.user.id, optionalText(formData, "labelId"));
   const startDate = parseRequiredDateInput(formData.get("startDate"));
+  const priceValidFrom = parseOptionalDateInput(optionalText(formData, "priceValidFrom")) ?? startDate;
   const recurringTransaction = await db.recurringTransaction.create({
     data: {
       familyId: session.family.id,
       ownerUserId: session.user.id,
+      sharedWithFamily: formData.get("kind") !== "INCOME" && formData.get("sharedWithFamily") === "on",
       kind: enumValue(formData, "kind", ["EXPENSE", "INCOME"] as const, "EXPENSE"),
       title: requiredText(formData, "title"),
       description: optionalText(formData, "description") ?? "",
@@ -1133,7 +1403,7 @@ export async function createRecurringTransaction(formData: FormData) {
           amountCents: parseEuroInputToCents(formData.get("amount")),
           currency: "EUR",
           billingInterval: recurringBillingIntervalValue(formData),
-          validFrom: startDate
+          validFrom: priceValidFrom
         }
       }
     }
@@ -1166,6 +1436,7 @@ export async function updateRecurringTransaction(formData: FormData) {
   await db.recurringTransaction.update({
     where: { id: existing.id },
     data: {
+      sharedWithFamily: formData.get("kind") !== "INCOME" && formData.get("sharedWithFamily") === "on",
       kind: enumValue(formData, "kind", ["EXPENSE", "INCOME"] as const, existing.kind),
       title: requiredText(formData, "title"),
       description: optionalText(formData, "description") ?? "",
@@ -1193,6 +1464,7 @@ export async function updateRecurringTransaction(formData: FormData) {
         }
       },
       data: {
+        ...(formData.get("kind") === "INCOME" ? { sharedWithFamily: false } : {}),
         kind: enumValue(formData, "kind", ["EXPENSE", "INCOME"] as const, existing.kind),
         amountCents,
         currency: "EUR",
@@ -1269,6 +1541,7 @@ export async function createContract(formData: FormData) {
       renewalInterval: renewalIntervalValue(formData),
       renewalAnchorDay: cancellation.renewalAnchorDay,
       autoCreateExpenses,
+      expenseSharedWithFamily: formData.get("expenseSharedWithFamily") === "on",
       expensePaymentDay,
       expenseCategoryId,
       expenseLabelId,
@@ -1289,6 +1562,7 @@ export async function createContract(formData: FormData) {
   await createLinkedDocumentIfPresent(formData, {
     familyId: session.family.id,
     ownerUserId: session.user.id,
+    role: session.role,
     linkedEntityType: "CONTRACT",
     linkedEntityId: contract.id,
     scope: contract.scope
@@ -1356,6 +1630,7 @@ export async function updateContract(formData: FormData) {
       renewalInterval: renewalIntervalValue(formData),
       renewalAnchorDay: cancellation.renewalAnchorDay,
       autoCreateExpenses,
+      ...(existing.ownerUserId === session.user.id ? { expenseSharedWithFamily: formData.get("expenseSharedWithFamily") === "on" } : {}),
       expensePaymentDay,
       expenseCategoryId,
       expenseLabelId,
@@ -1402,6 +1677,87 @@ export async function updateContract(formData: FormData) {
   revalidatePath("/dashboard");
 }
 
+/** Creates a series from an owned booking and makes that booking its first generated occurrence. */
+export async function createRecurringTransactionFromExpense(formData: FormData) {
+  const session = await requireSession();
+  const expenseId = requiredText(formData, "sourceExpenseId");
+  const source = await db.expense.findFirst({
+    where: { id: expenseId, familyId: session.family.id, ownerUserId: session.user.id }
+  });
+  if (!source) throw new Error("Die Ausgangsbuchung ist nicht verfügbar.");
+  if (source.recurringTransactionId) throw new Error("Diese Buchung ist bereits mit einer Serie verknüpft.");
+
+  const categoryId = await resolveExpenseCategoryId(session.family.id, session.user.id, optionalText(formData, "categoryId"));
+  const labelId = await resolveExpenseLabelId(session.family.id, session.user.id, optionalText(formData, "labelId"));
+  const startDate = parseRequiredDateInput(formData.get("startDate"));
+  const priceValidFrom = parseOptionalDateInput(optionalText(formData, "priceValidFrom")) ?? startDate;
+  const kind = enumValue(formData, "kind", ["EXPENSE", "INCOME"] as const, source.kind);
+  const amountCents = parseEuroInputToCents(formData.get("amount"));
+  const recurringTransaction = await db.$transaction(async (transaction) => {
+    const series = await transaction.recurringTransaction.create({
+      data: {
+        familyId: session.family.id,
+        ownerUserId: session.user.id,
+        sharedWithFamily: kind !== "INCOME" && formData.get("sharedWithFamily") === "on",
+        kind,
+        title: requiredText(formData, "title"),
+        description: optionalText(formData, "description") ?? "",
+        paymentMethod: paymentMethodValue(formData),
+        store: optionalText(formData, "store") ?? "",
+        categoryId,
+        labelId,
+        startDate,
+        endDate: parseOptionalDateInput(optionalText(formData, "endDate")),
+        nextDueDate: startDate,
+        status: enumValue(formData, "status", ["ACTIVE", "PAUSED"] as const, "ACTIVE"),
+        pricePhases: { create: { amountCents, currency: "EUR", billingInterval: recurringBillingIntervalValue(formData), validFrom: priceValidFrom } }
+      }
+    });
+    await transaction.expense.update({
+      where: { id: source.id },
+      data: {
+        recurringTransactionId: series.id,
+        generatedByRecurringTransaction: true,
+        kind,
+        amountCents,
+        currency: "EUR",
+        date: startDate,
+        paymentMethod: paymentMethodValue(formData),
+        store: optionalText(formData, "store") ?? "",
+        categoryId,
+        labelId,
+        description: optionalText(formData, "description") || requiredText(formData, "title"),
+        sharedWithFamily: kind !== "INCOME" && formData.get("sharedWithFamily") === "on"
+      }
+    });
+    return series;
+  });
+  if (recurringTransaction.status === "ACTIVE") await ensureDueContractExpenses(session.family.id, session.user.id, new Date(), { force: true });
+  revalidatePath("/ausgaben");
+  revalidatePath("/dashboard");
+}
+
+export async function deleteContract(formData: FormData) {
+  const session = await requireSession();
+  const contract = await db.contract.findFirst({
+    where: {
+      id: requiredText(formData, "id"),
+      familyId: session.family.id,
+      ...(session.role === "ADMIN" ? {} : { ownerUserId: session.user.id })
+    }
+  });
+  if (!contract) throw new Error("Der Vertrag ist nicht verfügbar.");
+
+  await db.$transaction([
+    db.expense.updateMany({ where: { contractId: contract.id, familyId: session.family.id }, data: { contractId: null } }),
+    db.contractPricePhase.deleteMany({ where: { contractId: contract.id } }),
+    db.contract.delete({ where: { id: contract.id } })
+  ]);
+  revalidatePath("/vertraege");
+  revalidatePath("/ausgaben");
+  revalidatePath("/dashboard");
+}
+
 export async function createDocumentReference(formData: FormData) {
   const session = await requireSession();
   const url = requiredText(formData, "url");
@@ -1428,27 +1784,106 @@ export async function createDocumentReference(formData: FormData) {
   revalidatePath("/dokumente");
 }
 
-export async function updateDocumentReference(formData: FormData) {
+export async function createLocalDocumentReference(formData: FormData) {
   const session = await requireSession();
-  const url = requiredText(formData, "url");
-  if (!url.startsWith("https://")) {
-    throw new Error("Dokumentverweise müssen als HTTPS-Link gespeichert werden.");
-  }
+  const documentRoot = await resolveReadableDocumentRoot(session.family.id, session.user.id, session.role, requiredText(formData, "documentRootId"));
+  const file = await resolveDocumentFile(documentRoot.basePath, requiredText(formData, "relativePath", "documentRelativePath"));
   const linkedEntityType = enumValue(formData, "linkedEntityType", ["EXPENSE", "TASK", "CONTRACT", "GENERAL"] as const, "GENERAL");
   const linkedEntityId = await resolveDocumentLinkedEntityId(session.family.id, session.user.id, linkedEntityType, optionalText(formData, "linkedEntityId"));
+  const title = optionalText(formData, "title") ?? file.fileName;
+
+  await db.documentReference.create({
+    data: {
+      familyId: session.family.id,
+      ownerUserId: session.user.id,
+      documentRootId: documentRoot.id,
+      linkedEntityType,
+      linkedEntityId,
+      title,
+      referenceType: "LOCAL_FILE",
+      url: "",
+      relativePath: file.relativePath,
+      fileName: file.fileName,
+      mimeType: file.mimeType,
+      fileSize: file.fileSize,
+      lastSeenAt: new Date(),
+      description: optionalText(formData, "description"),
+      scope: scopeValue(formData)
+    }
+  });
+
+  revalidatePath("/dokumente");
+}
+
+export async function updateDocumentReference(formData: FormData) {
+  const session = await requireSession();
+  const id = requiredText(formData, "id");
+  const existing = await db.documentReference.findFirst({
+    where: {
+      id,
+      familyId: session.family.id,
+      ...(session.role === "ADMIN" ? {} : { ownerUserId: session.user.id })
+    }
+  });
+  if (!existing) throw new Error("Der Dokumentverweis ist nicht verfügbar.");
+
+  const linkedEntityType = enumValue(formData, "linkedEntityType", ["EXPENSE", "TASK", "CONTRACT", "GENERAL"] as const, "GENERAL");
+  const linkedEntityId = await resolveDocumentLinkedEntityId(session.family.id, session.user.id, linkedEntityType, optionalText(formData, "linkedEntityId"));
+  const source = formData.get("source") === "link" ? "link" : formData.get("source") === "file" ? "file" : existing.referenceType === "LOCAL_FILE" ? "file" : "link";
+  const referenceType = source === "file"
+    ? "LOCAL_FILE"
+    : enumValue(formData, "referenceType", ["SYNOLOGY_HTTPS", "WEBDAV_HTTPS", "EXTERNAL_URL"] as const, existing.referenceType === "LOCAL_FILE" ? "EXTERNAL_URL" : existing.referenceType);
+  let localFileData: {
+    documentRootId: string | null;
+    relativePath: string | null;
+    fileName: string | null;
+    mimeType: string | null;
+    fileSize: number | null;
+    lastSeenAt: Date | null;
+  } = {
+    documentRootId: null,
+    relativePath: null,
+    fileName: null,
+    mimeType: null,
+    fileSize: null,
+    lastSeenAt: null
+  };
+  let url = "";
+  let title = "";
+
+  if (source === "file") {
+    const documentRoot = await resolveReadableDocumentRoot(session.family.id, session.user.id, session.role, requiredText(formData, "documentRootId"));
+    const file = await resolveDocumentFile(documentRoot.basePath, requiredText(formData, "documentRelativePath", "relativePath"));
+    localFileData = {
+      documentRootId: documentRoot.id,
+      relativePath: file.relativePath,
+      fileName: file.fileName,
+      mimeType: file.mimeType,
+      fileSize: file.fileSize,
+      lastSeenAt: new Date()
+    };
+    title = optionalText(formData, "title") ?? file.fileName;
+  } else {
+    title = requiredText(formData, "title");
+    url = requiredText(formData, "url");
+    if (!url.startsWith("https://")) {
+      throw new Error("Dokumentverweise müssen als HTTPS-Link gespeichert werden.");
+    }
+  }
 
   await db.documentReference.updateMany({
     where: {
-      id: requiredText(formData, "id"),
+      id,
       familyId: session.family.id,
       ...(session.role === "ADMIN" ? {} : { ownerUserId: session.user.id })
     },
     data: {
       linkedEntityType,
       linkedEntityId,
-      title: requiredText(formData, "title"),
-      referenceType: "EXTERNAL_URL",
+      title,
+      referenceType,
       url,
+      ...localFileData,
       description: optionalText(formData, "description"),
       scope: scopeValue(formData)
     }
@@ -1456,6 +1891,75 @@ export async function updateDocumentReference(formData: FormData) {
 
   revalidatePath("/dokumente");
   revalidatePath("/dashboard");
+}
+
+export async function createDocumentRoot(formData: FormData) {
+  const session = await requireSession();
+  requireFamilyAdmin(session.role);
+  const basePath = requiredText(formData, "basePath");
+  if (isLocalDocumentsFallback(basePath)) {
+    await mkdir(basePath, { recursive: true });
+  }
+  await resolveDocumentPath(basePath, "", "directory");
+  const accessMode = enumValue(formData, "accessMode", ["FAMILY", "ADMIN", "USERS"] as const, "FAMILY");
+  const selectedUserIds = formData.getAll("userId").map(String).filter(Boolean);
+  const members = accessMode === "USERS"
+    ? await db.familyMember.findMany({
+        where: { familyId: session.family.id, userId: { in: selectedUserIds }, status: "ACTIVE" },
+        select: { userId: true }
+      })
+    : [];
+
+  if (accessMode === "USERS") {
+    if (members.length === 0) throw new Error("Bitte mindestens ein aktives Familienmitglied auswählen.");
+  }
+
+  await db.$transaction(async (tx) => {
+    const root = await tx.documentRoot.create({
+      data: {
+        familyId: session.family.id,
+        createdByUserId: session.user.id,
+        name: requiredText(formData, "name"),
+        basePath,
+        scope: accessMode === "FAMILY" ? "FAMILY" : "PRIVATE"
+      }
+    });
+
+    if (accessMode === "ADMIN") {
+      await tx.documentRootAccess.create({ data: { documentRootId: root.id, role: "ADMIN" } });
+    } else if (accessMode === "USERS") {
+      await tx.documentRootAccess.createMany({
+        data: members.map((member) => ({ documentRootId: root.id, userId: member.userId }))
+      });
+    }
+  });
+
+  revalidatePath("/dokumente");
+  revalidatePath("/einstellungen");
+  revalidatePath("/einstellungen/dokumentbereiche");
+}
+
+export async function archiveDocumentRoot(formData: FormData) {
+  const session = await requireSession();
+  requireFamilyAdmin(session.role);
+  await db.documentRoot.updateMany({
+    where: { id: requiredText(formData, "id"), familyId: session.family.id },
+    data: { archivedAt: new Date() }
+  });
+  revalidatePath("/dokumente");
+  revalidatePath("/einstellungen/dokumentbereiche");
+}
+
+export async function restoreDocumentRoot(formData: FormData) {
+  const session = await requireSession();
+  requireFamilyAdmin(session.role);
+  await db.documentRoot.updateMany({
+    where: { id: requiredText(formData, "id"), familyId: session.family.id },
+    data: { archivedAt: null }
+  });
+  revalidatePath("/dokumente");
+  revalidatePath("/einstellungen");
+  revalidatePath("/einstellungen/dokumentbereiche");
 }
 
 export async function deleteDocumentReference(formData: FormData) {
@@ -1497,6 +2001,7 @@ export async function createUser(formData: FormData) {
   });
 
   revalidatePath("/einstellungen");
+  revalidatePath("/einstellungen/mitglieder");
 }
 
 export async function changeOwnPassword(formData: FormData) {
@@ -1524,7 +2029,8 @@ export async function changeOwnPassword(formData: FormData) {
 
   await createSession(user.id);
   revalidatePath("/einstellungen");
-  redirect("/einstellungen?password=changed");
+  revalidatePath("/einstellungen/konto");
+  redirect("/einstellungen/konto?password=changed");
 }
 
 export async function resetMemberPassword(formData: FormData) {
@@ -1558,6 +2064,7 @@ export async function resetMemberPassword(formData: FormData) {
   ]);
 
   revalidatePath("/einstellungen");
+  revalidatePath("/einstellungen/mitglieder");
 }
 
 export async function setAdminRecoveryKey(formData: FormData) {
@@ -1583,7 +2090,8 @@ export async function setAdminRecoveryKey(formData: FormData) {
   });
 
   revalidatePath("/einstellungen");
-  redirect("/einstellungen?recovery=changed");
+  revalidatePath("/einstellungen/wiederherstellung");
+  redirect("/einstellungen/wiederherstellung?recovery=changed");
 }
 
 export async function recoverAdminPassword(formData: FormData) {
@@ -1641,11 +2149,11 @@ async function createDefaultCategories(userId: string) {
 
 function defaultCategorySeed(familyId: string, ownerUserId: string) {
   return [
-    { familyId, ownerUserId, type: "EXPENSE" as const, name: "Lebensmittel", color: "#1c8c55", icon: "cart", monthlyBudgetCents: 50000, scope: "FAMILY" as const },
-    { familyId, ownerUserId, type: "EXPENSE" as const, name: "Wohnen", color: "#2e6fea", icon: "home", monthlyBudgetCents: 120000, scope: "FAMILY" as const },
-    { familyId, ownerUserId, type: "EXPENSE" as const, name: "Mobilität", color: "#b7791f", icon: "car", monthlyBudgetCents: 25000, scope: "FAMILY" as const },
-    { familyId, ownerUserId, type: "EXPENSE" as const, name: "Freizeit", color: "#7c5cc4", icon: "sparkles", monthlyBudgetCents: 20000, scope: "FAMILY" as const },
-    { familyId, ownerUserId, type: "EXPENSE" as const, name: "Gehalt", color: "#16776f", icon: "wallet", monthlyBudgetCents: 0, scope: "FAMILY" as const },
+    { familyId, ownerUserId, type: "EXPENSE" as const, name: "Lebensmittel", color: "#1c8c55", icon: "cart", monthlyBudgetCents: 50000, scope: "PRIVATE" as const },
+    { familyId, ownerUserId, type: "EXPENSE" as const, name: "Wohnen", color: "#2e6fea", icon: "home", monthlyBudgetCents: 120000, scope: "PRIVATE" as const },
+    { familyId, ownerUserId, type: "EXPENSE" as const, name: "Mobilität", color: "#b7791f", icon: "car", monthlyBudgetCents: 25000, scope: "PRIVATE" as const },
+    { familyId, ownerUserId, type: "EXPENSE" as const, name: "Freizeit", color: "#7c5cc4", icon: "sparkles", monthlyBudgetCents: 20000, scope: "PRIVATE" as const },
+    { familyId, ownerUserId, type: "EXPENSE" as const, name: "Gehalt", color: "#16776f", icon: "wallet", monthlyBudgetCents: 0, scope: "PRIVATE" as const },
     { familyId, ownerUserId, type: "EXPENSE" as const, name: "Rückerstattung", color: "#66736f", icon: "return", monthlyBudgetCents: 0, scope: "FAMILY" as const }
   ];
 }
@@ -1655,20 +2163,54 @@ async function createLinkedDocumentIfPresent(
   data: {
     familyId: string;
     ownerUserId: string;
-    linkedEntityType: "EXPENSE" | "CONTRACT";
+    role: "ADMIN" | "MEMBER";
+    linkedEntityType: "EXPENSE" | "TASK" | "CONTRACT";
     linkedEntityId: string;
     scope: "PRIVATE" | "FAMILY";
   }
 ) {
   const title = optionalText(formData, "documentTitle");
   const url = optionalText(formData, "documentUrl");
+  const documentRootId = optionalText(formData, "documentRootId");
+  const relativePath = optionalText(formData, "documentRelativePath");
+
+  if (documentRootId || relativePath) {
+    if (!documentRootId || !relativePath) throw new Error("Bitte eine vollständige NAS-Datei auswählen.");
+    const documentRoot = await resolveReadableDocumentRoot(data.familyId, data.ownerUserId, data.role, documentRootId);
+    const file = await resolveDocumentFile(documentRoot.basePath, relativePath);
+    await db.documentReference.create({
+      data: {
+        familyId: data.familyId,
+        ownerUserId: data.ownerUserId,
+        linkedEntityType: data.linkedEntityType,
+        linkedEntityId: data.linkedEntityId,
+        scope: data.scope,
+        title: title ?? file.fileName,
+        url: "",
+        referenceType: "LOCAL_FILE",
+        documentRootId: documentRoot.id,
+        relativePath: file.relativePath,
+        fileName: file.fileName,
+        mimeType: file.mimeType,
+        fileSize: file.fileSize,
+        lastSeenAt: new Date(),
+        description: optionalText(formData, "documentDescription")
+      }
+    });
+    return;
+  }
+
   if (!title && !url) return;
   if (!title || !url) throw new Error("Dokumenttitel und HTTPS-Link müssen gemeinsam angegeben werden.");
   if (!url.startsWith("https://")) throw new Error("Dokumentverweise müssen als HTTPS-Link gespeichert werden.");
 
   await db.documentReference.create({
     data: {
-      ...data,
+      familyId: data.familyId,
+      ownerUserId: data.ownerUserId,
+      linkedEntityType: data.linkedEntityType,
+      linkedEntityId: data.linkedEntityId,
+      scope: data.scope,
       title,
       url,
       referenceType: enumValue(formData, "documentReferenceType", ["SYNOLOGY_HTTPS", "WEBDAV_HTTPS", "EXTERNAL_URL"] as const, "EXTERNAL_URL"),
@@ -1690,6 +2232,27 @@ async function syncLinkedDocumentFromForm(
   const documentId = optionalText(formData, "documentId");
   const title = optionalText(formData, "documentTitle");
   const url = optionalText(formData, "documentUrl");
+
+  if (optionalText(formData, "documentRootId") || optionalText(formData, "documentRelativePath")) {
+    const session = await requireSession();
+    await createLinkedDocumentIfPresent(formData, { ...data, role: session.role });
+    return;
+  }
+
+  // Existing NAS references are independent of the optional HTTPS editor.
+  if (documentId) {
+    const existing = await db.documentReference.findFirst({
+      where: { id: documentId, familyId: data.familyId, ownerUserId: data.ownerUserId,
+        linkedEntityType: data.linkedEntityType, linkedEntityId: data.linkedEntityId }
+    });
+    if (existing?.referenceType === "LOCAL_FILE") {
+      if (title || url) {
+        const session = await requireSession();
+        await createLinkedDocumentIfPresent(formData, { ...data, role: session.role });
+      }
+      return;
+    }
+  }
 
   if (!title && !url) {
     if (documentId) {
@@ -1752,7 +2315,12 @@ async function setRecurringTaskStatus(formData: FormData, status: "PAUSED" | "AR
   revalidatePath("/dashboard");
 }
 
-function requiredText(formData: FormData, key: string) {
+function requiredText(formData: FormData, key: string, ...alternateKeys: string[]) {
+  for (const candidateKey of [key, ...alternateKeys]) {
+    const value = String(formData.get(candidateKey) ?? "").trim();
+    if (value) return value;
+  }
+  if (alternateKeys.length > 0) throw new Error(`${key} ist erforderlich.`);
   const value = String(formData.get(key) ?? "").trim();
   if (!value) throw new Error(`${key} ist erforderlich.`);
   return value;
@@ -1971,12 +2539,7 @@ function chooseCategoryColor(name: string, existingCount: number, submittedColor
 }
 
 function scopeWhereForCategoryColor(userId: string) {
-  return {
-    OR: [
-      { scope: "FAMILY" as const },
-      { ownerUserId: userId }
-    ]
-  };
+  return { ownerUserId: userId };
 }
 
 async function findOrCreateExpenseCategory(familyId: string, ownerUserId: string, name: string) {
@@ -2053,6 +2616,40 @@ function fuelEntryDataFromForm(formData: FormData, familyId: string, carId: stri
   };
 }
 
+function toPlanningExpense(expense: {
+  id: string;
+  ownerUserId: string;
+  kind: "EXPENSE" | "INCOME";
+  amountCents: number;
+  date: Date;
+  store: string;
+  description: string;
+  paymentMethod: string;
+  categoryId: string | null;
+  contractId: string | null;
+  recurringTransactionId: string | null;
+  generatedByContract: boolean;
+  generatedByRecurringTransaction: boolean;
+  category: { id: string; name: string; color: string; icon: string | null } | null;
+}): PlanningExpense {
+  return {
+    id: expense.id,
+    ownerUserId: expense.ownerUserId,
+    kind: expense.kind,
+    amountCents: expense.amountCents,
+    date: expense.date,
+    store: expense.store,
+    description: expense.description,
+    paymentMethod: expense.paymentMethod,
+    categoryId: expense.categoryId,
+    contractId: expense.contractId,
+    recurringTransactionId: expense.recurringTransactionId,
+    generatedByContract: expense.generatedByContract,
+    generatedByRecurringTransaction: expense.generatedByRecurringTransaction,
+    category: expense.category
+  };
+}
+
 async function resolveFamilyCar(familyId: string, carId: string) {
   const car = await db.car.findFirst({
     where: {
@@ -2118,6 +2715,10 @@ function toArrayBuffer(buffer: Buffer) {
 
 function scopeValue(formData: FormData) {
   return formData.get("scope") === "PRIVATE" ? "PRIVATE" : "FAMILY";
+}
+
+function expenseScopeValue(formData: FormData) {
+  return formData.get("scope") === "FAMILY" ? "FAMILY" : "PRIVATE";
 }
 
 function enumValue<T extends string>(formData: FormData, key: string, allowed: readonly T[], fallback: T) {

@@ -1,17 +1,28 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { useEffect, useSyncExternalStore } from "react";
+import { useEffect } from "react";
 import { createPortal } from "react-dom";
 
 let openModalCount = 0;
 let lockedScrollY = 0;
 
+function unlockPageScroll() {
+  document.documentElement.classList.remove("modal-scroll-locked");
+  document.body.classList.remove("modal-scroll-locked");
+  document.body.style.position = "";
+  document.body.style.top = "";
+  document.body.style.left = "";
+  document.body.style.right = "";
+  document.body.style.width = "";
+}
+
 export function ModalPortal({ children }: { children: ReactNode }) {
-  const target = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+  const target = typeof document === "undefined" ? null : document.body;
 
   useEffect(() => {
     if (!target) return;
+    if (openModalCount === 0) unlockPageScroll();
     openModalCount += 1;
     if (openModalCount === 1) {
       lockedScrollY = window.scrollY;
@@ -27,13 +38,7 @@ export function ModalPortal({ children }: { children: ReactNode }) {
     return () => {
       openModalCount = Math.max(0, openModalCount - 1);
       if (openModalCount === 0) {
-        document.documentElement.classList.remove("modal-scroll-locked");
-        document.body.classList.remove("modal-scroll-locked");
-        document.body.style.position = "";
-        document.body.style.top = "";
-        document.body.style.left = "";
-        document.body.style.right = "";
-        document.body.style.width = "";
+        unlockPageScroll();
         window.scrollTo(0, lockedScrollY);
       }
     };
@@ -41,16 +46,4 @@ export function ModalPortal({ children }: { children: ReactNode }) {
 
   if (!target) return null;
   return createPortal(children, target);
-}
-
-function subscribe() {
-  return () => undefined;
-}
-
-function getSnapshot() {
-  return document.body;
-}
-
-function getServerSnapshot() {
-  return null;
 }

@@ -1,0 +1,3 @@
+DROP TABLE IF EXISTS "CalendarSourceVisibilityArchive_20260514120000";
+DROP TABLE IF EXISTS "CalendarEventArchive_20260514120000";
+DROP TABLE IF EXISTS "CalendarIntegrationArchive_20260514120000";

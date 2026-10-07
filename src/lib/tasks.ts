@@ -1,4 +1,4 @@
-export type TaskPriorityValue = "LOW" | "MEDIUM" | "HIGH" | "URGENT";
+﻿export type TaskPriorityValue = "LOW" | "MEDIUM" | "HIGH" | "URGENT";
 export type TaskStatusValue = "OPEN" | "IN_PROGRESS" | "DONE" | "ARCHIVED";
 export type RecurringTaskIntervalUnitValue = "DAY" | "MONTH" | "YEAR";
 export type RecurringTaskStatusValue = "ACTIVE" | "PAUSED" | "ARCHIVED";

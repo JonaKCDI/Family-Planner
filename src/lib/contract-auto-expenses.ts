@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { db } from "@/lib/db";
 
 type BillingInterval = "MONTHLY" | "QUARTERLY" | "YEARLY" | "ONCE" | "OTHER";
@@ -115,8 +116,10 @@ async function ensureDueContractAutomaticExpenses(familyId: string, userId: stri
         store: contract.provider,
         categoryId: contract.expenseCategoryId,
         labelId: contract.expenseLabelId,
+        id: "auto_" + createHash("sha256").update(`contract:${contract.id}:${dateKey(date)}`).digest("hex"),
         contractId: contract.id,
         generatedByContract: true,
+        sharedWithFamily: contract.expenseSharedWithFamily,
         description: `${contract.provider} · ${contract.contractType}`,
         scope: "PRIVATE"
       })),
@@ -171,8 +174,10 @@ async function ensureDueRecurringTransactionExpenses(familyId: string, userId: s
         store: transaction.store,
         categoryId: transaction.categoryId,
         labelId: transaction.labelId,
+        id: "auto_" + createHash("sha256").update(`series:${transaction.id}:${dateKey(date)}`).digest("hex"),
         recurringTransactionId: transaction.id,
         generatedByRecurringTransaction: true,
+        sharedWithFamily: transaction.kind === "EXPENSE" && transaction.sharedWithFamily,
         description: transaction.description || transaction.title,
         scope: "PRIVATE"
       })),

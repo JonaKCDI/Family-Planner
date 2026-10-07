@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { visibleScopeWhere } from "@/lib/permissions";
+import { documentRootAccessWhere, visibleScopeWhere } from "@/lib/permissions";
 
 export async function getFamilyMembers(familyId: string) {
   return db.familyMember.findMany({
@@ -14,7 +14,7 @@ export async function getVisibleCategories(familyId: string, userId: string, typ
     where: {
       familyId,
       ...(type ? { type } : {}),
-      ...visibleScopeWhere(userId)
+      ...(type === "EXPENSE" ? { ownerUserId: userId } : visibleScopeWhere(userId))
     },
     orderBy: { name: "asc" }
   });
@@ -26,7 +26,7 @@ export async function getVisibleExpenses(familyId: string, userId: string) {
       familyId,
       ownerUserId: userId
     },
-    include: { category: true, label: true, contract: true, recurringTransaction: true, fuelEntry: { include: { car: true } } },
+    include: { category: true, label: true, contract: true, recurringTransaction: { include: { pricePhases: { orderBy: { validFrom: "asc" } } } }, fuelEntry: { include: { car: true } } },
     orderBy: { date: "desc" }
   });
 }
@@ -98,7 +98,7 @@ export async function getFuelEntriesForCar(familyId: string, carId: string) {
       familyId,
       carId
     },
-    include: { car: true, creator: true },
+    include: { car: true, creator: true, expense: true },
     orderBy: [{ date: "desc" }, { odometerKm: "desc" }]
   });
 }
@@ -134,8 +134,17 @@ export async function getVisibleTasks(familyId: string, userId: string) {
         select: {
           id: true,
           title: true,
+          assignedToUserId: true,
+          description: true,
+          priority: true,
+          scope: true,
+          startDate: true,
+          endDate: true,
+          leadTimeDays: true,
+          status: true,
           intervalCount: true,
-          intervalUnit: true
+          intervalUnit: true,
+          nextDueDate: true
         }
       }
     },
@@ -212,13 +221,48 @@ export async function getRecurringTransactions(familyId: string, userId: string)
   });
 }
 
+export async function getExpensePlanningTreatments(familyId: string, userId: string) {
+  return db.expensePlanningTreatment.findMany({
+    where: {
+      familyId,
+      ownerUserId: userId
+    },
+    orderBy: { updatedAt: "desc" }
+  });
+}
+
+export async function getExpensePlanningRules(familyId: string, userId: string) {
+  return db.expensePlanningRule.findMany({
+    where: {
+      familyId,
+      ownerUserId: userId
+    },
+    orderBy: { updatedAt: "desc" }
+  });
+}
+
 export async function getVisibleDocuments(familyId: string, userId: string) {
   return db.documentReference.findMany({
     where: {
       familyId,
       ...visibleScopeWhere(userId)
     },
-    include: { owner: true },
+    include: { owner: true, documentRoot: true },
     orderBy: { createdAt: "desc" }
+  });
+}
+
+export async function getVisibleDocumentRoots(familyId: string, userId: string, role: "ADMIN" | "MEMBER") {
+  return db.documentRoot.findMany({
+    where: {
+      familyId,
+      archivedAt: null,
+      ...(role === "ADMIN" ? {} : documentRootAccessWhere(userId, role))
+    },
+    include: {
+      accesses: { include: { user: { select: { id: true, name: true } } } },
+      createdBy: { select: { id: true, name: true } }
+    },
+    orderBy: { name: "asc" }
   });
 }

@@ -2,9 +2,11 @@
 .env*.local
 node_modules
 .next
+.local-documents
 out
 dist
 coverage
+test-results/
 *.log
 tsconfig.tsbuildinfo
 .DS_Store
@@ -13,3 +15,5 @@ ehthumbs.db
 @eaDir/
 **/@eaDir/
 prisma/dev.db
+
+.local-backups/

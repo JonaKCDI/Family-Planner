@@ -1,6 +1,9 @@
 import ExcelJS from "exceljs";
 
 export type ExpenseFormatRow = {
+  sharedWithFamily?: boolean;
+  familyCategoryName?: string;
+  familyLabelName?: string;
   id?: string;
   kind: "EXPENSE" | "INCOME";
   amountCents: number;
@@ -36,7 +39,7 @@ const dataSheetHeader = [
   "vertragAnbieter",
   "vertragArt",
   "tankstoppId",
-  "beschreibung"
+  "beschreibung", "mitFamilieTeilen", "familienkategorie", "familienlabel"
 ];
 const dataRequiredFields = ["kind", "amountCents", "currency", "date", "category", "label", "description"] as const;
 const dataHeaderScanLimit = 20;
@@ -58,6 +61,7 @@ const monthSheets = [
 export async function parseExpenseWorkbook(buffer: ArrayBuffer, fileName = "Ausgaben_2026.xlsx"): Promise<ExpenseFormatRow[]> {
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.load(buffer);
+  if (workbook.getWorksheet("Familienauswertung")) throw new Error("Familienauswertungen können nicht als persönliche Sicherung importiert werden.");
   const dataSheet = workbook.getWorksheet(dataSheetName);
   if (dataSheet) return parseDataSheet(dataSheet);
 
@@ -137,7 +141,7 @@ export async function buildExpenseWorkbook(expenses: ExpenseExportRow[], year: n
       expense.contractProvider ?? "",
       expense.contractType ?? "",
       expense.fuelEntryId ?? "",
-      expense.description
+      expense.description, expense.sharedWithFamily === undefined ? "" : expense.sharedWithFamily ? "ja" : "nein", expense.familyCategoryName ?? "", expense.familyLabelName ?? ""
     ]);
   }
   dataSheet.getRow(1).font = { bold: true };
@@ -235,6 +239,9 @@ function parseDataSheet(worksheet: ExcelJS.Worksheet): ExpenseFormatRow[] {
     const amountCents = cellInteger(row.getCell(header.indexes.amountCents + 1));
     if (!date || amountCents === null) return;
     rows.push({
+      sharedWithFamily: header.indexes.sharedWithFamily >= 0 ? parseSharing(cellText(row.getCell(header.indexes.sharedWithFamily + 1))) : undefined,
+      familyCategoryName: header.indexes.familyCategoryName >= 0 ? cellText(row.getCell(header.indexes.familyCategoryName + 1)) : undefined,
+      familyLabelName: header.indexes.familyLabelName >= 0 ? cellText(row.getCell(header.indexes.familyLabelName + 1)) : undefined,
       id: header.indexes.id >= 0 ? cellText(row.getCell(header.indexes.id + 1)) || undefined : undefined,
       kind: normalizeTransactionKind(cellText(row.getCell(header.indexes.kind + 1))),
       amountCents: Math.abs(amountCents),
@@ -280,6 +287,9 @@ function rowHeaderNames(row: ExcelJS.Row) {
 
 function dataColumnIndexes(header: string[]) {
   return {
+    sharedWithFamily: findWorkbookColumn(header, ["mitfamilieteilen"]),
+    familyCategoryName: findWorkbookColumn(header, ["familienkategorie"]),
+    familyLabelName: findWorkbookColumn(header, ["familienlabel"]),
     id: findWorkbookColumn(header, ["id", "expenseid", "expense_id", "eintragsid"]),
     kind: findWorkbookColumn(header, ["kind", "type", "art", "typ"]),
     amountCents: findWorkbookColumn(header, ["amountcents", "amount_cents", "betragcent", "betragcents", "betrag_cent", "betrag_cents"]),
@@ -351,4 +361,11 @@ function daysInMonth(year: number, month: number) {
 
 function toIsoDate(date: Date) {
   return date.toISOString().slice(0, 10);
+}
+
+function parseSharing(value: string): boolean | undefined {
+  if (!value) return undefined;
+  if (["ja", "true", "1"].includes(value.toLowerCase())) return true;
+  if (["nein", "false", "0"].includes(value.toLowerCase())) return false;
+  throw new Error("Ungültiger Wert für Mit Familie teilen.");
 }

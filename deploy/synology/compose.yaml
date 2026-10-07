@@ -14,11 +14,13 @@ services:
       APP_URL: ${APP_URL}
       EXPENSE_EXCEL_DIR: ${EXPENSE_EXCEL_DIR:-/data/expenses}
       MILEAGE_EXCEL_DIR: ${MILEAGE_EXCEL_DIR:-/data/mileage}
+      DOCUMENTS_DIR: ${DOCUMENTS_DIR:-/mnt/documents}
     ports:
       - "${APP_PORT:-3000}:3000"
     volumes:
       - ${EXPENSE_EXCEL_HOST_DIR:-/volume1/docker/family-app/expenses}:/data/expenses
       - ${MILEAGE_EXCEL_HOST_DIR:-/volume1/docker/family-app/mileage}:/data/mileage
+      - ${DOCUMENTS_HOST_DIR:-/volume1/docker/family-app/documents}:/mnt/documents:ro
     healthcheck:
       test: ["CMD-SHELL", "node -e \"const os=require('os');const urls=['http://127.0.0.1:3000/api/health','http://'+os.hostname()+':3000/api/health'];(async()=>{for(const url of urls){try{const res=await fetch(url);if((await res.text()).trim()==='ok')process.exit(0)}catch{}}process.exit(1)})()\""]
       interval: 5m

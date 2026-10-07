@@ -1,19 +1,32 @@
+import type { ReactNode } from "react";
 import Link from "next/link";
-import { updateTaskStatus } from "@/lib/actions";
+import { BanknoteArrowUp, CalendarCheck, CarFront, FileText, ReceiptText, Scale, Tag, TrendingUp, WalletCards } from "lucide-react";
 import { requireSession } from "@/lib/auth";
 import { ensureDueContractExpenses } from "@/lib/contract-auto-expenses";
 import { getContractNextCancellationDate } from "@/lib/contracts";
+import { buildBudgetAlerts, buildCategoryRows, buildLabelRows, budgetCadenceLabel, monthlyBudget, sumByKind } from "@/lib/expense-analytics";
+import { forecastCurrentMonthEnd } from "@/lib/expense-forecast";
 import { formatDate, formatMoney } from "@/lib/format";
-import { ensureDueRecurringTasks } from "@/lib/recurring-tasks";
-import { isImportantTask, taskRank } from "@/lib/tasks";
 import {
+  addFuelDerivedFields,
+  calculateFuelStatsFromDerived,
+  formatDecimal,
+  formatKilometers
+} from "@/lib/mileage";
+import { ensureDueRecurringTasks } from "@/lib/recurring-tasks";
+import { daysUntil, isImportantTask, taskRank, taskUrgency } from "@/lib/tasks";
+import {
+  getFuelEntriesForCar,
+  getVisibleCars,
   getVisibleCategories,
   getVisibleContracts,
   getVisibleDocuments,
   getVisibleExpenses,
-  getRecurringTransactions,
+  getExpenseLabels,
   getVisibleTasks
 } from "@/lib/queries";
+import { TaskInlineCheck } from "@/components/task-inline-check";
+import { EmptyState, PageHeader, SectionCard, StatusBadge } from "@/components/ui";
 
 export default async function DashboardPage() {
   const session = await requireSession();
@@ -21,241 +34,396 @@ export default async function DashboardPage() {
     ensureDueContractExpenses(session.family.id, session.user.id),
     ensureDueRecurringTasks(session.family.id, session.user.id)
   ]);
-  const [expenses, tasks, contracts, documents, categories, recurringTransactions] = await Promise.all([
+  const [expenses, tasks, contracts, documents, categories, labels, cars] = await Promise.all([
     getVisibleExpenses(session.family.id, session.user.id),
     getVisibleTasks(session.family.id, session.user.id),
     getVisibleContracts(session.family.id, session.user.id),
     getVisibleDocuments(session.family.id, session.user.id),
     getVisibleCategories(session.family.id, session.user.id, "EXPENSE"),
-    getRecurringTransactions(session.family.id, session.user.id)
+    getExpenseLabels(session.family.id, session.user.id),
+    getVisibleCars(session.family.id)
   ]);
 
   const today = new Date();
   const greeting = getGreeting(today);
   const monthEntries = expenses.filter((entry) => isSameMonth(entry.date, today));
+  const recentMonthEntries = monthEntries.slice(0, 4);
+  const latestUsedLabel = expenses.find((entry) => entry.label)?.label ?? null;
+  const latestLabel = latestUsedLabel
+    ? labels.find((label) => label.id === latestUsedLabel.id) ?? latestUsedLabel
+    : null;
+  const budgetHistoryEntries = expenses.filter((entry) => entry.currency === "EUR");
+  const budgetMonthEntries = monthEntries.filter((entry) => entry.currency === "EUR");
+  const dashboardBudgetRange = {
+    mode: "month" as const,
+    from: new Date(Date.UTC(today.getFullYear(), today.getMonth(), 1)),
+    to: new Date(Date.UTC(today.getFullYear(), today.getMonth() + 1, 0))
+  };
+  const latestLabelMonthEntries = latestLabel
+    ? budgetMonthEntries.filter((entry) => entry.label?.id === latestLabel.id)
+    : [];
+  const latestLabelMonthSpend = sumByKind(latestLabelMonthEntries, "EXPENSE");
+  const latestLabelAllEntries = latestLabel
+    ? budgetHistoryEntries.filter((entry) => entry.label?.id === latestLabel.id)
+    : [];
+  const latestLabelAllSpend = sumByKind(latestLabelAllEntries, "EXPENSE");
+  const latestLabelBudgetRow = latestLabel
+    ? buildLabelRows(latestLabelMonthEntries, labels, dashboardBudgetRange, budgetHistoryEntries).find((row) => row.id === latestLabel.id)
+    : null;
+  const latestLabelMonthNet = latestLabelBudgetRow?.budgetPeriod === "ALL_TIME"
+    ? Math.max(0, sumByKind(latestLabelMonthEntries, "EXPENSE") - sumByKind(latestLabelMonthEntries, "INCOME"))
+    : latestLabelBudgetRow?.budgetConsumption ?? 0;
+  const latestLabelBudget = latestLabelBudgetRow?.budget ?? 0;
+  const latestLabelBudgetRemaining = latestLabelBudgetRow?.remaining ?? 0;
   const income = sumByKind(monthEntries, "INCOME");
   const spending = sumByKind(monthEntries, "EXPENSE");
   const saldo = income - spending;
-  const recurringIntervals = buildRecurringIntervalMap(recurringTransactions);
-  const finance = buildFinanceInsight(expenses, categories, today, recurringIntervals);
+  const monthHref = `/ausgaben?month=${getMonthKey(today)}`;
+  const monthBudget = monthlyBudget(categories);
+  const netConsumption = Math.max(0, spending - income);
+  const budgetRemaining = monthBudget - netConsumption;
+  const monthEndForecast = forecastCurrentMonthEnd(expenses, categories, today);
+  const projectedBudgetRemaining = monthBudget - monthEndForecast.projectedMonth;
+  const budgetAlerts = [
+    ...buildBudgetAlerts(buildCategoryRows(budgetMonthEntries, categories, sumByKind(budgetMonthEntries, "EXPENSE"), dashboardBudgetRange), "category"),
+    ...buildBudgetAlerts(buildLabelRows(budgetMonthEntries, labels, dashboardBudgetRange, budgetHistoryEntries), "label")
+  ].sort((a, b) => {
+    if (a.status !== b.status) return a.status === "over" ? -1 : 1;
+    return b.budgetUsage - a.budgetUsage || b.netConsumption - a.netConsumption || a.name.localeCompare(b.name, "de");
+  });
   const openTasks = tasks
     .filter((task) => task.status === "OPEN" || task.status === "IN_PROGRESS")
     .sort((a, b) => taskRank(b) - taskRank(a));
   const importantTasks = openTasks.filter(isImportantTask);
+  const dueTasks = openTasks.filter((task) => daysUntil(task.dueDate) <= 0);
   const nextContracts = contracts
     .filter((contract) => contract.status === "ACTIVE")
     .map((contract) => ({ ...contract, nextCancellationDate: getContractNextCancellationDate(contract) }))
     .filter((contract) => contract.nextCancellationDate)
     .sort((a, b) => new Date(a.nextCancellationDate ?? 0).getTime() - new Date(b.nextCancellationDate ?? 0).getTime())
-    .slice(0, 3);
+    .slice(0, 4);
+  const vehicleSummaries = await buildVehicleSummaries(session.family.id, cars.slice(0, 3));
 
   return (
-    <div className="dashboard">
-      <header className="dashboard-hero compact-hero">
-        <div>
-          <span className="eyebrow">{longDateFormatter.format(today)}</span>
-          <h1>{greeting}, {session.user.name}</h1>
-          <p>Alles Wichtige für {session.family.name}: Aufgaben, Finanzen, Verträge und Dokumente an einem Ort.</p>
-        </div>
-      </header>
-
-      <section className="dashboard-stats" aria-label="Haushaltsübersicht">
-        <DashboardStat label="Einnahmen" value={formatMoney(income)} detail="Dieser Monat" tone="green" />
-        <DashboardStat label="Ausgaben" value={formatMoney(spending)} detail={`${monthEntries.length} Einträge`} tone="red" />
-        <DashboardStat label="Saldo" value={formatMoney(saldo)} detail={saldo < 0 ? "Monat prüfen" : "Aktueller Stand"} tone={saldo < 0 ? "red" : "green"} />
-        <DashboardStat label="Monatsende" value={formatMoney(finance.projectedMonth)} detail={finance.hasHistory ? "Wenn es so weitergeht" : "Verlauf baut sich auf"} tone={finance.projectionTone} />
-        <DashboardStat label="Aufgaben" value={`${openTasks.length} offen`} detail={`${importantTasks.length} wichtig`} tone={importantTasks.length > 0 ? "amber" : "blue"} />
-      </section>
-
-      <div className="dashboard-grid">
-        <section className="dashboard-card dashboard-card-large">
-          <div className="card-head">
-            <div>
-              <span className="eyebrow">Finanzen</span>
-              <h2>Dein Monat</h2>
-            </div>
-            <Link className="text-link" href={finance.monthHref}>Details</Link>
-          </div>
-          <div className="dashboard-mini-grid">
-            <MiniMetric label="Bisher" value={formatMoney(finance.spendingToDate)} tone="red" />
-            <MiniMetric label="Sonst bis heute" value={finance.hasHistory ? formatMoney(finance.usualByToday) : "-"} tone="green" />
-            <MiniMetric label="Unterschied" value={finance.hasHistory ? formatSignedMoney(finance.deltaToNormal) : "Noch kein Vergleich"} tone={finance.deltaToNormal > 0 ? "red" : "green"} />
-            <MiniMetric label="Monatsende" value={formatMoney(finance.projectedMonth)} tone={finance.projectionTone === "red" ? "red" : "green"} />
-          </div>
-          <div className="dashboard-list" aria-label="Ausgaben im Vergleich">
-            {finance.comparisonRows.map((row) => (
-              <div className="analysis-row" key={row.label}>
-                <div>
-                  <strong>{row.label}</strong>
-                  <span className="muted">{row.detail}</span>
-                </div>
-                <div className="bar-wrap" aria-hidden="true">
-                  <span style={{ width: `${row.width}%`, background: row.color }} />
-                </div>
-                <div className="amount-column compact-amount">
-                  <strong>{formatMoney(row.amount)}</strong>
-                </div>
-              </div>
-            ))}
-          </div>
-          <div>
-            <h3 className="section-title">Achtung</h3>
-            <div className="dashboard-list">
-              {finance.attentionSignals.length === 0 ? <p className="empty-inline">Kein Handlungsbedarf im steuerbaren Verlauf.</p> : null}
-              {finance.attentionSignals.map((signal) => (
-                <div className="analysis-row" key={signal.name}>
-                  <div>
-                    {signal.href ? <Link className="text-link" href={signal.href}>{signal.name}</Link> : <strong>{signal.name}</strong>}
-                    <span className="muted">{signal.detail}</span>
-                  </div>
-                  <div className="bar-wrap" aria-hidden="true">
-                    <span style={{ width: `${signal.width}%`, background: signal.color }} />
-                  </div>
-                  <div className="amount-column compact-amount">
-                    <strong className={signal.delta > 0 ? "negative" : "positive"}>{formatSignedMoney(signal.delta)}</strong>
-                    <small>{formatMoney(signal.amount)}</small>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-          <div>
-            <h3 className="section-title">Entlastend</h3>
-            <div className="dashboard-list">
-              {finance.reliefSignals.length === 0 ? <p className="empty-inline">Keine deutliche Entlastung gegenüber normal.</p> : null}
-              {finance.reliefSignals.map((signal) => (
-                <div className="analysis-row signal-relief-row" key={signal.name}>
-                  <div>
-                    {signal.href ? <Link className="text-link" href={signal.href}>{signal.name}</Link> : <strong>{signal.name}</strong>}
-                    <span className="muted">{signal.detail}</span>
-                  </div>
-                  <div className="bar-wrap" aria-hidden="true">
-                    <span style={{ width: `${signal.width}%`, background: signal.color }} />
-                  </div>
-                  <div className="amount-column compact-amount">
-                    <strong className="positive">{formatSignedMoney(signal.delta)}</strong>
-                    <small>{formatMoney(signal.amount)}</small>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </section>
-
-        <section className="dashboard-card">
-          <div className="card-head">
-            <div>
-              <span className="eyebrow">Aufgaben</span>
-              <h2>Als Nächstes</h2>
-            </div>
-            <Link className="text-link" href="/aufgaben">Alle</Link>
-          </div>
-          <div className="dashboard-list">
-            {openTasks.length === 0 ? <p className="empty-inline">Alles erledigt.</p> : null}
-            {openTasks.slice(0, 4).map((task) => (
-              <article className="task-item" key={task.id}>
-                <form action={updateTaskStatus} className="dashboard-task-complete">
-                  <input type="hidden" name="id" value={task.id} />
-                  <input type="hidden" name="status" value="DONE" />
-                  <button className={`task-check ${isImportantTask(task) ? "urgent" : ""}`} type="submit" aria-label={`${task.title} als erledigt markieren`} title="Erledigt markieren">
-                    <span aria-hidden="true">✓</span>
-                  </button>
-                </form>
-                <div>
-                  <strong>{task.title}</strong>
-                  <span className="item-meta">{task.assignee?.name ?? "Nicht zugewiesen"} · Fällig: {formatDate(task.dueDate)}</span>
-                </div>
-                <span className={`status-chip ${isImportantTask(task) ? "danger-chip" : "warning-chip"}`}>
-                  {priorityLabels[task.priority]}
-                </span>
-              </article>
-            ))}
-          </div>
-        </section>
-
-        <section className="dashboard-card">
-          <div className="card-head">
-            <div>
-              <span className="eyebrow">Verträge</span>
-              <h2>Fristen</h2>
-            </div>
-            <Link className="text-link" href="/vertraege">Alle</Link>
-          </div>
-          <div className="dashboard-list">
-            {nextContracts.length === 0 ? <p className="empty-inline">Keine Fristen hinterlegt.</p> : null}
-            {nextContracts.map((contract) => (
-              <article className="agenda-item" key={contract.id}>
-                <span className="agenda-accent amber-accent" />
-                <div>
-                  <span className="item-meta">{formatDate(contract.nextCancellationDate)}</span>
-                  <strong>{contract.provider}</strong>
-                  <span className="item-meta">{contract.contractType} · {formatMoney(contract.costCents, contract.currency)}</span>
-                </div>
-              </article>
-            ))}
-          </div>
-        </section>
-
-        <section className="dashboard-card">
-          <div className="card-head">
-            <div>
-              <span className="eyebrow">Dokumente</span>
-              <h2>Zuletzt</h2>
-            </div>
-            <Link className="text-link" href="/dokumente">Alle</Link>
-          </div>
-          <div className="dashboard-list">
-            {documents.length === 0 ? <p className="empty-inline">Noch keine Dokumente.</p> : null}
-            {documents.slice(0, 3).map((document) => (
-              <a className="document-item" href={document.url} key={document.id} target="_blank" rel="noreferrer">
-                <span className="doc-icon">{document.referenceType === "EXTERNAL_URL" ? "URL" : "PDF"}</span>
-                <span>
-                  <strong>{document.title}</strong>
-                  <span className="item-meta">{document.owner.name} · {formatDate(document.createdAt)}</span>
-                </span>
-              </a>
-            ))}
-          </div>
-        </section>
+    <div className="cockpit-page">
+      <div className="task-page-head cockpit-page-head">
+        <PageHeader
+          title="Cockpit"
+          description={`${greeting}, ${session.user.name}. ${longDateFormatter.format(today)} · ${session.family.name}`}
+        />
       </div>
 
-      {importantTasks.length > 0 ? (
-        <section className="priority-strip">
-          <strong>{importantTasks.length} wichtige Aufgaben</strong>
-          <span>Wichtig bedeutet: überfällig, heute fällig, dringend markiert, bald fällig oder hoch priorisiert mit naher Deadline.</span>
-          <Link className="button secondary" href="/aufgaben">Aufgaben prüfen</Link>
-        </section>
-      ) : null}
+      <section className="finance-summary-panel cockpit-metrics" aria-label="Statusübersicht">
+        <CockpitMetric
+          icon={<Scale size={17} />}
+          label="Saldo"
+          value={formatSignedMoney(saldo)}
+          detail={saldo < 0 ? "Mehr ausgegeben als eingenommen" : "Einnahmen decken den Monat"}
+          tone={saldo < 0 ? "negative" : "positive"}
+        />
+        <CockpitMetric
+          icon={<ReceiptText size={17} />}
+          label="Ausgaben"
+          value={formatMoney(spending)}
+          detail={monthBudget > 0 ? formatBudgetDetail(budgetRemaining) : `${monthEntries.length} Einträge`}
+          tone={monthBudget > 0 && budgetRemaining < 0 ? "negative" : "spending"}
+        />
+        <CockpitMetric
+          icon={<CalendarCheck size={17} />}
+          label="Aufgaben"
+          value={String(openTasks.length)}
+          detail={`${dueTasks.length} fällig · ${importantTasks.length} wichtig`}
+          tone={dueTasks.length > 0 ? "negative" : importantTasks.length > 0 ? "spending" : "positive"}
+        />
+        <CockpitMetric
+          icon={<WalletCards size={17} />}
+          label="Fristen"
+          value={nextContracts[0]?.nextCancellationDate ? formatDate(nextContracts[0].nextCancellationDate) : "-"}
+          detail={nextContracts.length > 0 ? `${nextContracts.length} Kündigungen im Blick` : "Keine Frist hinterlegt"}
+          tone={nextContracts.length > 0 ? "neutral" : "positive"}
+        />
+      </section>
+
+      <section className="cockpit-grid">
+        <SectionCard className="cockpit-section cockpit-next-tasks">
+          <SectionHead eyebrow="Aufgaben" title="Als Nächstes" href="/aufgaben" />
+          <div className="cockpit-task-list">
+            {openTasks.length === 0 ? <EmptyState>Alles erledigt.</EmptyState> : null}
+            {openTasks.slice(0, 5).map((task, index) => {
+              const urgency = taskUrgency(task);
+              const assignee = task.assignee?.name ?? "Nicht zugewiesen";
+              return (
+                <article className={`cockpit-task-row task-row-trigger ${urgency.className} ${index >= 4 ? "cockpit-desktop-extra" : ""}`} key={task.id}>
+                  <div className="cockpit-task-check">
+                    <TaskInlineCheck taskId={task.id} done={false} />
+                  </div>
+                  <span className="cockpit-task-copy">
+                    <strong>{task.title}</strong>
+                    <span className="cockpit-task-meta">
+                      <span className="cockpit-task-owner">
+                        <span className="task-avatar" aria-hidden="true">{initialFor(assignee)}</span>
+                        <small>{assignee}</small>
+                      </span>
+                      <time dateTime={task.dueDate?.toISOString()}>{formatDate(task.dueDate)}</time>
+                      <span className="cockpit-task-status">{urgency.className !== "task-calm" ? urgency.label : priorityLabels[task.priority]}</span>
+                    </span>
+                  </span>
+                </article>
+              );
+            })}
+          </div>
+        </SectionCard>
+
+        <SectionCard className="cockpit-section cockpit-finance">
+          <SectionHead eyebrow="Finanzen" title="Dein Monat" href={monthHref} />
+          <div className="cockpit-finance-content">
+          <div className="finance-summary-panel cockpit-finance-summary" aria-label="Monatswerte">
+            <FinanceSummaryMetric icon={<BanknoteArrowUp size={17} />} label="Einnahmen" value={formatMoney(income)} detail="Geldzufluss im Monat" tone="income" />
+            <FinanceSummaryMetric icon={<ReceiptText size={17} />} label="Ausgaben" value={formatMoney(spending)} detail={`${monthEntries.length} Einträge im Monat`} tone="spending" />
+            <FinanceSummaryMetric icon={<Scale size={17} />} label="Saldo" value={formatSignedMoney(saldo)} detail={saldo < 0 ? "Mehr ausgegeben" : "Monat im Plus"} tone={saldo < 0 ? "negative" : "positive"} />
+            <FinanceSummaryMetric icon={<WalletCards size={17} />} label={monthBudget > 0 ? "Budget übrig" : "Budget"} value={monthBudget > 0 ? formatMoney(budgetRemaining) : "-"} detail={monthBudget > 0 ? `${formatMoney(netConsumption)} netto verbraucht` : "Monatsbudget in Finanzen"} tone={budgetRemaining < 0 && monthBudget > 0 ? "negative" : "neutral"} />
+          </div>
+          {latestLabel ? (
+            <Link className={`cockpit-label-budget finance-summary-metric ${latestLabelBudget > 0 && latestLabelBudgetRemaining < 0 ? "tone-negative" : latestLabelBudget > 0 ? "tone-positive" : "tone-neutral"}`} href={`/ausgaben?month=${getMonthKey(today)}&view=labels`}>
+              <div className="finance-summary-card-head">
+                <span className="cockpit-label-budget-heading"><small>Zuletzt genutzt · {budgetCadenceLabel(latestLabelBudgetRow?.budgetPeriod ?? "ALL_TIME")}</small><strong>{latestLabel.name}</strong></span>
+                <i aria-hidden="true"><Tag size={17} /></i>
+              </div>
+              <strong className="cockpit-label-budget-value">{latestLabelBudget > 0 ? formatBudgetDetail(latestLabelBudgetRemaining) : formatMoney(latestLabelMonthSpend)}</strong>
+              <small>{latestLabelBudget > 0
+                ? `${formatMoney(latestLabelMonthSpend)} diesen Monat · ${formatMoney(latestLabelAllSpend)} gesamt · Budget ${formatMoney(latestLabelBudget)}`
+                : `${formatMoney(latestLabelMonthSpend)} diesen Monat · kein Budget festgelegt`}</small>
+              {latestLabelBudget > 0 ? (
+                <span className="cockpit-label-budget-track" aria-label={`${Math.min(100, Math.round((latestLabelBudgetRow?.budgetConsumption ?? latestLabelMonthNet) / latestLabelBudget * 100))} Prozent des Labelbudgets genutzt`}>
+                  <span style={{ width: `${Math.min(100, Math.max(0, (latestLabelBudgetRow?.budgetConsumption ?? latestLabelMonthNet) / latestLabelBudget * 100))}%` }} />
+                </span>
+              ) : null}
+            </Link>
+          ) : null}
+          <Link className={`cockpit-month-forecast ${monthBudget > 0 && projectedBudgetRemaining < 0 ? "forecast-over" : monthBudget > 0 && monthEndForecast.projectedMonth >= monthBudget * .8 ? "forecast-near" : ""}`} href="/ausgaben/planung">
+            <span className="cockpit-month-forecast-icon" aria-hidden="true"><TrendingUp size={18} /></span>
+            <span className="cockpit-month-forecast-copy">
+              <strong>Monatsende prognostiziert</strong>
+              <small>{monthEndForecast.hasEstimate
+                ? monthEndForecast.method === "historical-remainder"
+                  ? `${formatMoney(monthEndForecast.spentToDate)} bisher · typischer Rest aus ${monthEndForecast.historyMonths} ${monthEndForecast.historyMonths === 1 ? "Monat" : "Monaten"}`
+                  : "Hochrechnung aus den bisherigen Tagen"
+                : "Noch nicht genug Daten für eine Prognose"}</small>
+            </span>
+            <span className="cockpit-month-forecast-value">
+              <strong>{monthEndForecast.hasEstimate ? formatMoney(monthEndForecast.projectedMonth) : "–"}</strong>
+              <small>{monthEndForecast.hasEstimate && monthBudget > 0 ? projectedBudgetRemaining < 0 ? `${formatMoney(Math.abs(projectedBudgetRemaining))} über Budget` : `${formatMoney(projectedBudgetRemaining)} Budget frei` : "Prognose öffnen"}</small>
+            </span>
+          </Link>
+          {budgetAlerts.length > 0 ? (
+            <section className="cockpit-budget-alerts" aria-label="Budgetwarnungen">
+              <div className="cockpit-budget-alerts-head">
+                <strong>Budgets im Blick</strong>
+                <span>{budgetAlerts.length} {budgetAlerts.length === 1 ? "Hinweis" : "Hinweise"}</span>
+              </div>
+              {budgetAlerts.slice(0, 4).map((alert) => {
+                const overBudget = alert.status === "over";
+                const destination = `/ausgaben?month=${getMonthKey(today)}&view=${alert.dimension === "category" ? "budgets" : "labels"}`;
+                return (
+                  <Link className={`cockpit-budget-alert ${overBudget ? "budget-over" : "budget-near"}`} href={destination} key={`${alert.dimension}-${alert.id ?? alert.name}`}>
+                    <span className="cockpit-budget-alert-dot" style={{ background: alert.color }} aria-hidden="true" />
+                    <span className="cockpit-budget-alert-copy">
+                      <strong>{alert.name}</strong>
+                      <small>{alert.dimension === "category" ? "Kategorie" : "Label"} · {budgetCadenceLabel(alert.budgetPeriod ?? "MONTHLY")} · {alert.budgetUsage.toFixed(0)} % genutzt</small>
+                      <span className="cockpit-bar" aria-hidden="true"><span style={{ width: `${Math.max(4, alert.budgetUsage)}%`, background: overBudget ? "var(--red)" : "#c9821c" }} /></span>
+                    </span>
+                    <strong>{overBudget ? `${formatMoney(Math.abs(alert.remaining))} über` : alert.remaining === 0 ? "ausgeschöpft" : `${formatMoney(alert.remaining)} frei`}</strong>
+                  </Link>
+                );
+              })}
+            </section>
+          ) : null}
+          <section className="cockpit-recent-bookings desktop-only" aria-label="Letzte Buchungen">
+            <div className="cockpit-recent-bookings-head">
+              <strong>Letzte Buchungen</strong>
+              <span>{recentMonthEntries.length} im Monat</span>
+            </div>
+            {recentMonthEntries.length === 0 ? <p className="cockpit-recent-empty">Noch keine Buchungen in diesem Monat.</p> : (
+              <div className="cockpit-recent-booking-list">
+                {recentMonthEntries.map((entry) => (
+                  <Link className="cockpit-recent-booking" href={monthHref} key={entry.id}>
+                    <span className="cockpit-recent-booking-copy">
+                      <strong>{entry.description}</strong>
+                      <small>{formatDate(entry.date)}{entry.store ? ` · ${entry.store}` : ""}</small>
+                    </span>
+                    <strong className={entry.kind === "INCOME" ? "booking-income" : "booking-expense"}>
+                      {formatSignedMoney(entry.kind === "INCOME" ? entry.amountCents : -entry.amountCents)}
+                    </strong>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </section>
+          </div>
+        </SectionCard>
+
+        <SectionCard className="cockpit-section">
+          <SectionHead eyebrow="Verträge" title="Kündigungsfristen" href="/vertraege" />
+          <div className="cockpit-list">
+            {nextContracts.length === 0 ? <EmptyState>Keine Fristen hinterlegt.</EmptyState> : null}
+            {nextContracts.map((contract, index) => (
+              <Link className={`cockpit-contract ${contractUrgencyClass(contract.nextCancellationDate)} ${index >= 3 ? "cockpit-desktop-extra" : ""}`} href="/vertraege" key={contract.id}>
+                <span className="cockpit-contract-accent" aria-hidden="true" />
+                <span>
+                  <strong>{contract.provider}</strong>
+                  <small>{contract.contractType} · {formatMoney(contract.costCents, contract.currency)}</small>
+                </span>
+                <StatusBadge tone={contractUrgencyTone(contract.nextCancellationDate)}>{formatDate(contract.nextCancellationDate)}</StatusBadge>
+              </Link>
+            ))}
+          </div>
+        </SectionCard>
+
+        <SectionCard className="cockpit-section">
+          <SectionHead eyebrow="Auto" title="Verbrauch" href="/kilometer" />
+          <div className="cockpit-list">
+            {vehicleSummaries.length === 0 ? <EmptyState>Noch kein aktives Auto mit Tankdaten.</EmptyState> : null}
+            {vehicleSummaries.map((vehicle, index) => (
+              <Link className={`cockpit-vehicle ${index >= 2 ? "cockpit-desktop-extra" : ""}`} href={`/kilometer?car=${vehicle.id}`} key={vehicle.id}>
+                <span className="cockpit-row-icon" aria-hidden="true"><CarFront size={17} /></span>
+                <span>
+                  <strong>{vehicle.name}</strong>
+                  <small>{vehicle.licensePlate || "Ohne Kennzeichen"}</small>
+                </span>
+                <span className="cockpit-vehicle-values">
+                  <strong>{formatDecimal(vehicle.latestConsumption)} l/100 km</strong>
+                  <small>{vehicle.latestDate ? `Letzter Tankstopp ${formatDate(vehicle.latestDate)}` : "Noch kein Tankstopp"}</small>
+                  <small>Ø {formatDecimal(vehicle.averageConsumption)} l · {formatKilometers(vehicle.lastOdometerKm)} km</small>
+                </span>
+              </Link>
+            ))}
+          </div>
+        </SectionCard>
+      </section>
+
+      <section className="cockpit-documents">
+        <SectionHead eyebrow="Dokumente" title="Zuletzt" href="/dokumente" />
+        <div className="cockpit-document-row">
+          {documents.length === 0 ? <EmptyState>Noch keine Dokumente.</EmptyState> : null}
+          {documents.slice(0, 4).map((document, index) => (
+            <a className={`document-item ${index >= 3 ? "cockpit-desktop-extra" : ""}`} href={dashboardDocumentHref(document)} key={document.id} target={document.referenceType === "LOCAL_FILE" ? undefined : "_blank"} rel={document.referenceType === "LOCAL_FILE" ? undefined : "noreferrer"}>
+              <span className="doc-icon" aria-hidden="true"><FileText size={17} /></span>
+              <span>
+                <strong>{document.title}</strong>
+                <span className="item-meta">{document.owner.name} · {formatDate(document.createdAt)}</span>
+              </span>
+            </a>
+          ))}
+        </div>
+      </section>
     </div>
   );
 }
 
-function DashboardStat({ label, value, detail, tone }: { label: string; value: string; detail: string; tone: "green" | "red" | "blue" | "amber" }) {
+function dashboardDocumentHref(document: DocumentEntry) {
+  if (document.referenceType === "LOCAL_FILE") return `/api/documents/file?id=${encodeURIComponent(document.id)}`;
+  return document.url;
+}
+
+function SectionHead({ eyebrow, title, href }: { eyebrow: string; title: string; href: string }) {
   return (
-    <article className={`dashboard-stat ${tone}-stat`}>
-      <span>{label}</span>
+    <div className="card-head cockpit-section-head">
+      <h2><span>{eyebrow}</span>{title}</h2>
+      <Link className="text-link" href={href}>Alle</Link>
+    </div>
+  );
+}
+
+function CockpitMetric({
+  icon,
+  label,
+  value,
+  detail,
+  tone
+}: {
+  icon: ReactNode;
+  label: string;
+  value: string;
+  detail: string;
+  tone: "positive" | "negative" | "neutral" | "spending";
+}) {
+  return (
+    <div className={`finance-summary-metric cockpit-metric tone-${tone}`}>
+      <div className="finance-summary-card-head">
+        <span>{label}</span>
+        <i aria-hidden="true">{icon}</i>
+      </div>
       <strong>{value}</strong>
       <small>{detail}</small>
-    </article>
+    </div>
   );
 }
 
-function MiniMetric({ label, value, tone }: { label: string; value: string; tone: "green" | "red" }) {
+function FinanceSummaryMetric({
+  icon,
+  label,
+  value,
+  detail,
+  tone
+}: {
+  icon: ReactNode;
+  label: string;
+  value: string;
+  detail: string;
+  tone: "income" | "spending" | "positive" | "negative" | "neutral";
+}) {
   return (
-    <div className={`mini-metric ${tone}-metric`}>
-      <span>{label}</span>
+    <div className={`finance-summary-metric tone-${tone}`}>
+      <div className="finance-summary-card-head">
+        <span>{label}</span>
+        <i aria-hidden="true">{icon}</i>
+      </div>
       <strong>{value}</strong>
+      <small>{detail}</small>
     </div>
   );
+}
+
+function initialFor(name: string) {
+  return name.trim().charAt(0).toUpperCase() || "?";
+}
+
+async function buildVehicleSummaries(familyId: string, cars: CarEntry[]) {
+  const rows = await Promise.all(cars.map(async (car) => {
+    const entries = await getFuelEntriesForCar(familyId, car.id);
+    const derived = addFuelDerivedFields(entries);
+    const latest = [...derived].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime() || b.odometerKm - a.odometerKm)[0] ?? null;
+    const stats = calculateFuelStatsFromDerived(derived);
+    return {
+      id: car.id,
+      name: car.name,
+      licensePlate: car.licensePlate,
+      latestDate: latest?.date ?? null,
+      latestConsumption: latest?.litersPer100Km ?? null,
+      averageConsumption: stats.averageLitersPer100Km,
+      lastOdometerKm: stats.lastOdometerKm
+    };
+  }));
+  return rows.filter((row) => row.latestDate || row.lastOdometerKm);
+}
+
+function contractUrgencyTone(date: Date | string | null | undefined): "negative" | "warning" | "neutral" {
+  const days = daysUntil(date);
+  if (days <= 30) return "negative";
+  if (days <= 90) return "warning";
+  return "neutral";
+}
+
+function contractUrgencyClass(date: Date | string | null | undefined) {
+  const tone = contractUrgencyTone(date);
+  if (tone === "negative") return "contract-critical";
+  if (tone === "warning") return "contract-warning";
+  return "contract-calm";
 }
 
 function isSameMonth(date: Date, compare: Date) {
   const value = new Date(date);
   return value.getMonth() === compare.getMonth() && value.getFullYear() === compare.getFullYear();
-}
-
-function sumByKind(entries: Awaited<ReturnType<typeof getVisibleExpenses>>, kind: "EXPENSE" | "INCOME") {
-  return entries.filter((entry) => entry.kind === kind).reduce((sum, entry) => sum + entry.amountCents, 0);
 }
 
 const priorityLabels = {
@@ -268,186 +436,11 @@ const priorityLabels = {
 const berlinTimeZone = "Europe/Berlin";
 const longDateFormatter = new Intl.DateTimeFormat("de-DE", { weekday: "long", day: "2-digit", month: "long", timeZone: berlinTimeZone });
 
-type ExpenseEntry = Awaited<ReturnType<typeof getVisibleExpenses>>[number];
-type CategoryEntry = Awaited<ReturnType<typeof getVisibleCategories>>[number];
-type RecurringTransactionEntry = Awaited<ReturnType<typeof getRecurringTransactions>>[number];
-
-function buildFinanceInsight(expenses: ExpenseEntry[], categories: CategoryEntry[], today: Date, recurringIntervals: RecurringIntervalMap) {
-  const currentMonthKey = getMonthKey(today);
-  const monthHref = `/ausgaben?month=${currentMonthKey}`;
-  const currentEntries = expenses.filter((entry) => (
-    isSameMonth(entry.date, today) &&
-    new Date(entry.date) <= endOfDay(today) &&
-    isSteerableExpense(entry, recurringIntervals)
-  ));
-  const spendingToDate = sumByKind(currentEntries, "EXPENSE");
-  const comparableMonths = buildComparableMonths(expenses, today, 6, recurringIntervals);
-  const hasHistory = comparableMonths.length > 0;
-  const usualByToday = hasHistory ? robustAverage(comparableMonths.map((month) => month.spendingToDate)) : 0;
-  const usualFullMonth = hasHistory ? robustAverage(comparableMonths.map((month) => month.fullMonthSpending)) : 0;
-  const projectedMonth = projectMonth(spendingToDate, today);
-  const deltaToNormal = spendingToDate - usualByToday;
-  const maxComparison = Math.max(spendingToDate, usualByToday, projectedMonth, usualFullMonth, 1);
-  const isCurrentlyAboveNormal = hasHistory && deltaToNormal > Math.max(2000, usualByToday * 0.05);
-  const projectionTone: "red" | "amber" | "blue" = isCurrentlyAboveNormal && projectedMonth > usualFullMonth * 1.15
-    ? "red"
-    : isCurrentlyAboveNormal && projectedMonth > usualFullMonth * 1.05
-      ? "amber"
-      : "blue";
-  const signals = buildCategorySignals(expenses, categories, today, comparableMonths, monthHref, recurringIntervals);
-
-  return {
-    hasHistory,
-    spendingToDate,
-    usualByToday,
-    usualFullMonth,
-    projectedMonth,
-    deltaToNormal,
-    projectionTone,
-    monthHref,
-    comparisonRows: [
-      {
-        label: "Ausgaben bisher",
-        detail: `${getBerlinDayOfMonth(today)}. Tag im Monat, ohne Einmal-, Jahres- und Quartalskosten`,
-        amount: spendingToDate,
-        color: "var(--accent)",
-        width: percentOf(spendingToDate, maxComparison)
-      },
-      {
-        label: "Sonst bis heute",
-        detail: hasHistory ? `Typischer Stand aus ${comparableMonths.length} Monaten` : "Noch kein Vergleichsverlauf",
-        amount: usualByToday,
-        color: "var(--blue)",
-        width: percentOf(usualByToday, maxComparison)
-      },
-      {
-        label: "Wenn es so weitergeht",
-        detail: hasHistory ? `Sonst im ganzen Monat: ${formatMoney(usualFullMonth)}` : "Wird mit mehr Daten genauer",
-        amount: projectedMonth,
-        color: projectionTone === "red" ? "var(--red)" : projectionTone === "amber" ? "var(--amber)" : "var(--green)",
-        width: percentOf(projectedMonth, maxComparison)
-      }
-    ],
-    attentionSignals: signals.attention,
-    reliefSignals: signals.relief
-  };
-}
-
-function buildComparableMonths(expenses: ExpenseEntry[], today: Date, count: number, recurringIntervals: RecurringIntervalMap) {
-  return Array.from({ length: count }, (_, index) => shiftMonth(today, -(index + 1)))
-    .map((monthDate) => {
-      const monthEntries = expenses.filter((entry) => isSameMonth(entry.date, monthDate) && isSteerableExpense(entry, recurringIntervals));
-      if (monthEntries.length === 0) return null;
-      const cutoffDay = Math.min(getBerlinDayOfMonth(today), daysInMonth(monthDate));
-      return {
-        key: getMonthKey(monthDate),
-        spendingToDate: sumByKind(monthEntries.filter((entry) => new Date(entry.date).getDate() <= cutoffDay), "EXPENSE"),
-        fullMonthSpending: sumByKind(monthEntries, "EXPENSE")
-      };
-    })
-    .filter((month): month is { key: string; spendingToDate: number; fullMonthSpending: number } => Boolean(month));
-}
-
-function buildCategorySignals(
-  expenses: ExpenseEntry[],
-  categories: CategoryEntry[],
-  today: Date,
-  comparableMonths: { key: string; spendingToDate: number; fullMonthSpending: number }[],
-  monthHref: string,
-  recurringIntervals: RecurringIntervalMap
-) {
-  if (comparableMonths.length === 0) return { attention: [], relief: [] };
-  const categoryMeta = new Map(categories.map((category) => [category.id, category]));
-  const currentEntries = expenses.filter((entry) => (
-    entry.kind === "EXPENSE" &&
-    isSameMonth(entry.date, today) &&
-    new Date(entry.date) <= endOfDay(today) &&
-    isSteerableExpense(entry, recurringIntervals)
-  ));
-  const currentByCategory = groupExpenseAmounts(currentEntries);
-  const historicalByCategory = new Map<string, number[]>();
-  for (const month of comparableMonths) {
-    const monthDate = monthKeyToDate(month.key);
-    const cutoffDay = Math.min(getBerlinDayOfMonth(today), daysInMonth(monthDate));
-    const monthEntries = expenses.filter((entry) => (
-      entry.kind === "EXPENSE" &&
-      isSameMonth(entry.date, monthDate) &&
-      new Date(entry.date).getDate() <= cutoffDay &&
-      isSteerableExpense(entry, recurringIntervals)
-    ));
-    const grouped = groupExpenseAmounts(monthEntries);
-    for (const key of new Set([...currentByCategory.keys(), ...grouped.keys()])) {
-      const values = historicalByCategory.get(key) ?? [];
-      values.push(grouped.get(key) ?? 0);
-      historicalByCategory.set(key, values);
-    }
-  }
-
-  const rows = [...new Set([...currentByCategory.keys(), ...historicalByCategory.keys()])]
-    .map((key) => {
-      const amount = currentByCategory.get(key) ?? 0;
-      const usual = robustAverage(historicalByCategory.get(key) ?? []);
-      const delta = amount - usual;
-      const category = key === uncategorizedKey ? null : categoryMeta.get(key);
-      return {
-        name: category?.name ?? "Ohne Kategorie",
-        color: category?.color ?? "#6b6f76",
-        amount,
-        usual,
-        delta,
-        href: category ? `${monthHref}&category=${category.id}` : monthHref,
-        detail: usual > 0 ? `normal bis heute ${formatMoney(usual)}` : "sonst selten genutzt"
-      };
-    })
-    .filter((row) => row.amount > 0 || row.usual > 0);
-
-  return {
-    attention: withSignalWidths(rows
-      .filter((row) => isAttentionSignal(row.amount, row.usual, row.delta))
-      .sort((a, b) => b.delta - a.delta)
-      .slice(0, 3)),
-    relief: withSignalWidths(rows
-      .filter((row) => isReliefSignal(row.usual, row.delta))
-      .sort((a, b) => a.delta - b.delta)
-      .slice(0, 2))
-  };
-}
-
-function groupExpenseAmounts(entries: ExpenseEntry[]) {
-  const rows = new Map<string, number>();
-  for (const entry of entries) {
-    const key = entry.categoryId ?? uncategorizedKey;
-    rows.set(key, (rows.get(key) ?? 0) + entry.amountCents);
-  }
-  return rows;
-}
-
-function projectMonth(spendingToDate: number, today: Date) {
-  const elapsedDays = Math.max(1, today.getDate());
-  return Math.round((spendingToDate / elapsedDays) * daysInMonth(today));
-}
-
-function shiftMonth(date: Date, offset: number) {
-  return new Date(date.getFullYear(), date.getMonth() + offset, 1);
-}
-
-function daysInMonth(date: Date) {
-  return new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
-}
+type DocumentEntry = Awaited<ReturnType<typeof getVisibleDocuments>>[number];
+type CarEntry = Awaited<ReturnType<typeof getVisibleCars>>[number];
 
 function getMonthKey(date: Date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
-}
-
-function monthKeyToDate(monthKey: string) {
-  const [year, month] = monthKey.split("-").map(Number);
-  return new Date(year, month - 1, 1);
-}
-
-function endOfDay(date: Date) {
-  const value = new Date(date);
-  value.setHours(23, 59, 59, 999);
-  return value;
 }
 
 function getGreeting(date: Date) {
@@ -467,92 +460,12 @@ function getBerlinHour(date: Date) {
   return Number(hour ?? "0");
 }
 
-function getBerlinDayOfMonth(date: Date) {
-  const day = new Intl.DateTimeFormat("de-DE", {
-    day: "2-digit",
-    timeZone: berlinTimeZone
-  }).formatToParts(date).find((part) => part.type === "day")?.value;
-  return Number(day ?? date.getDate());
-}
-
-function average(values: number[]) {
-  if (values.length === 0) return 0;
-  return Math.round(values.reduce((sum, value) => sum + value, 0) / values.length);
-}
-
-function robustAverage(values: number[]) {
-  if (values.length === 0) return 0;
-  const sorted = [...values].sort((a, b) => a - b);
-  if (sorted.length >= 5) return average(sorted.slice(1, -1));
-  const middle = Math.floor(sorted.length / 2);
-  if (sorted.length % 2 === 1) return sorted[middle];
-  return Math.round((sorted[middle - 1] + sorted[middle]) / 2);
-}
-
-function withSignalWidths<T extends { amount: number; usual: number }>(rows: T[]) {
-  const maxAmount = Math.max(...rows.map((row) => Math.max(row.amount, row.usual)), 1);
-  return rows.map((row) => ({ ...row, width: percentOf(row.amount, maxAmount) }));
-}
-
-function isAttentionSignal(amount: number, usual: number, delta: number) {
-  if (usual <= 0) return amount >= 5000;
-  return delta >= signalThreshold(usual);
-}
-
-function isReliefSignal(usual: number, delta: number) {
-  return usual >= 5000 && delta <= -signalThreshold(usual);
-}
-
-function signalThreshold(usual: number) {
-  return Math.max(2500, Math.round(usual * 0.25));
-}
-
-function buildRecurringIntervalMap(recurringTransactions: RecurringTransactionEntry[]): RecurringIntervalMap {
-  return new Map(recurringTransactions.map((transaction) => [transaction.id, transaction.pricePhases]));
-}
-
-function isSteerableExpense(entry: ExpenseEntry, recurringIntervals: RecurringIntervalMap) {
-  if (entry.kind !== "EXPENSE") return true;
-  const interval = linkedExpenseInterval(entry, recurringIntervals);
-  return interval !== "ONCE" && interval !== "QUARTERLY" && interval !== "YEARLY";
-}
-
-function linkedExpenseInterval(entry: ExpenseEntry, recurringIntervals: RecurringIntervalMap): BillingInterval | null {
-  const entryDate = new Date(entry.date);
-  if (entry.contract) {
-    return entry.contract.billingInterval;
-  }
-  if (entry.recurringTransactionId) {
-    return pricePhaseInterval(recurringIntervals.get(entry.recurringTransactionId) ?? [], entryDate);
-  }
-  return null;
-}
-
-function pricePhaseInterval(phases: PricePhaseEntry[], date: Date): BillingInterval | null {
-  return phases
-    .filter((phase) => {
-      const validFrom = new Date(phase.validFrom);
-      const validTo = phase.validTo ? new Date(phase.validTo) : null;
-      return validFrom.getTime() <= date.getTime() && (!validTo || date.getTime() <= validTo.getTime());
-    })
-    .sort((a, b) => new Date(b.validFrom).getTime() - new Date(a.validFrom).getTime())[0]?.billingInterval ?? null;
-}
-
-function percentOf(value: number, max: number) {
-  return Math.max(value > 0 ? 4 : 0, Math.min(100, Math.round((value / max) * 100)));
-}
-
 function formatSignedMoney(amountCents: number) {
   if (amountCents === 0) return formatMoney(0);
   return `${amountCents > 0 ? "+" : "-"}${formatMoney(Math.abs(amountCents))}`;
 }
 
-const uncategorizedKey = "__uncategorized__";
-
-type BillingInterval = "MONTHLY" | "QUARTERLY" | "YEARLY" | "ONCE" | "OTHER";
-type PricePhaseEntry = {
-  billingInterval: BillingInterval;
-  validFrom: Date | string;
-  validTo: Date | string | null;
-};
-type RecurringIntervalMap = Map<string, PricePhaseEntry[]>;
+function formatBudgetDetail(remainingCents: number) {
+  if (remainingCents < 0) return `${formatMoney(Math.abs(remainingCents))} über Budget`;
+  return `${formatMoney(remainingCents)} Budget frei`;
+}
