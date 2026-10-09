@@ -2,7 +2,7 @@ import { describe, expect, test } from "vitest";
 import ExcelJS from "exceljs";
 import { buildExpenseWorkbook, parseExpenseWorkbook } from "../src/lib/expense-formats";
 import { parseEuroToCents } from "../src/lib/format";
-import { buildBudgetAlerts, buildCategoryRows, buildDonutSegments, buildExpenseTrendChart, buildLabelRows, buildPeriodRows, findDominantDonutSegment, formatDonutPercent, recentLabelRows, recentlyUsedLabelKeys, sumByKind } from "../src/lib/expense-analytics";
+import { buildBudgetAlerts, buildCategoryRows, buildDonutSegments, buildExpenseTrendChart, buildLabelRows, buildPeriodRows, findDominantDonutSegment, formatDonutPercent, recentLabelRows, recentlyUsedLabelKeys, summarizeCategoryBudgets, sumByKind } from "../src/lib/expense-analytics";
 
 describe("money parsing", () => {
   test("parses German euro input into cents", () => {
@@ -62,6 +62,29 @@ describe("expense analytics", () => {
       expect.objectContaining({ name: "Urlaub", saldo: 5000, netConsumption: 0, remaining: 100000, budgetUsage: 0 })
     ]));
     expect(buildLabelRows(mixedEntries, labels)[0]).toMatchObject({ name: "Lappland", saldo: 5000, netConsumption: 0, remaining: 70000, budgetUsage: 0 });
+  });
+
+  test("does not let income in another category reset spent budget", () => {
+    const budgetCategory = { ...categories[0], monthlyBudgetCents: 140_000 };
+    const salaryCategory = { name: "Gehalt", color: "#16776f", monthlyBudgetCents: 0 };
+    const unbudgetedCategory = { name: "Sonstiges", color: "#6b6f76", monthlyBudgetCents: 0 };
+    const rows = buildCategoryRows([
+      { kind: "INCOME", amountCents: 600_033, date: new Date(2026, 8, 1), category: salaryCategory },
+      { kind: "EXPENSE", amountCents: 140_717, date: new Date(2026, 8, 2), category: budgetCategory },
+      { kind: "EXPENSE", amountCents: 5_000, date: new Date(2026, 8, 3), category: unbudgetedCategory }
+    ], [budgetCategory, salaryCategory, unbudgetedCategory], 145_717, true);
+
+    expect(summarizeCategoryBudgets(rows)).toEqual({ budget: 140_000, consumption: 140_717, remaining: -717 });
+  });
+
+  test("adds the remaining amounts of budgeted categories only", () => {
+    const rows = [
+      { budget: 20_000, netConsumption: 5_000 },
+      { budget: 30_000, netConsumption: 35_000 },
+      { budget: 0, netConsumption: 10_000 }
+    ];
+
+    expect(summarizeCategoryBudgets(rows)).toEqual({ budget: 50_000, consumption: 40_000, remaining: 10_000 });
   });
 
   test("hides labels used outside the selected period", () => {

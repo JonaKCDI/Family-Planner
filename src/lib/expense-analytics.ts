@@ -205,6 +205,14 @@ export function buildCategoryRows(entries: AnalyticsExpense[], categories: Analy
     .sort((a, b) => Math.abs(b.saldo) - Math.abs(a.saldo));
 }
 
+/** Add only configured category budgets and their own net consumption. */
+export function summarizeCategoryBudgets(rows: Array<{ budget: number; netConsumption: number }>) {
+  const budgetRows = rows.filter((row) => row.budget > 0);
+  const budget = budgetRows.reduce((sum, row) => sum + row.budget, 0);
+  const consumption = budgetRows.reduce((sum, row) => sum + row.netConsumption, 0);
+  return { budget, consumption, remaining: budget - consumption };
+}
+
 export function buildLabelRows(entries: AnalyticsExpense[], labels: AnalyticsLabel[], range?: BudgetRange, allEntries: AnalyticsExpense[] = entries) {
   const rows = new Map<string, { income: number; spending: number; color: string; budget: number; budgetPeriod: BudgetCadence; neverUsed: boolean; id?: string; name: string }>();
   const labelsByName = new Map(labels.map((label) => [label.id ?? label.name, label]));

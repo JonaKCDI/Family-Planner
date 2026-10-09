@@ -14,6 +14,7 @@ import {
   buildPeriodRows,
   budgetCadenceLabel,
   recentLabelRows,
+  summarizeCategoryBudgets,
   sumByKind,
   type PeriodRow
 } from "@/lib/expense-analytics";
@@ -82,12 +83,11 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
   const income = sumByKind(selectedEntries, "INCOME");
   const spending = sumByKind(selectedEntries, "EXPENSE");
   const saldo = income - spending;
-  const netConsumption = Math.max(0, spending - income);
-  const showBudget = range.mode !== "all";
+  const showBudget = range.mode !== "all" && (!params.currency || params.currency === "EUR");
   const needsCategoryRows = view === "overview" || view === "categories" || view === "budgets";
   const needsLabelRows = view === "overview" || view === "labels" || view === "budgets";
   const budgetHistoryEntries = needsLabelRows ? expenses.filter((entry) => entry.currency === (params.currency || "EUR")) : [];
-  const categoryRows = needsCategoryRows ? buildCategoryRows(selectedEntries, categories, spending, range) : [];
+  const categoryRows = needsCategoryRows ? buildCategoryRows(selectedEntries, categories, spending, showBudget ? range : false) : [];
   const desktopMixedCurrencies = !params.currency && new Set(selectedEntries.map((entry) => entry.currency)).size > 1;
   const labelRows = needsLabelRows ? buildLabelRows(selectedEntries, labels, range, budgetHistoryEntries) : [];
   const overviewLabelRows = view === "overview" ? recentLabelRows(selectedEntries, labelRows) : [];
@@ -116,8 +116,8 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
   const expenseListEntries = initialEntries.map(toExpenseListItem);
   const expenseListLoadUrl = buildExpenseListLoadUrl(params);
   const returnTo = getRawExpensesHref(params);
-  const monthBudget = showBudget ? categoryRows.reduce((sum, category) => sum + category.budget, 0) : 0;
-  const budgetRemaining = monthBudget - netConsumption;
+  const euroBudgetRows = showBudget ? buildCategoryRows(selectedEntries.filter((entry) => entry.currency === "EUR"), categories, 0, range) : [];
+  const { budget: monthBudget, consumption: netConsumption, remaining: budgetRemaining } = summarizeCategoryBudgets(euroBudgetRows);
   const isAnalysisArea = isFinanceAnalysisView(view);
   const summaryMax = Math.max(income, spending, Math.abs(saldo), Math.abs(budgetRemaining), 1);
   const budgetUsageWidth = showBudget && monthBudget > 0 ? `${Math.max(4, Math.min(100, (netConsumption / monthBudget) * 100))}%` : "0%";
@@ -247,25 +247,25 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
           </div>
           <div className={`finance-summary-metric ${showBudget ? budgetRemaining < 0 ? "tone-negative" : "tone-positive" : "tone-neutral"}`}>
             <div className="finance-summary-card-head">
-              <span>{showBudget ? "Budget übrig" : "Budget"}</span>
+              <span>{showBudget ? budgetRemaining < 0 ? "Über Budget" : "Budget übrig" : "Budget"}</span>
               <i aria-hidden="true"><WalletCards size={17} /></i>
             </div>
             {showBudget ? (
               <>
-                <strong>{formatMoney(budgetRemaining)}</strong>
-                <small>{formatMoney(netConsumption)} netto im gewählten Zeitraum</small>
+                <strong>{formatMoney(Math.abs(budgetRemaining))}</strong>
+                <small>{formatMoney(netConsumption)} von {formatMoney(monthBudget)} genutzt</small>
                 <div className="finance-summary-spark budget-spark" aria-hidden="true"><b style={{ width: budgetUsageWidth }} /></div>
               </>
             ) : (
               <>
-                <strong>Zeitraum eingrenzen</strong>
-                <small>Budgetvergleiche gibt es für Monat, Jahr und allzeit-Budgets</small>
+                <strong>{params.currency && params.currency !== "EUR" ? "EUR auswählen" : "Zeitraum eingrenzen"}</strong>
+                <small>{params.currency && params.currency !== "EUR" ? "Budgets gelten für EUR-Buchungen" : "Budgetvergleiche gibt es für Monat, Jahr und allzeit-Budgets"}</small>
                 <div className="finance-summary-spark" aria-hidden="true"><b style={{ width: "0%" }} /></div>
               </>
             )}
           </div>
         </section>
-        {desktopMixedCurrencies && <DesktopCurrencySummary entries={selectedEntries} monthBudget={monthBudget} showBudget={showBudget} />}
+        {desktopMixedCurrencies && <DesktopCurrencySummary entries={selectedEntries} budgetRemaining={budgetRemaining} showBudget={showBudget} />}
 
         <section className={`panel finance-overview-snapshot${desktopMixedCurrencies ? " desktop-mixed-currencies" : ""}`}>
           <div className="section-head compact-section-head">
@@ -679,7 +679,7 @@ function DesktopCurrencyCategoryList({ rows, entries, showBudget }: { rows: Retu
   </div>;
 }
 
-function DesktopCurrencySummary({ entries, monthBudget, showBudget }: { entries: ExpenseLike[]; monthBudget: number; showBudget: boolean }) {
+function DesktopCurrencySummary({ entries, budgetRemaining, showBudget }: { entries: ExpenseLike[]; budgetRemaining: number; showBudget: boolean }) {
   const currencies = [...new Set(entries.map((entry) => entry.currency))].sort();
   return <div className="desktop-only desktop-currency-summary" role="region" aria-label="Finanzüberblick nach Währung">
     {currencies.map((currency) => {
@@ -689,7 +689,7 @@ function DesktopCurrencySummary({ entries, monthBudget, showBudget }: { entries:
       const saldo = income - spending;
       return <article className="desktop-currency-card" key={currency}>
         <h2>{currency}</h2>
-        <dl><div><dt>Einnahmen</dt><dd>{formatMoney(income, currency)}</dd></div><div><dt>Ausgaben</dt><dd>{formatMoney(spending, currency)}</dd></div><div><dt>Saldo</dt><dd>{formatMoney(saldo, currency)}</dd></div>{currency === "EUR" && showBudget && <div><dt>Budget übrig · Zeitraum</dt><dd>{formatMoney(monthBudget - Math.max(0, spending - income), "EUR")}</dd></div>}</dl>
+        <dl><div><dt>Einnahmen</dt><dd>{formatMoney(income, currency)}</dd></div><div><dt>Ausgaben</dt><dd>{formatMoney(spending, currency)}</dd></div><div><dt>Saldo</dt><dd>{formatMoney(saldo, currency)}</dd></div>{currency === "EUR" && showBudget && <div><dt>Budget übrig · Zeitraum</dt><dd>{formatMoney(budgetRemaining, "EUR")}</dd></div>}</dl>
       </article>;
     })}
   </div>;

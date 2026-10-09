@@ -5,7 +5,7 @@ import { requireSession } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { ensureDueContractExpenses } from "@/lib/contract-auto-expenses";
 import { getContractNextCancellationDate } from "@/lib/contracts";
-import { buildBudgetAlerts, buildCategoryRows, buildLabelRows, budgetCadenceLabel, monthlyBudget, recentlyUsedLabelKeys, sumByKind } from "@/lib/expense-analytics";
+import { buildBudgetAlerts, buildCategoryRows, buildLabelRows, budgetCadenceLabel, recentlyUsedLabelKeys, summarizeCategoryBudgets, sumByKind } from "@/lib/expense-analytics";
 import { forecastCurrentMonthEnd } from "@/lib/expense-forecast";
 import { formatDate, formatMoney } from "@/lib/format";
 import {
@@ -79,14 +79,13 @@ export default async function DashboardPage() {
   const spending = sumByKind(monthEntries, "EXPENSE");
   const saldo = income - spending;
   const monthHref = `/ausgaben?month=${getMonthKey(today)}`;
-  const monthBudget = monthlyBudget(categories);
-  const netConsumption = Math.max(0, spending - income);
-  const budgetRemaining = monthBudget - netConsumption;
+  const budgetCategoryRows = buildCategoryRows(budgetMonthEntries, categories, 0, dashboardBudgetRange);
+  const { budget: monthBudget, consumption: netConsumption, remaining: budgetRemaining } = summarizeCategoryBudgets(budgetCategoryRows);
   const monthEndForecast = forecastCurrentMonthEnd(expenses, categories, today);
   const projectedBudgetRemaining = monthBudget - monthEndForecast.projectedMonth;
   const recentlyUsedLabels = recentlyUsedLabelKeys(budgetHistoryEntries, today);
   const budgetAlerts = [
-    ...buildBudgetAlerts(buildCategoryRows(budgetMonthEntries, categories, sumByKind(budgetMonthEntries, "EXPENSE"), dashboardBudgetRange), "category"),
+    ...buildBudgetAlerts(budgetCategoryRows, "category"),
     ...buildBudgetAlerts(buildLabelRows(budgetMonthEntries, labels, dashboardBudgetRange, budgetHistoryEntries)
       .filter((row) => recentlyUsedLabels.has(row.id ?? row.name)), "label")
   ].sort((a, b) => {
@@ -183,7 +182,7 @@ export default async function DashboardPage() {
             <FinanceSummaryMetric icon={<BanknoteArrowUp size={17} />} label="Einnahmen" value={formatMoney(income)} detail="Geldzufluss im Monat" tone="income" />
             <FinanceSummaryMetric icon={<ReceiptText size={17} />} label="Ausgaben" value={formatMoney(spending)} detail={`${monthEntries.length} Einträge im Monat`} tone="spending" />
             <FinanceSummaryMetric icon={<Scale size={17} />} label="Saldo" value={formatSignedMoney(saldo)} detail={saldo < 0 ? "Mehr ausgegeben" : "Monat im Plus"} tone={saldo < 0 ? "negative" : "positive"} />
-            <FinanceSummaryMetric icon={<WalletCards size={17} />} label={monthBudget > 0 ? "Budget übrig" : "Budget"} value={monthBudget > 0 ? formatMoney(budgetRemaining) : "-"} detail={monthBudget > 0 ? `${formatMoney(netConsumption)} netto verbraucht` : "Monatsbudget in Finanzen"} tone={budgetRemaining < 0 && monthBudget > 0 ? "negative" : "neutral"} />
+            <FinanceSummaryMetric icon={<WalletCards size={17} />} label={monthBudget > 0 ? budgetRemaining < 0 ? "Über Budget" : "Budget übrig" : "Budget"} value={monthBudget > 0 ? formatMoney(Math.abs(budgetRemaining)) : "-"} detail={monthBudget > 0 ? `${formatMoney(netConsumption)} von ${formatMoney(monthBudget)} genutzt` : "Monatsbudget in Finanzen"} tone={budgetRemaining < 0 && monthBudget > 0 ? "negative" : "neutral"} />
           </div>
           {latestLabel ? (
             <Link className={`cockpit-label-budget finance-summary-metric ${latestLabelBudget > 0 && latestLabelBudgetRemaining < 0 ? "tone-negative" : latestLabelBudget > 0 ? "tone-positive" : "tone-neutral"}`} href={`/ausgaben?month=${getMonthKey(today)}&view=labels`}>

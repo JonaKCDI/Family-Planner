@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-10-09 – Budgetrest nach Kategorien
+
+### Behoben
+
+- Der Budgetrest in Finanzen und Cockpit addiert die Einzelbudgets und zieht nur den Nettoverbrauch der Kategorien mit Budget ab. Einnahmen aus anderen Kategorien, etwa „Gehalt“, und Ausgaben ohne Kategoriebudget verändern den Budgetrest nicht.
+- Einnahmen innerhalb einer budgetierten Kategorie mindern nur deren eigenen Verbrauch. Die Gesamtsummen für Einnahmen, Ausgaben und Saldo bleiben davon unabhängig.
+- Die Budgetkachel rechnet nur EUR-Buchungen. Bei einer Überschreitung zeigt sie den Betrag als „Über Budget“.
+
+### Validierung
+
+- Regressionstests für Einnahmen und Ausgaben ohne Budget sowie die Summe mehrerer Einzelbudgets.
+
 ## 2026-07-29 - Finanzplanung, mobile Oberflaeche und Aufgaben-Popup
 
 ### Neu
