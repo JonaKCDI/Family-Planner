@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/finance-link";
 import { CalendarCheck, Download, ReceiptText, UsersRound } from "lucide-react";
 import { normalizeFamilyFinanceParams } from "@/lib/family-finance-params";
 import { allowedForecastYear, developerFeaturesEnabled } from "@/lib/developer-features";
@@ -7,7 +7,7 @@ import { familyPersonPositions, filterFamilyExpenses, getFamilyExpenseRange } fr
 import { buildExpensesHref, getMonthKey, addMonthsToMonthKey, type ExpenseFilterParams } from "@/lib/expense-filter-url";
 import { buildCategoryRows, buildLabelRows, buildPeriodRows, budgetCadenceLabel } from "@/lib/expense-analytics";
 import { formatDate, formatMoney } from "@/lib/format";
-import { getVisibleExpenses, getVisibleCategories, getExpenseLabels, getVisibleContracts, getVisibleDocumentRoots, getDocumentsForLinkedEntities } from "@/lib/queries";
+import { getVisibleExpensesByIds, getVisibleCategories, getExpenseLabels, getVisibleContracts, getVisibleDocumentRoots, getDocumentsForLinkedEntities } from "@/lib/queries";
 import { toExpenseListItem, toExpenseDocumentItem, type ExpenseListItem } from "@/lib/expense-list";
 import { ExpenseEntryList } from "./expense-entry-list";
 import { ForecastChart } from "./expense-forecast-charts";
@@ -33,27 +33,38 @@ export async function FamilyFinancePage({ params: rawParams, planning = false }:
   const selected = filterFamilyExpenses(expenses, params);
   const range = getFamilyExpenseRange(expenses, params);
   const analysisParams = { ...params, bereich: "familie", from: range.from.toISOString().slice(0, 10), to: range.to.toISOString().slice(0, 10) };
+  const view = params.view || "overview";
+  const needsEntries = !planning && (view === "overview" || view === "entries");
+  const initialEntryIds = needsEntries ? selected.slice(0, view === "overview" ? 10 : 100).map(item => item.id) : [];
+  const visibleEntryIds = [...new Set([...initialEntryIds, ...(needsEntries && params.selected ? [params.selected] : [])])];
   const [own, ownCategories, ownLabels, contracts, roots, documents] = await Promise.all([
-    getVisibleExpenses(session.family.id, session.user.id), getVisibleCategories(session.family.id, session.user.id, "EXPENSE"), getExpenseLabels(session.family.id, session.user.id), getVisibleContracts(session.family.id, session.user.id), getVisibleDocumentRoots(session.family.id, session.user.id, session.role), getDocumentsForLinkedEntities(session.family.id, session.user.id, "EXPENSE", selected.map(item => item.id))
+    getVisibleExpensesByIds(session.family.id, session.user.id, visibleEntryIds),
+    needsEntries ? getVisibleCategories(session.family.id, session.user.id, "EXPENSE") : Promise.resolve([]),
+    needsEntries ? getExpenseLabels(session.family.id, session.user.id) : Promise.resolve([]),
+    needsEntries ? getVisibleContracts(session.family.id, session.user.id) : Promise.resolve([]),
+    needsEntries ? getVisibleDocumentRoots(session.family.id, session.user.id, session.role) : Promise.resolve([]),
+    getDocumentsForLinkedEntities(session.family.id, session.user.id, "EXPENSE", visibleEntryIds)
   ]);
   const ownById = new Map(own.map(item => [item.id, toExpenseListItem(item)]));
-  const list: ExpenseListItem[] = selected.map(item => ({ id: item.id, kind: "EXPENSE", date: item.date.toISOString(), amountCents: item.amountCents, currency: item.currency, description: item.description, store: item.store, paymentMethod: item.paymentMethod, categoryId: item.categoryId, labelId: item.labelId, category: item.category, label: item.label, personName: item.person.name, canEdit: item.canEdit, sharedWithFamily: true, editExpense: item.canEdit ? ownById.get(item.id) : undefined, contractId: null, fuelEntryId: null, recurringTransactionId: null, contract: null, fuelEntry: null, recurringTransaction: null, generatedByContract: false, generatedByFuelEntry: false, generatedByRecurringTransaction: false }));
+  const list: ExpenseListItem[] = needsEntries ? selected.map(item => ({ id: item.id, kind: "EXPENSE", date: item.date.toISOString(), amountCents: item.amountCents, currency: item.currency, description: item.description, store: item.store, paymentMethod: item.paymentMethod, categoryId: item.categoryId, labelId: item.labelId, category: item.category, label: item.label, personName: item.person.name, canEdit: item.canEdit, sharedWithFamily: true, editExpense: item.canEdit ? ownById.get(item.id) : undefined, contractId: null, fuelEntryId: null, recurringTransactionId: null, contract: null, fuelEntry: null, recurringTransaction: null, generatedByContract: false, generatedByFuelEntry: false, generatedByRecurringTransaction: false })) : [];
   const docs: Record<string, ReturnType<typeof toExpenseDocumentItem>[]> = {};
   const rootsById = new Set(roots.map(root => root.id));
   for (const document of documents) if (document.linkedEntityId && (!document.documentRootId || rootsById.has(document.documentRootId))) (docs[document.linkedEntityId] ??= []).push(toExpenseDocumentItem(document));
   const total = selected.reduce((sum, item) => sum + item.amountCents, 0);
   const month = !params.year && !params.from && !params.to && /^\d{4}-(0[1-9]|1[0-2])$/.test(params.month || "") ? params.month! : (!params.year && !params.from && !params.to ? getMonthKey() : "");
-  const view = params.view || "overview";
   const analysis = !["overview", "entries"].includes(view);
   const href = (next: ExpenseFilterParams = {}) => buildExpensesHref({ ...params, bereich: "familie" }, next);
   const money = (amount: number) => formatMoney(amount, currency);
-  const filteredTransfers = transfers.filter(item => item.currency === currency && item.date >= range.from && item.date <= range.to);
-  const rawPositions = familyPersonPositions(selected, filteredTransfers);
-  const positions: Position[] = members.map(member => rawPositions.find(item => item.id === member.id) ?? { id: member.id, name: member.name, spending: 0, sent: 0, received: 0, net: 0 });
+  const needsPositions = !planning && (view === "overview" || view === "people");
+  const filteredTransfers = needsPositions ? transfers.filter(item => item.currency === currency && item.date >= range.from && item.date <= range.to) : [];
+  const rawPositions = needsPositions ? familyPersonPositions(selected, filteredTransfers) : [];
+  const positions: Position[] = needsPositions ? members.map(member => rawPositions.find(item => item.id === member.id) ?? { id: member.id, name: member.name, spending: 0, sent: 0, received: 0, net: 0 }) : [];
   const topPeople = [...positions].sort((a, b) => b.spending - a.spending || a.name.localeCompare(b.name, "de")).slice(0, 2);
   const showBudget = range.mode !== "all";
-  const categoryRows = buildCategoryRows(selected, categories.filter(item => !item.archivedAt), total, range);
-  const labelRows = buildLabelRows(selected, labels, range, expenses.filter(item => item.currency === currency));
+  const needsCategoryRows = !planning && (view === "overview" || view === "categories" || view === "budgets");
+  const needsLabelRows = !planning && (view === "overview" || view === "labels" || view === "budgets");
+  const categoryRows = needsCategoryRows ? buildCategoryRows(selected, categories.filter(item => !item.archivedAt), total, range) : [];
+  const labelRows = needsLabelRows ? buildLabelRows(selected, labels, range, expenses.filter(item => item.currency === currency)) : [];
   const budgetRows = [
     ...categoryRows.map(row => ({ ...row, dimension: "category" as const })),
     ...labelRows.map(row => ({ ...row, dimension: "label" as const }))
@@ -62,12 +73,6 @@ export async function FamilyFinancePage({ params: rawParams, planning = false }:
   const visibleLabelRows = labelRows.filter(row => row.spending > 0 || row.income > 0 || row.budget > 0);
   const desktopCategoryId = visibleCategoryRows.some(row => (row.id ?? "unassigned") === params.selected) ? params.selected! : (visibleCategoryRows[0]?.id ?? "unassigned");
   const desktopLabelId = visibleLabelRows.some(row => (row.id ?? "unassigned") === params.selected) ? params.selected! : (visibleLabelRows[0]?.id ?? "unassigned");
-  if (planning && !developerFeaturesEnabled(session)) params = { ...params, year: undefined };
-  const forecastBase = expenses.filter(item => item.currency === currency && (!params.person || item.person.id === params.person));
-  const forecastReferenceDate = forecastReference(forecastBase, allowedForecastYear(session, params.year));
-  const forecastEntries = withoutExcludedCategories(forecastBase, categories);
-  const forecast = smoothedSaldoForecast(forecastEntries, forecastReferenceDate.date);
-  const forecastHistory = monthlySaldo(forecastEntries, forecastReferenceDate.date, 12);
   const exportQuery = new URLSearchParams(href().split("?")[1]);
   const entryList = (limit: number, totalCount: number) => <ExpenseEntryList initialEntries={list.slice(0, limit)} totalCount={totalCount} loadUrl={"/api/expenses/list?" + exportQuery.toString()} initialDocumentsByExpense={docs} categories={ownCategories} labels={ownLabels} contracts={contracts.map(item => ({ id: item.id, provider: item.provider, contractType: item.contractType }))} documentRoots={roots.map(item => ({ id: item.id, name: item.name }))} returnTo={href()} />;
   const desktopFamilyEntries = view === "overview" ? list.slice(0, 10) : list;
@@ -93,6 +98,12 @@ export async function FamilyFinancePage({ params: rawParams, planning = false }:
     </DesktopDetail> : null}
   /></div> : null;
   if (planning) {
+    if (!developerFeaturesEnabled(session)) params = { ...params, year: undefined };
+    const forecastBase = expenses.filter(item => item.currency === currency && (!params.person || item.person.id === params.person));
+    const forecastReferenceDate = forecastReference(forecastBase, allowedForecastYear(session, params.year));
+    const forecastEntries = withoutExcludedCategories(forecastBase, categories);
+    const forecast = smoothedSaldoForecast(forecastEntries, forecastReferenceDate.date);
+    const forecastHistory = monthlySaldo(forecastEntries, forecastReferenceDate.date, 12);
     const months = recordedMonths(forecastEntries, forecastReferenceDate.date);
     const forecastOffset = forecastReferenceDate.selectedYear === null ? 1 : 0;
     const projected = forecast[forecastOffset]?.value ?? 0;
@@ -128,7 +139,7 @@ export async function FamilyFinancePage({ params: rawParams, planning = false }:
     {analysis && view === "budgets" ? <Analysis title="Budgets">{budgetRows.map(row => <Link key={`${row.dimension}-${row.id ?? row.name}`} className="family-analysis-row" href={href(row.dimension === "category" ? { category: row.id ?? "unassigned", view: "entries" } : { label: row.id ?? "unassigned", view: "entries" })}><span><strong>{row.name}</strong><small className="muted">{row.budget > 0 ? `${budgetCadenceLabel(row.budgetPeriod)} · ${money(row.budget)} im Zeitraum · ${row.remaining < 0 ? `${money(Math.abs(row.remaining))} drüber` : `${money(row.remaining)} frei`}` : "Ohne Budget"}</small></span><strong className={row.saldo < 0 ? "negative" : "positive"}>{money(row.saldo)}</strong></Link>)}</Analysis> : null}
     {analysis && view === "people" ? <Analysis title="Personen"><div className="section-head compact-section-head"><p className="muted">Netto getragen berücksichtigt Ausgleiche.</p><FamilyTransferAction /></div><PeopleRows positions={positions} money={money} /></Analysis> : null}
     {analysis && view === "compare" ? <Analysis title="Monatsvergleich">{buildPeriodRows(filterFamilyExpenses(expenses, { ...params, from: "1900-01-01", to: undefined, month: undefined, year: undefined }), categories, "month").map(row => <Link className="family-analysis-row" href={href({ month: row.label, view: "entries" })} key={row.label}><span>{row.label}</span><strong>{money(row.spending)}</strong></Link>)}</Analysis> : null}
-    {view === "entries" ? <><section className="panel expense-section"><div className="section-head compact-section-head"><div><h2 className="section-title">Einträge</h2><p className="muted">{formatDate(range.from) + " bis " + formatDate(range.to) + " · " + list.length + " Einträge"}</p></div><Link className="icon-button" aria-label="Excel exportieren" href={"/api/expenses/export?" + exportQuery.toString()}><Download size={19} /></Link></div>{list.length ? entryList(100, list.length) : <EmptyState>Noch keine Buchungen im Zeitraum.</EmptyState>}</section>{desktopFamilyWorkspace}</> : null}
+    {view === "entries" ? <><section className="panel expense-section"><div className="section-head compact-section-head"><div><h2 className="section-title">Einträge</h2><p className="muted">{formatDate(range.from) + " bis " + formatDate(range.to) + " · " + list.length + " Einträge"}</p></div><a className="icon-button" aria-label="Excel exportieren" href={"/api/expenses/export?" + exportQuery.toString()}><Download size={19} /></a></div>{list.length ? entryList(100, list.length) : <EmptyState>Noch keine Buchungen im Zeitraum.</EmptyState>}</section>{desktopFamilyWorkspace}</> : null}
   </div>;
 }
 

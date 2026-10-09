@@ -2,8 +2,6 @@
 
 import type React from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useEffect } from "react";
 
 type PeriodNavLinkProps = {
   href: string;
@@ -16,17 +14,11 @@ type PeriodNavLinkProps = {
 };
 
 export function PeriodNavLink({ href, className, activeClassName, children, ...props }: PeriodNavLinkProps) {
-  const router = useRouter();
-
-  useEffect(() => {
-    router.prefetch(href);
-  }, [href, router]);
-
   return (
     <Link
       {...props}
       href={href}
-      prefetch
+      prefetch={false}
       className={[className, activeClassName].filter(Boolean).join(" ")}
     >
       {children}

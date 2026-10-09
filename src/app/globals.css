@@ -11658,6 +11658,13 @@ html[data-finance-direction="neutral"] .finance-planning-page > .planning-panel 
   gap: .62rem;
 }
 
+.mileage-all-time-section {
+  display: grid;
+  gap: .45rem;
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+
 .mileage-summary-panel {
   border-radius: 16px;
 }
@@ -15037,6 +15044,50 @@ body:has(.family-finance-page), .shell:has(.family-finance-page), .content:has(.
 html.modal-scroll-locked,
 body.modal-scroll-locked {
   overflow-x: hidden !important;
+}
+
+/* Safari gives native date controls an intrinsic width larger than narrow
+   two-column sheet cells unless the control and its grid item can shrink. */
+@media (max-width: 900px), (max-height: 760px), (max-aspect-ratio: 4/5) {
+  .modal-panel .form-grid > label:has(input[type="date"]),
+  .modal-panel .finance-create-quick-grid > label:has(input[type="date"]) {
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
+  }
+
+  .modal-panel input[type="date"] {
+    display: block;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    -webkit-min-logical-width: 0;
+    box-sizing: border-box;
+  }
+
+  .mileage-analysis-scroll {
+    max-width: 100%;
+    min-width: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-inline: contain;
+  }
+
+  .mileage-analysis-table {
+    width: 100%;
+    min-width: 34rem;
+  }
+
+  .mileage-analysis-table .mini-table-head,
+  .mileage-analysis-table .mileage-analysis-row {
+    grid-template-columns: minmax(5rem, 1fr) minmax(4rem, .8fr) minmax(5rem, 1fr) minmax(5.5rem, 1fr) minmax(4rem, .8fr);
+  }
+
+  .mileage-analysis-table .mini-table-head span:nth-child(4),
+  .mileage-analysis-table .mileage-analysis-row span:nth-child(4) {
+    display: block;
+  }
 }
 
 @media (max-width: 900px), (max-height: 760px), (max-aspect-ratio: 4/5) {

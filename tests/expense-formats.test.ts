@@ -2,7 +2,7 @@ import { describe, expect, test } from "vitest";
 import ExcelJS from "exceljs";
 import { buildExpenseWorkbook, parseExpenseWorkbook } from "../src/lib/expense-formats";
 import { parseEuroToCents } from "../src/lib/format";
-import { buildBudgetAlerts, buildCategoryRows, buildDonutSegments, buildExpenseTrendChart, buildLabelRows, buildPeriodRows, findDominantDonutSegment, formatDonutPercent, sumByKind } from "../src/lib/expense-analytics";
+import { buildBudgetAlerts, buildCategoryRows, buildDonutSegments, buildExpenseTrendChart, buildLabelRows, buildPeriodRows, findDominantDonutSegment, formatDonutPercent, recentLabelRows, recentlyUsedLabelKeys, sumByKind } from "../src/lib/expense-analytics";
 
 describe("money parsing", () => {
   test("parses German euro input into cents", () => {
@@ -77,6 +77,32 @@ describe("expense analytics", () => {
     ];
 
     expect(buildLabelRows(entries, [...labels, ...neverUsedLabels]).map((row) => row.name)).toEqual(["Lappland", "Sommerurlaub", "Kinderzimmer"]);
+  });
+
+  test("previews only four labels used by filtered bookings, newest first", () => {
+    const previewLabels = ["A", "B", "C", "D", "E", "F"].map((name) => ({ id: name, name, color: "#16776f", budgetCents: name === "F" ? 10000 : 0, lastUsedAt: new Date("2026-10-01T00:00:00Z") }));
+    const selected = [
+      { label: previewLabels[0], date: new Date("2026-10-01T00:00:00Z"), kind: "EXPENSE" as const, amountCents: 100 },
+      { label: previewLabels[1], date: new Date("2026-10-02T00:00:00Z"), kind: "EXPENSE" as const, amountCents: 100 },
+      { label: previewLabels[2], date: new Date("2026-10-03T00:00:00Z"), kind: "EXPENSE" as const, amountCents: 100 },
+      { label: previewLabels[3], date: new Date("2026-10-03T00:00:00Z"), kind: "EXPENSE" as const, amountCents: 100 },
+      { label: previewLabels[4], date: new Date("2026-10-04T00:00:00Z"), kind: "INCOME" as const, amountCents: 100 }
+    ];
+    const rows = buildLabelRows(selected, previewLabels, { mode: "month", from: new Date("2026-10-01T00:00:00Z"), to: new Date("2026-10-31T23:59:59Z") });
+    expect(rows.some((row) => row.id === "F")).toBe(true);
+    expect(recentLabelRows(selected, rows).map((row) => row.id)).toEqual(["E", "C", "D", "B"]);
+    expect(recentLabelRows([], rows)).toEqual([]);
+  });
+
+  test("limits cockpit label eligibility to the last 30 calendar days", () => {
+    const makeEntry = (id: string, date: string) => ({ label: { id, name: id, color: "#16776f", budgetCents: 100 }, date: new Date(`${date}T00:00:00Z`), kind: "EXPENSE" as const, amountCents: 100 });
+    const history = [makeEntry("before", "2026-09-09"), makeEntry("first", "2026-09-10"), makeEntry("today", "2026-10-09"), makeEntry("future", "2026-10-10")];
+    const eligible = recentlyUsedLabelKeys(history, new Date("2026-10-09T12:00:00Z"));
+    expect([...eligible]).toEqual(["first", "today"]);
+    const rows = buildLabelRows([history[2]], history.map((entry) => ({ ...entry.label, lastUsedAt: entry.date })), { mode: "month", from: new Date("2026-10-01T00:00:00Z"), to: new Date("2026-10-31T23:59:59Z") }, history);
+    const alerts = buildBudgetAlerts(rows.filter((row) => eligible.has(row.id ?? row.name)), "label");
+    expect(alerts.map((row) => row.id).sort()).toEqual(["first", "today"]);
+    expect(alerts.find((row) => row.id === "first")?.netConsumption).toBe(100);
   });
 
   test("flags near and overshot budgets while using net consumption", () => {

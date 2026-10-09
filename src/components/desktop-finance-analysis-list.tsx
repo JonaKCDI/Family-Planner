@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/finance-link";
 import { requireSession } from "@/lib/auth";
 import { getFamilyFinance } from "@/lib/family-finance";
 import { filterFamilyExpenses } from "@/lib/family-finance-filters";
@@ -7,7 +7,7 @@ import { getExpenseRange } from "@/lib/expense-range";
 import { filterExpenseAssignments, filterExpenseFacets } from "@/lib/expense-filters";
 import { buildAnalysisHref, type AnalysisDimension } from "@/lib/expense-detail-analysis";
 import { buildExpensesHref } from "@/lib/expense-filter-url";
-import { getVisibleExpenses, getVisibleCategories, getExpenseLabels, getDocumentsForLinkedEntities } from "@/lib/queries";
+import { getVisibleExpenseSummaries, getVisibleExpenses, getVisibleCategories, getExpenseLabels, getDocumentsForLinkedEntities } from "@/lib/queries";
 import { matchesExpenseSearch } from "@/lib/expense-search";
 import { getMonthKey } from "@/lib/expense-filter-url";
 import { formatMoney } from "@/lib/format";
@@ -26,15 +26,15 @@ export async function DesktopFinanceAnalysisList({ params, dimension, selectedId
       : buildLabelRows(selected, labels);
   } else {
     const session = await requireSession();
+    const query = (listParams.q || "").trim().toLowerCase();
     const [expenses, categories, labels] = await Promise.all([
-      getVisibleExpenses(session.family.id, session.user.id),
+      query ? getVisibleExpenses(session.family.id, session.user.id) : getVisibleExpenseSummaries(session.family.id, session.user.id),
       getVisibleCategories(session.family.id, session.user.id, "EXPENSE"),
       getExpenseLabels(session.family.id, session.user.id, { includeArchived: true })
     ]);
     const range = getExpenseRange(listParams, getMonthKey(), expenses);
     const candidates = filterExpenseFacets(filterExpenseAssignments(expenses, listParams), listParams)
       .filter((entry) => entry.date >= range.from && entry.date <= range.to);
-    const query = (listParams.q || "").trim().toLowerCase();
     const documents = query ? await getDocumentsForLinkedEntities(session.family.id, session.user.id, "EXPENSE", candidates.map((entry) => entry.id)) : [];
     const docs = new Map<string, typeof documents>();
     for (const document of documents) if (document.linkedEntityId) {

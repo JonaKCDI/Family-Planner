@@ -1,5 +1,5 @@
 import { CategoryIconPicker } from "./category-icon-picker";
-import Link from "next/link";
+import Link from "@/components/finance-link";
 import { db } from "@/lib/db";
 import { requireFinanceMember } from "@/lib/family-finance";
 import { saveFamilyTerm, saveFamilyMapping } from "@/lib/family-finance-actions";

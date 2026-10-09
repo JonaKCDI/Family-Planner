@@ -2,6 +2,7 @@ import { randomBytes } from "node:crypto";
 import bcrypt from "bcryptjs";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import { cache } from "react";
 import { db } from "@/lib/db";
 
 const SESSION_DAYS = 30;
@@ -83,11 +84,11 @@ export async function getCurrentSession() {
   };
 }
 
-export async function requireSession() {
+export const requireSession = cache(async function requireSession() {
   const session = await getCurrentSession();
   if (!session) redirect("/login");
   return session;
-}
+});
 
 function sessionCookieName() {
   return process.env.SESSION_COOKIE_NAME ?? "family_app_session";

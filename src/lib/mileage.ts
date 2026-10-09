@@ -52,15 +52,33 @@ export function calculateFuelStatsFromDerived(entries: FuelEntryWithDerived[]): 
   const totalCostCents = entries.reduce((sum, entry) => sum + entry.costCents, 0);
   const totalLitersMilli = entries.reduce((sum, entry) => sum + entry.litersMilli, 0);
   const drivenKm = entries.reduce((sum, entry) => sum + Math.max(0, entry.drivenKm ?? 0), 0);
-  const ordered = [...entries].sort(compareFuelEntriesAscending);
+  const litersWithDistanceMilli = entries.reduce((sum, entry) => sum + (entry.drivenKm !== null && entry.drivenKm > 0 ? entry.litersMilli : 0), 0);
+  const latest = entries.reduce<FuelEntryWithDerived | null>((current, entry) =>
+    !current || compareFuelEntriesAscending(entry, current) > 0 ? entry : current, null);
 
   return {
     totalCostCents,
     totalLitersMilli,
     drivenKm,
-    averageLitersPer100Km: drivenKm > 0 ? (totalLitersMilli / 1000 / drivenKm) * 100 : null,
+    averageLitersPer100Km: drivenKm > 0 ? (litersWithDistanceMilli / 1000 / drivenKm) * 100 : null,
     averagePricePerLiterCents: totalLitersMilli > 0 ? (totalCostCents * 1000) / totalLitersMilli : null,
-    lastOdometerKm: ordered.at(-1)?.odometerKm ?? null
+    lastOdometerKm: latest?.odometerKm ?? null
+  };
+}
+
+export function compareFuelMetric(value: number | null, baseline: number | null, scaleMax: number | null, label: string) {
+  if (value === null || baseline === null || !Number.isFinite(value) || !Number.isFinite(baseline) || baseline <= 0) {
+    return { tone: "tone-neutral", label: `${label}: kein Umfeldvergleich`, sparkWidth: null };
+  }
+  const delta = (value - baseline) / baseline;
+  const sparkWidth = scaleMax !== null && Number.isFinite(scaleMax) && scaleMax > 0
+    ? value <= 0 ? "0%" : `${Math.max(6, Math.min(100, Math.abs(value) / Math.max(1, scaleMax) * 100))}%`
+    : null;
+  if (Math.abs(delta) < 0.05) return { tone: "tone-neutral", label: `${label}: nah am Umfeld`, sparkWidth };
+  return {
+    tone: delta < 0 ? "tone-positive" : "tone-negative",
+    label: `${label}: ${new Intl.NumberFormat("de-DE", { maximumFractionDigits: 0 }).format(Math.abs(delta) * 100)} % ${delta < 0 ? "besser" : "schlechter"} als Umfeld`,
+    sparkWidth
   };
 }
 

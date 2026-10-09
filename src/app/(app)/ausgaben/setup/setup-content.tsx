@@ -1,7 +1,8 @@
-import Link from "next/link";
+import Link from "@/components/finance-link";
 import { ArrowLeft, ChevronRight, FileSpreadsheet, Plus, Shapes, Tags, Merge, Repeat } from "lucide-react";
 import { getMonthKey } from "@/lib/expense-filter-url";
-import { getExpenseLabels, getRecurringTransactions, getVisibleCategories, getVisibleExpenses } from "@/lib/queries";
+import { getExpenseLabels, getRecurringTransactions, getVisibleCategories } from "@/lib/queries";
+import { db } from "@/lib/db";
 import { AutoSubmitSelect } from "@/components/auto-submit-select";
 
 export const financeSetupSections = [
@@ -46,7 +47,7 @@ export async function loadFinanceSetupContext(session: {
   user: { id: string };
 }, yearParam?: string) {
   const [expenses, categories, labels, allLabels, recurringTransactions] = await Promise.all([
-    getVisibleExpenses(session.family.id, session.user.id),
+    db.expense.findMany({ where: { familyId: session.family.id, ownerUserId: session.user.id }, select: { date: true } }),
     getVisibleCategories(session.family.id, session.user.id, "EXPENSE"),
     getExpenseLabels(session.family.id, session.user.id),
     getExpenseLabels(session.family.id, session.user.id, { includeArchived: true }),

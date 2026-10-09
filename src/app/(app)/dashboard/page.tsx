@@ -2,9 +2,10 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { BanknoteArrowUp, CalendarCheck, CarFront, FileText, ReceiptText, Scale, Tag, TrendingUp, WalletCards } from "lucide-react";
 import { requireSession } from "@/lib/auth";
+import { db } from "@/lib/db";
 import { ensureDueContractExpenses } from "@/lib/contract-auto-expenses";
 import { getContractNextCancellationDate } from "@/lib/contracts";
-import { buildBudgetAlerts, buildCategoryRows, buildLabelRows, budgetCadenceLabel, monthlyBudget, sumByKind } from "@/lib/expense-analytics";
+import { buildBudgetAlerts, buildCategoryRows, buildLabelRows, budgetCadenceLabel, monthlyBudget, recentlyUsedLabelKeys, sumByKind } from "@/lib/expense-analytics";
 import { forecastCurrentMonthEnd } from "@/lib/expense-forecast";
 import { formatDate, formatMoney } from "@/lib/format";
 import {
@@ -16,12 +17,11 @@ import {
 import { ensureDueRecurringTasks } from "@/lib/recurring-tasks";
 import { daysUntil, isImportantTask, taskRank, taskUrgency } from "@/lib/tasks";
 import {
-  getFuelEntriesForCar,
   getVisibleCars,
   getVisibleCategories,
   getVisibleContracts,
   getVisibleDocuments,
-  getVisibleExpenses,
+  getVisibleExpenseSummaries,
   getExpenseLabels,
   getVisibleTasks
 } from "@/lib/queries";
@@ -35,10 +35,10 @@ export default async function DashboardPage() {
     ensureDueRecurringTasks(session.family.id, session.user.id)
   ]);
   const [expenses, tasks, contracts, documents, categories, labels, cars] = await Promise.all([
-    getVisibleExpenses(session.family.id, session.user.id),
+    getVisibleExpenseSummaries(session.family.id, session.user.id),
     getVisibleTasks(session.family.id, session.user.id),
     getVisibleContracts(session.family.id, session.user.id),
-    getVisibleDocuments(session.family.id, session.user.id),
+    getVisibleDocuments(session.family.id, session.user.id, 4),
     getVisibleCategories(session.family.id, session.user.id, "EXPENSE"),
     getExpenseLabels(session.family.id, session.user.id),
     getVisibleCars(session.family.id)
@@ -84,9 +84,11 @@ export default async function DashboardPage() {
   const budgetRemaining = monthBudget - netConsumption;
   const monthEndForecast = forecastCurrentMonthEnd(expenses, categories, today);
   const projectedBudgetRemaining = monthBudget - monthEndForecast.projectedMonth;
+  const recentlyUsedLabels = recentlyUsedLabelKeys(budgetHistoryEntries, today);
   const budgetAlerts = [
     ...buildBudgetAlerts(buildCategoryRows(budgetMonthEntries, categories, sumByKind(budgetMonthEntries, "EXPENSE"), dashboardBudgetRange), "category"),
-    ...buildBudgetAlerts(buildLabelRows(budgetMonthEntries, labels, dashboardBudgetRange, budgetHistoryEntries), "label")
+    ...buildBudgetAlerts(buildLabelRows(budgetMonthEntries, labels, dashboardBudgetRange, budgetHistoryEntries)
+      .filter((row) => recentlyUsedLabels.has(row.id ?? row.name)), "label")
   ].sort((a, b) => {
     if (a.status !== b.status) return a.status === "over" ? -1 : 1;
     return b.budgetUsage - a.budgetUsage || b.netConsumption - a.netConsumption || a.name.localeCompare(b.name, "de");
@@ -390,7 +392,10 @@ function initialFor(name: string) {
 
 async function buildVehicleSummaries(familyId: string, cars: CarEntry[]) {
   const rows = await Promise.all(cars.map(async (car) => {
-    const entries = await getFuelEntriesForCar(familyId, car.id);
+    const entries = await db.fuelEntry.findMany({
+      where: { familyId, carId: car.id },
+      select: { id: true, date: true, odometerKm: true, litersMilli: true, costCents: true, note: true }
+    });
     const derived = addFuelDerivedFields(entries);
     const latest = [...derived].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime() || b.odometerKm - a.odometerKm)[0] ?? null;
     const stats = calculateFuelStatsFromDerived(derived);

@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/finance-link";
 import { FileSearch, List } from "lucide-react";
 import { CategoryIcon } from "@/components/category-icon";
 import { formatMoney } from "@/lib/format";

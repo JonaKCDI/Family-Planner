@@ -1,15 +1,16 @@
 import { db } from "@/lib/db";
 import { documentRootAccessWhere, visibleScopeWhere } from "@/lib/permissions";
+import { cache } from "react";
 
-export async function getFamilyMembers(familyId: string) {
+export const getFamilyMembers = cache(async function getFamilyMembers(familyId: string) {
   return db.familyMember.findMany({
     where: { familyId, status: "ACTIVE" },
     include: { user: true },
     orderBy: { createdAt: "asc" }
   });
-}
+});
 
-export async function getVisibleCategories(familyId: string, userId: string, type?: "EXPENSE" | "TASK" | "CONTRACT") {
+export const getVisibleCategories = cache(async function getVisibleCategories(familyId: string, userId: string, type?: "EXPENSE" | "TASK" | "CONTRACT") {
   return db.category.findMany({
     where: {
       familyId,
@@ -18,9 +19,9 @@ export async function getVisibleCategories(familyId: string, userId: string, typ
     },
     orderBy: { name: "asc" }
   });
-}
+});
 
-export async function getVisibleExpenses(familyId: string, userId: string) {
+export const getVisibleExpenses = cache(async function getVisibleExpenses(familyId: string, userId: string) {
   return db.expense.findMany({
     where: {
       familyId,
@@ -29,14 +30,36 @@ export async function getVisibleExpenses(familyId: string, userId: string) {
     include: { category: true, label: true, contract: true, recurringTransaction: { include: { pricePhases: { orderBy: { validFrom: "asc" } } } }, fuelEntry: { include: { car: true } } },
     orderBy: { date: "desc" }
   });
+});
+
+// Summary and forecast calculations need budget relations, but not the
+// contract and series edit graphs attached to every historical expense.
+export const getVisibleExpenseSummaries = cache(async function getVisibleExpenseSummaries(familyId: string, userId: string) {
+  return db.expense.findMany({
+    where: { familyId, ownerUserId: userId },
+    include: { category: true, label: true },
+    orderBy: { date: "desc" }
+  });
+});
+
+export async function getVisibleExpensesByIds(familyId: string, userId: string, ids: string[]) {
+  if (ids.length === 0) return [];
+  return db.expense.findMany({
+    where: { familyId, ownerUserId: userId, id: { in: ids } },
+    include: { category: true, label: true, contract: true, recurringTransaction: { include: { pricePhases: { orderBy: { validFrom: "asc" } } } }, fuelEntry: { include: { car: true } } }
+  });
 }
 
 export async function getExpenseLabels(familyId: string, userId: string, options: { includeArchived?: boolean } = {}) {
+  return getExpenseLabelsCached(familyId, userId, Boolean(options.includeArchived));
+}
+
+const getExpenseLabelsCached = cache(async function getExpenseLabelsCached(familyId: string, userId: string, includeArchived: boolean) {
   const labels = await db.expenseLabel.findMany({
     where: {
       familyId,
       ownerUserId: userId,
-      ...(options.includeArchived ? {} : { archivedAt: null })
+      ...(includeArchived ? {} : { archivedAt: null })
     },
     include: {
       expenses: {
@@ -69,7 +92,7 @@ export async function getExpenseLabels(familyId: string, userId: string, options
       if (aLastUsed === null && bLastUsed !== null) return 1;
       return a.name.localeCompare(b.name, "de");
     });
-}
+});
 
 export async function getFuelExpenseSettings(familyId: string, userId: string) {
   return db.fuelExpenseSettings.findUnique({
@@ -83,14 +106,18 @@ export async function getFuelExpenseSettings(familyId: string, userId: string) {
 }
 
 export async function getVisibleCars(familyId: string, options: { includeArchived?: boolean } = {}) {
+  return getVisibleCarsCached(familyId, Boolean(options.includeArchived));
+}
+
+const getVisibleCarsCached = cache(async function getVisibleCarsCached(familyId: string, includeArchived: boolean) {
   return db.car.findMany({
     where: {
       familyId,
-      ...(options.includeArchived ? {} : { archivedAt: null })
+      ...(includeArchived ? {} : { archivedAt: null })
     },
     orderBy: [{ archivedAt: "asc" }, { name: "asc" }]
   });
-}
+});
 
 export async function getFuelEntriesForCar(familyId: string, carId: string) {
   return db.fuelEntry.findMany({
@@ -164,7 +191,7 @@ export async function getVisibleRecurringTasks(familyId: string, userId: string,
   });
 }
 
-export async function getVisibleContracts(familyId: string, userId: string) {
+export const getVisibleContracts = cache(async function getVisibleContracts(familyId: string, userId: string) {
   return db.contract.findMany({
     where: {
       familyId,
@@ -173,7 +200,7 @@ export async function getVisibleContracts(familyId: string, userId: string) {
     include: { owner: true },
     orderBy: [{ status: "asc" }, { nextCancellationDate: "asc" }]
   });
-}
+});
 
 export async function getVisibleContractsWithExpenseDetails(familyId: string, userId: string) {
   return db.contract.findMany({
@@ -241,18 +268,19 @@ export async function getExpensePlanningRules(familyId: string, userId: string) 
   });
 }
 
-export async function getVisibleDocuments(familyId: string, userId: string) {
+export async function getVisibleDocuments(familyId: string, userId: string, limit?: number) {
   return db.documentReference.findMany({
     where: {
       familyId,
       ...visibleScopeWhere(userId)
     },
     include: { owner: true, documentRoot: true },
+    ...(limit ? { take: limit } : {}),
     orderBy: { createdAt: "desc" }
   });
 }
 
-export async function getVisibleDocumentRoots(familyId: string, userId: string, role: "ADMIN" | "MEMBER") {
+export const getVisibleDocumentRoots = cache(async function getVisibleDocumentRoots(familyId: string, userId: string, role: "ADMIN" | "MEMBER") {
   return db.documentRoot.findMany({
     where: {
       familyId,
@@ -265,4 +293,4 @@ export async function getVisibleDocumentRoots(familyId: string, userId: string, 
     },
     orderBy: { name: "asc" }
   });
-}
+});
