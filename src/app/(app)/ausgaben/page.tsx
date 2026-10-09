@@ -4,7 +4,7 @@ import { filterExpenseAssignments } from "@/lib/expense-filters";
 import { FamilyFinancePage } from "@/components/family-finance-page";
 import { FinanceAreaIndicator } from "@/components/finance-area-switch";
 import { mergeDuplicateExpenses } from "@/lib/actions";
-import Link from "next/link";
+import Link from "@/components/finance-link";
 import { redirect } from "next/navigation";
 import { requireSession } from "@/lib/auth";
 import { ensureDueContractExpenses } from "@/lib/contract-auto-expenses";
@@ -13,6 +13,7 @@ import {
   buildLabelRows,
   buildPeriodRows,
   budgetCadenceLabel,
+  recentLabelRows,
   sumByKind,
   type PeriodRow
 } from "@/lib/expense-analytics";
@@ -83,29 +84,34 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
   const saldo = income - spending;
   const netConsumption = Math.max(0, spending - income);
   const showBudget = range.mode !== "all";
-  const budgetHistoryEntries = expenses.filter((entry) => entry.currency === (params.currency || "EUR"));
-  const categoryRows = buildCategoryRows(selectedEntries, categories, spending, range);
+  const needsCategoryRows = view === "overview" || view === "categories" || view === "budgets";
+  const needsLabelRows = view === "overview" || view === "labels" || view === "budgets";
+  const budgetHistoryEntries = needsLabelRows ? expenses.filter((entry) => entry.currency === (params.currency || "EUR")) : [];
+  const categoryRows = needsCategoryRows ? buildCategoryRows(selectedEntries, categories, spending, range) : [];
   const desktopMixedCurrencies = !params.currency && new Set(selectedEntries.map((entry) => entry.currency)).size > 1;
-  const labelRows = buildLabelRows(selectedEntries, labels, range, budgetHistoryEntries);
+  const labelRows = needsLabelRows ? buildLabelRows(selectedEntries, labels, range, budgetHistoryEntries) : [];
+  const overviewLabelRows = view === "overview" ? recentLabelRows(selectedEntries, labelRows) : [];
   const categoryAnalysisRows = categoryRows.filter((row) => row.spending > 0 || row.income > 0);
   const labelAnalysisRows = labelRows.filter((row) => row.spending > 0 || row.income > 0 || row.budget > 0);
   const desktopCategoryId = categoryAnalysisRows.some((row) => (row.id ?? "unassigned") === params.selected) ? params.selected! : (categoryAnalysisRows[0]?.id ?? "unassigned");
   const desktopLabelId = labelAnalysisRows.some((row) => (row.id ?? "unassigned") === params.selected) ? params.selected! : (labelAnalysisRows[0]?.id ?? "unassigned");
-  const monthlyRows = buildPeriodRows(selectedEntries, categories, "month");
+  const monthlyRows = view === "budgets" ? buildPeriodRows(selectedEntries, categories, "month") : [];
   const analysisParams = explicitExpensePeriod(params, range);
-  const comparisonRange = getComparisonRange(params, range);
-  const comparisonEntries = buildComparableEntries(expenses, params, comparisonRange, query);
-  const comparison = buildPeriodComparison(selectedEntries, comparisonEntries, categories, range, comparisonRange);
+  const comparisonRange = view === "compare" ? getComparisonRange(params, range) : null;
+  const comparisonEntries = comparisonRange ? buildComparableEntries(expenses, params, comparisonRange, query) : [];
+  const comparison = comparisonRange ? buildPeriodComparison(selectedEntries, comparisonEntries, categories, range, comparisonRange) : null;
   const activeFilterChips = buildActiveFilterChips(params, categories, allLabels, range);
   const paymentMethods = buildPaymentMethodOptions(expenses);
   const activeFilterCount = countActiveFinanceFilters(params);
   const initialEntryLimit = view === "entries" ? getInitialEntryLimit(range.mode) : 0;
   const initialEntries = view === "entries" ? sortedEntries.slice(0, initialEntryLimit) : view === "overview" ? recentEntries : [];
-  const initialEntryIds = new Set(initialEntries.map((expense) => expense.id));
+  const desktopEntries = view === "overview" ? recentEntries : sortedEntries;
+  const desktopSelectedExpense = desktopSelectedRecord(desktopEntries, params.selected ?? undefined);
+  const initialEntryIds = new Set([...initialEntries.map((expense) => expense.id), ...(desktopSelectedExpense && (view === "overview" || view === "entries") ? [desktopSelectedExpense.id] : [])]);
   const shouldLoadEntryDocuments = view === "entries" || view === "overview";
   const documents = shouldLoadEntryDocuments ? (query
     ? searchableDocuments.filter((document) => document.linkedEntityId ? initialEntryIds.has(document.linkedEntityId) : false)
-    : await getDocumentsForLinkedEntities(session.family.id, session.user.id, "EXPENSE", initialEntries.map((expense) => expense.id))) : [];
+    : await getDocumentsForLinkedEntities(session.family.id, session.user.id, "EXPENSE", [...initialEntryIds])) : [];
   const documentsByExpense = groupBy(documents.map(toExpenseDocumentItem), (document) => document.linkedEntityId ?? "");
   const expenseListEntries = initialEntries.map(toExpenseListItem);
   const expenseListLoadUrl = buildExpenseListLoadUrl(params);
@@ -115,8 +121,6 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
   const isAnalysisArea = isFinanceAnalysisView(view);
   const summaryMax = Math.max(income, spending, Math.abs(saldo), Math.abs(budgetRemaining), 1);
   const budgetUsageWidth = showBudget && monthBudget > 0 ? `${Math.max(4, Math.min(100, (netConsumption / monthBudget) * 100))}%` : "0%";
-  const desktopEntries = view === "overview" ? recentEntries : sortedEntries;
-  const desktopSelectedExpense = desktopSelectedRecord(desktopEntries, params.selected ?? undefined);
   const desktopEntryWorkspace = (view === "overview" || view === "entries") ? <DesktopWorkspace
     ariaLabel="Buchungen und Details"
     title={view === "overview" ? "Buchungen im Blick" : "Alle Buchungen"}
@@ -272,7 +276,7 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
             <Link className="button secondary" href={financeViewHref(params, "categories")} scroll={false}>Alle</Link>
           </div>
           <BudgetPressureList rows={categoryRows} showBudget={showBudget} />
-          <LabelBudgetPressureList rows={labelRows} />
+          <RecentLabelList rows={overviewLabelRows} />
           {desktopMixedCurrencies && <DesktopCurrencyCategoryList rows={categoryRows} entries={selectedEntries} showBudget={showBudget} />}
         </section>
 
@@ -412,8 +416,8 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
               <h2 className="section-title">Vergleich</h2>
             </div>
           </div>
-          <ComparisonRangeForm params={params} comparisonRange={comparisonRange} years={years} />
-          <PeriodComparisonView comparison={comparison} />
+          {comparisonRange ? <ComparisonRangeForm params={params} comparisonRange={comparisonRange} years={years} /> : null}
+          {comparison ? <PeriodComparisonView comparison={comparison} /> : null}
         </section>
       </section>
       ) : null}
@@ -596,6 +600,28 @@ function LabelBudgetPressureList({ rows }: { rows: ReturnType<typeof buildLabelR
         <span className="finance-budget-icon" style={{ background: row.color }} aria-hidden="true">•</span>
         <div><strong>{row.name}</strong><span>{budgetCadenceLabel(row.budgetPeriod)} · {row.budgetUsage.toFixed(0)} % genutzt</span><div className="bar-wrap budget-bar"><span style={{ width: `${Math.max(4, row.budgetUsage)}%`, background: row.color }} /></div></div>
         <div className="amount-column"><strong>{formatMoney(row.spending)}</strong><small className="muted">im Zeitraum</small><small className={row.remaining < 0 ? "negative" : "positive"}>{row.remaining < 0 ? `${formatMoney(Math.abs(row.remaining))} drüber` : `${formatMoney(row.remaining)} frei`}</small></div>
+      </div>)}
+    </div>
+  </section>;
+}
+
+function RecentLabelList({ rows }: { rows: ReturnType<typeof buildLabelRows> }) {
+  if (rows.length === 0) return null;
+  return <section className="finance-label-budget-section" aria-label="Zuletzt verwendete Labels">
+    <h3 className="section-title">Labels</h3>
+    <div className="finance-budget-list">
+      {rows.map((row) => <div className="finance-budget-row" data-has-budget={row.budget > 0 ? "true" : "false"} key={row.id ?? row.name}>
+        <span className="finance-budget-icon" style={{ background: row.color }} aria-hidden="true">•</span>
+        <div>
+          <strong>{row.name}</strong>
+          <span>{row.budget > 0 ? `${budgetCadenceLabel(row.budgetPeriod)} · ${row.budgetUsage.toFixed(0)} % genutzt` : "Ohne Budget"}</span>
+          {row.budget > 0 ? <div className="bar-wrap budget-bar"><span style={{ width: `${Math.max(4, row.budgetUsage)}%`, background: row.color }} /></div> : null}
+        </div>
+        <div className="amount-column">
+          <strong>{formatMoney(row.spending > 0 ? row.spending : row.income)}</strong>
+          <small className="muted">{row.spending > 0 ? "Ausgaben im Zeitraum" : "Einnahmen im Zeitraum"}</small>
+          {row.budget > 0 ? <small className={row.remaining < 0 ? "negative" : "positive"}>{row.remaining < 0 ? `${formatMoney(Math.abs(row.remaining))} drüber` : `${formatMoney(row.remaining)} frei`}</small> : null}
+        </div>
       </div>)}
     </div>
   </section>;

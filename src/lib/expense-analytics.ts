@@ -264,6 +264,33 @@ export function buildLabelRows(entries: AnalyticsExpense[], labels: AnalyticsLab
   }).filter((row) => row.income > 0 || row.spending > 0 || row.neverUsed).sort((a, b) => Math.abs(b.saldo) - Math.abs(a.saldo));
 }
 
+export function recentLabelRows(entries: AnalyticsExpense[], rows: ReturnType<typeof buildLabelRows>, limit = 4) {
+  const lastUsed = new Map<string, number>();
+  for (const entry of entries) {
+    if (!entry.label) continue;
+    const key = entry.label.id ?? entry.label.name;
+    const timestamp = new Date(entry.date).getTime();
+    if (Number.isFinite(timestamp)) lastUsed.set(key, Math.max(lastUsed.get(key) ?? -Infinity, timestamp));
+  }
+  return rows
+    .filter((row) => lastUsed.has(row.id ?? row.name))
+    .sort((a, b) => (lastUsed.get(b.id ?? b.name) ?? 0) - (lastUsed.get(a.id ?? a.name) ?? 0)
+      || a.name.localeCompare(b.name, "de") || (a.id ?? "").localeCompare(b.id ?? ""))
+    .slice(0, limit);
+}
+
+export function recentlyUsedLabelKeys(entries: AnalyticsExpense[], today: Date, days = 30) {
+  const todayStart = Date.UTC(today.getFullYear(), today.getMonth(), today.getDate());
+  const cutoff = todayStart - (days - 1) * 86_400_000;
+  const keys = new Set<string>();
+  for (const entry of entries) {
+    if (!entry.label) continue;
+    const timestamp = new Date(entry.date).getTime();
+    if (timestamp >= cutoff && timestamp < todayStart + 86_400_000) keys.add(entry.label.id ?? entry.label.name);
+  }
+  return keys;
+}
+
 export function buildPeriodRows(entries: AnalyticsExpense[], categories: AnalyticsCategory[], mode: "month" | "year"): PeriodRow[] {
   const rows = new Map<string, PeriodRow>();
   for (const entry of entries) {

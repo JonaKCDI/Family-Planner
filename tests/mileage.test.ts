@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 import ExcelJS from "exceljs";
 import { buildFuelWorkbook, inferCarNameFromFuelFileName, parseFuelWorkbook } from "../src/lib/mileage-formats";
-import { addFuelDerivedFields, calculateFuelStats, calculateFuelStatsFromDerived } from "../src/lib/mileage";
+import { addFuelDerivedFields, calculateFuelStats, calculateFuelStatsFromDerived, compareFuelMetric } from "../src/lib/mileage";
 
 describe("mileage calculations", () => {
   const entries = [
@@ -28,7 +28,7 @@ describe("mileage calculations", () => {
       drivenKm: 896,
       lastOdometerKm: 913
     });
-    expect(stats.averageLitersPer100Km).toBeCloseTo(11.0334821429);
+    expect(stats.averageLitersPer100Km).toBeCloseTo(5.9732142857);
     expect(stats.averagePricePerLiterCents).toBeCloseTo(117.3376492);
   });
 
@@ -44,6 +44,23 @@ describe("mileage calculations", () => {
     expect(januaryRows.map((entry) => entry.drivenKm)).toEqual([642, 550]);
     expect(stats.drivenKm).toBe(1192);
     expect(stats.averageLitersPer100Km).toBeCloseTo(6.2223154362);
+  });
+
+  test("excludes fill-ups without positive distance only from consumption average", () => {
+    const history = [
+      { id: "first", date: new Date("2026-01-01T00:00:00Z"), odometerKm: 100, litersMilli: 40000, costCents: 6000, note: "" },
+      { id: "second", date: new Date("2026-01-08T00:00:00Z"), odometerKm: 600, litersMilli: 30000, costCents: 4500, note: "" },
+      { id: "invalid", date: new Date("2026-01-15T00:00:00Z"), odometerKm: 590, litersMilli: 20000, costCents: 3000, note: "" }
+    ];
+    const derived = addFuelDerivedFields(history);
+    expect(calculateFuelStatsFromDerived(derived)).toMatchObject({ totalCostCents: 13500, totalLitersMilli: 90000, drivenKm: 500, averageLitersPer100Km: 6 });
+    expect(calculateFuelStatsFromDerived(derived.slice(0, 1)).averageLitersPer100Km).toBeNull();
+    expect(calculateFuelStatsFromDerived(derived.slice(1)).averageLitersPer100Km).toBe(6);
+  });
+
+  test("treats fewer driven kilometers as better in the comparison", () => {
+    expect(compareFuelMetric(83, 100, 100, "Kilometer")).toMatchObject({ tone: "tone-positive", label: "Kilometer: 17 % besser als Umfeld" });
+    expect(compareFuelMetric(117, 100, 100, "Kilometer")).toMatchObject({ tone: "tone-negative", label: "Kilometer: 17 % schlechter als Umfeld" });
   });
 });
 

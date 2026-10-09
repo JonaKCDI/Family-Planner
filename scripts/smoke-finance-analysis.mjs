@@ -50,6 +50,11 @@ try {
   await db.familyFinanceLabel.create({ data: { id: "shared-label", familyId: "f", name: "Familienurlaub", color: "#a97a43" } });
   await db.familyCategoryMapping.create({ data: { familyId: "f", userId: "admin", personalId: "food", targetId: "shared" } });
   await db.familyLabelMapping.create({ data: { familyId: "f", userId: "admin", personalId: "label", targetId: "shared-label" } });
+  await db.car.create({ data: { id: "smoke-car", familyId: "f", name: "Prüfauto" } });
+  await db.fuelEntry.createMany({ data: [
+    { familyId: "f", carId: "smoke-car", date: new Date("2026-08-01"), odometerKm: 1000, litersMilli: 30000, costCents: 6000 },
+    { familyId: "f", carId: "smoke-car", date: new Date("2026-09-01"), odometerKm: 1500, litersMilli: 35000, costCents: 7000 }
+  ] });
   console.log("PASS: migrations applied to isolated database; developer preference defaults to false.");
   server = spawn(process.execPath, ["node_modules/next/dist/bin/next", "start", "-p", String(port)], { windowsHide: true, env: { ...process.env, DATABASE_URL: testURL.toString(), APP_URL: baseURL }, stdio: ["ignore", "pipe", "pipe"] });
   let serverLog = "";
@@ -80,7 +85,6 @@ try {
       await expect(page.getByRole("switch")).toHaveCount(0);
       await goto("/ausgaben/planung?bereich=familie&year=2025");
       await expect(page.getByText("Testjahr 2025", { exact: false })).toHaveCount(0);
-      await page.getByRole("button", { name: "Finanzen filtern", exact: true }).click();
       await expect(page.locator('select[name="year"]')).toHaveCount(0);
       await goto("/ausgaben/planung?year=2025");
       await expect(page.getByText("Datengrundlage", { exact: false })).toHaveCount(0);
@@ -98,6 +102,13 @@ try {
       }
       await context.close(); continue;
     }
+    for (const path of ["/dashboard", "/aufgaben", "/vertraege", "/dokumente", "/kilometer?car=smoke-car", "/einstellungen", "/ausgaben/setup", "/ausgaben/planung"]) {
+      await goto(path);
+      await noOverflow();
+    }
+    await goto("/dashboard");
+    await expect(page.getByText("Prüfauto")).toBeVisible();
+    console.log("PASS: cockpit, tasks, contracts, documents, car, settings, finance setup and forecast load at mobile width.");
     await goto("/ausgaben/planung?year=2025");
     await expect(page.locator('select[name="year"]')).toHaveCount(0);
     await expect(page.getByText("Testjahr 2025", { exact: false })).toHaveCount(0);

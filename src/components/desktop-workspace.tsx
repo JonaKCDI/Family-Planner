@@ -56,6 +56,7 @@ export function DesktopWorkspace({
       <div className="desktop-workspace-rows">
         {rows.length === 0 && <p className="desktop-workspace-empty">{empty}</p>}
         {rows.map((row) => <Link
+          prefetch={false}
           className={`desktop-workspace-row${selectedId === row.id ? " is-selected" : ""}${row.tone ? ` tone-${row.tone}` : ""}`}
           href={desktopSelectionHref(pathname, params, row.id)}
           aria-current={selectedId === row.id ? "true" : undefined}

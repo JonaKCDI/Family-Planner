@@ -16,6 +16,7 @@ import { formatDate, formatMoney } from "@/lib/format";
 import {
   addFuelDerivedFields,
   calculateFuelStatsFromDerived,
+  compareFuelMetric,
   formatDecimal,
   formatEuroInputFromCents,
   formatKilometers,
@@ -87,6 +88,7 @@ export default async function MileagePage({ searchParams }: MileagePageProps) {
     .filter((entry) => !query || normalizeSearch(entry.note).includes(query) || String(entry.odometerKm).includes(query));
   const view = getMileageView(params.view);
   const stats = calculateFuelStatsFromDerived(selectedEntries);
+  const allTimeStats = view === "overview" ? calculateFuelStatsFromDerived(derivedEntries) : null;
   const monthlyRows = buildMonthlyRows(selectedEntries);
   const recentEntries = selectedEntries.slice(0, 6);
   const returnTo = getMileageHref(params, {});
@@ -209,6 +211,11 @@ export default async function MileagePage({ searchParams }: MileagePageProps) {
                 <FuelEntryList entries={recentEntries} selectedCarId={selectedCar.id} selectedCarName={selectedCar.name} returnTo={returnTo} categories={categories} labels={labels} documentRoots={documentRoots} settings={fuelExpenseSettings} expensesByEntryId={fuelExpensesByEntryId} documentsByExpenseId={fuelDocumentsByExpenseId} />
               </section>
 
+              {allTimeStats ? <section className="mileage-all-time-section" aria-label="Gesamt seit Beginn">
+                <div className="section-head compact-section-head"><h2 className="section-title">Gesamt seit Beginn</h2></div>
+                <MileageSummaryPanel comparison={null} stats={allTimeStats} />
+              </section> : null}
+
               <Link className="finance-inline-analysis-link" href={getMileageHref(params, { view: "analysis" })} scroll={false}>Verbrauchsanalyse ansehen <span aria-hidden="true">→</span></Link>
             </section>
           ) : null}
@@ -237,8 +244,9 @@ export default async function MileagePage({ searchParams }: MileagePageProps) {
               </div>
               <MileageSummaryPanel comparison={comparison} stats={stats} compact />
               {monthlyRows.length === 0 ? <EmptyState>Noch keine Daten vorhanden.</EmptyState> : (
+                <div className="mileage-analysis-scroll" role="region" aria-label="Autoanalyse, seitlich scrollbar" tabIndex={0}>
                 <div className="mini-table mileage-analysis-table">
-                  <div className="mini-table-head"><span>Monat</span><span>km</span><span>Liter</span><span>Kosten</span><span>Ø</span></div>
+                  <div className="mini-table-head"><span>Monat</span><span>km</span><span>Liter</span><span>€</span><span>Ø</span></div>
                   {monthlyRows.map((row) => (
                     <div className="mini-table-row mileage-analysis-row" key={row.label}>
                       <span data-label="Monat">{row.label}</span>
@@ -248,6 +256,7 @@ export default async function MileagePage({ searchParams }: MileagePageProps) {
                       <strong data-label="Ø">{formatDecimal(row.averageLitersPer100Km)} l</strong>
                     </div>
                   ))}
+                </div>
                 </div>
               )}
             </section>
@@ -263,35 +272,35 @@ function MileageSummaryPanel({
   stats,
   compact = false
 }: {
-  comparison: ReturnType<typeof buildMileageComparison>;
+  comparison: ReturnType<typeof buildMileageComparison> | null;
   stats: ReturnType<typeof calculateFuelStatsFromDerived>;
   compact?: boolean;
 }) {
   return (
-    <section className={compact ? "finance-summary-panel mileage-summary-panel compact" : "finance-summary-panel mileage-summary-panel"} aria-label="Autoüberblick">
-      <div className={`finance-summary-metric mileage-metric ${comparison.cost.tone}`}>
+    <section className={compact ? "finance-summary-panel mileage-summary-panel compact" : "finance-summary-panel mileage-summary-panel"} aria-label={comparison ? "Autoüberblick" : "Gesamtwerte des Autos"}>
+      <div className={`finance-summary-metric mileage-metric ${comparison?.cost.tone ?? "tone-neutral"}`}>
         <div className="finance-summary-card-head"><span>Tankkosten</span><i aria-hidden="true"><Fuel size={17} /></i></div>
         <strong>{formatMoney(stats.totalCostCents)}</strong>
-        <small>{comparison.cost.label}</small>
-        {comparison.cost.sparkWidth ? <div className="finance-summary-spark" aria-hidden="true"><b style={{ width: comparison.cost.sparkWidth }} /></div> : null}
+        <small>{comparison?.cost.label ?? "Alle Tankstopps"}</small>
+        {comparison?.cost.sparkWidth ? <div className="finance-summary-spark" aria-hidden="true"><b style={{ width: comparison.cost.sparkWidth }} /></div> : null}
       </div>
-      <div className={`finance-summary-metric mileage-metric ${comparison.liters.tone}`}>
+      <div className={`finance-summary-metric mileage-metric ${comparison?.liters.tone ?? "tone-neutral"}`}>
         <div className="finance-summary-card-head"><span>Liter</span><i aria-hidden="true"><Droplets size={17} /></i></div>
         <strong>{formatLiters(stats.totalLitersMilli)} l</strong>
-        <small>{comparison.liters.label}</small>
-        {comparison.liters.sparkWidth ? <div className="finance-summary-spark" aria-hidden="true"><b style={{ width: comparison.liters.sparkWidth }} /></div> : null}
+        <small>{comparison?.liters.label ?? "Alle Tankstopps"}</small>
+        {comparison?.liters.sparkWidth ? <div className="finance-summary-spark" aria-hidden="true"><b style={{ width: comparison.liters.sparkWidth }} /></div> : null}
       </div>
-      <div className={`finance-summary-metric mileage-metric ${comparison.distance.tone}`}>
+      <div className={`finance-summary-metric mileage-metric ${comparison?.distance.tone ?? "tone-neutral"}`}>
         <div className="finance-summary-card-head"><span>Gefahren</span><i aria-hidden="true"><Route size={17} /></i></div>
         <strong>{formatKilometers(stats.drivenKm)} km</strong>
-        <small>{comparison.distance.label}</small>
-        {comparison.distance.sparkWidth ? <div className="finance-summary-spark" aria-hidden="true"><b style={{ width: comparison.distance.sparkWidth }} /></div> : null}
+        <small>{comparison?.distance.label ?? "Erfasste Strecken"}</small>
+        {comparison?.distance.sparkWidth ? <div className="finance-summary-spark" aria-hidden="true"><b style={{ width: comparison.distance.sparkWidth }} /></div> : null}
       </div>
-      <div className={`finance-summary-metric mileage-consumption-metric ${comparison.consumption.tone}`}>
+      <div className={`finance-summary-metric mileage-consumption-metric ${comparison?.consumption.tone ?? "tone-neutral"}`}>
         <div className="finance-summary-card-head"><span>Ø l/100 km</span></div>
         <strong>{formatDecimal(stats.averageLitersPer100Km)} l</strong>
-        <small>{comparison.consumption.label}</small>
-        {comparison.consumption.sparkWidth ? <div className="finance-summary-spark" aria-hidden="true"><b style={{ width: comparison.consumption.sparkWidth }} /></div> : null}
+        <small>{comparison?.consumption.label ?? "Nur mit messbarer Strecke"}</small>
+        {comparison?.consumption.sparkWidth ? <div className="finance-summary-spark" aria-hidden="true"><b style={{ width: comparison.consumption.sparkWidth }} /></div> : null}
       </div>
     </section>
   );
@@ -607,20 +616,21 @@ function MileageSetupPanel({
 }
 
 function buildMonthlyRows(entries: ReturnType<typeof addFuelDerivedFields>) {
-  const rows = new Map<string, { label: string; costCents: number; litersMilli: number; drivenKm: number }>();
+  const rows = new Map<string, { label: string; costCents: number; litersMilli: number; litersWithDistanceMilli: number; drivenKm: number }>();
   for (const entry of entries) {
     const date = new Date(entry.date);
     const label = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
-    const row = rows.get(label) ?? { label, costCents: 0, litersMilli: 0, drivenKm: 0 };
+    const row = rows.get(label) ?? { label, costCents: 0, litersMilli: 0, litersWithDistanceMilli: 0, drivenKm: 0 };
     row.costCents += entry.costCents;
     row.litersMilli += entry.litersMilli;
+    if (entry.drivenKm !== null && entry.drivenKm > 0) row.litersWithDistanceMilli += entry.litersMilli;
     row.drivenKm += Math.max(0, entry.drivenKm ?? 0);
     rows.set(label, row);
   }
   return [...rows.values()]
     .map((row) => ({
       ...row,
-      averageLitersPer100Km: row.drivenKm > 0 ? (row.litersMilli / 1000 / row.drivenKm) * 100 : null
+      averageLitersPer100Km: row.drivenKm > 0 ? (row.litersWithDistanceMilli / 1000 / row.drivenKm) * 100 : null
     }))
     .sort((a, b) => b.label.localeCompare(a.label))
     .slice(0, 12);
@@ -647,59 +657,36 @@ function buildMileageComparison(entries: ReturnType<typeof addFuelDerivedFields>
   );
 
   return {
-    cost: compareMetric(
+    cost: compareFuelMetric(
       selectedStats.totalCostCents / 100 / selectedMonthCount,
       neighborStats.totalCostCents / 100 / neighborMonthCount,
       maxNeighborValue(neighborRows, (row) => row.costCents / 100),
-      "lower",
       "Kosten"
     ),
-    liters: compareMetric(
+    liters: compareFuelMetric(
       selectedStats.totalLitersMilli / 1000 / selectedMonthCount,
       neighborStats.totalLitersMilli / 1000 / neighborMonthCount,
       maxNeighborValue(neighborRows, (row) => row.litersMilli / 1000),
-      "lower",
       "Liter"
     ),
-    distance: compareMetric(
+    distance: compareFuelMetric(
       selectedStats.drivenKm / selectedMonthCount,
       neighborStats.drivenKm / neighborMonthCount,
       maxNeighborValue(neighborRows, (row) => row.drivenKm),
-      "higher",
       "Kilometer"
     ),
-    consumption: compareMetric(
+    consumption: compareFuelMetric(
       selectedStats.averageLitersPer100Km,
       neighborStats.averageLitersPer100Km,
       maxNeighborValue(neighborRows, (row) => row.averageLitersPer100Km),
-      "lower",
       "Verbrauch"
     )
-  };
-}
-
-function compareMetric(value: number | null, baseline: number | null, scaleMax: number | null, direction: "lower" | "higher", label: string) {
-  if (value === null || baseline === null || !Number.isFinite(value) || !Number.isFinite(baseline) || baseline <= 0) {
-    return { tone: "tone-neutral", label: `${label}: kein Umfeldvergleich`, sparkWidth: null };
-  }
-  const delta = (value - baseline) / baseline;
-  const sparkWidth = scaleMax !== null && Number.isFinite(scaleMax) && scaleMax > 0 ? percentWidth(value, scaleMax) : null;
-  if (Math.abs(delta) < 0.05) return { tone: "tone-neutral", label: `${label}: nah am Umfeld`, sparkWidth };
-  const better = direction === "lower" ? delta < 0 : delta > 0;
-  return {
-    tone: better ? "tone-positive" : "tone-negative",
-    label: `${label}: ${formatPercent(Math.abs(delta))} ${better ? "besser" : "schlechter"} als Umfeld`,
-    sparkWidth
   };
 }
 
 function maxNeighborValue<T>(rows: T[], getValue: (row: T) => number | null) {
   const values = rows.map(getValue).filter((value): value is number => value !== null && Number.isFinite(value) && value > 0);
   return values.length > 0 ? Math.max(...values) : null;
-}
-
-function formatPercent(value: number) {
-  return new Intl.NumberFormat("de-DE", { maximumFractionDigits: 0 }).format(value * 100) + " %";
 }
 
 function monthKeysBetween(from: Date, to: Date) {
@@ -716,12 +703,6 @@ function monthKeysBetween(from: Date, to: Date) {
 function addMonthsToKey(monthKey: string, delta: number) {
   const parts = splitMonthKey(monthKey) ?? splitMonthKey(getMonthKey())!;
   return getMonthKey(new Date(parts.year, Number(parts.month) - 1 + delta, 1));
-}
-
-function percentWidth(value: number | null, max: number) {
-  if (value === null || !Number.isFinite(value) || value <= 0) return "0%";
-  const percent = Math.max(6, Math.min(100, (Math.abs(value) / Math.max(1, max)) * 100));
-  return `${percent}%`;
 }
 
 function getRange(params: MileagePageParams, currentMonthKey: string) {

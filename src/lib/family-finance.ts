@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { requireSession } from "@/lib/auth";
 import { ensureDueContractExpenses } from "@/lib/contract-auto-expenses";
+import { cache } from "react";
 
 type FamilyTransferRow = { id: string; senderUserId: string; recipientUserId: string; createdByUserId: string; amountCents: number; currency: string; date: Date; note: string | null; createdAt: Date; sender: { id: string; name: string }; recipient: { id: string; name: string } };
 
@@ -12,7 +13,7 @@ export async function requireFinanceMember() {
 }
 
 /** Intentionally no expense relation includes: private source metadata never leaves this query. */
-export async function getFamilyFinance() {
+export const getFamilyFinance = cache(async function getFamilyFinance() {
   const session = await requireFinanceMember();
   const familyId = session.family.id;
   // A hot-reloaded development server can still hold the Prisma client generated
@@ -60,6 +61,6 @@ export async function getFamilyFinance() {
     };
   });
   return { session, expenses, categories, labels, transfers, members: members.map(member => member.user) };
-}
+});
 
 export type FamilyFinanceExpense = Awaited<ReturnType<typeof getFamilyFinance>>["expenses"][number];

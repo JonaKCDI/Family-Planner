@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/finance-link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, BanknoteArrowUp, ChevronRight, List, ReceiptText, Scale } from "lucide-react";
 import { CategoryIcon } from "@/components/category-icon";

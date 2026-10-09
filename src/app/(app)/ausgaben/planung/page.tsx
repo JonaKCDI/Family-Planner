@@ -2,11 +2,11 @@ import { allowedForecastYear, developerFeaturesEnabled } from "@/lib/developer-f
 import { FamilyFinancePage } from "@/components/family-finance-page";
 import { FinanceAreaIndicator } from "@/components/finance-area-switch";
 import type { ExpenseFilterParams } from "@/lib/expense-filter-url";
-import Link from "next/link";
+import Link from "@/components/finance-link";
 import { BanknoteArrowUp, ReceiptText, Scale } from "lucide-react";
 import { CategoryIcon } from "@/components/category-icon";
 import { requireSession } from "@/lib/auth";
-import { getVisibleCategories, getVisibleExpenses } from "@/lib/queries";
+import { getVisibleCategories, getVisibleExpenseSummaries } from "@/lib/queries";
 import { monthlySaldo, movingAverage, recordedMonths, monthOffset, withoutExcludedCategories, forecastReference, forecastOverview, smoothedSaldoForecast } from "@/lib/expense-forecast";
 import { formatMoney } from "@/lib/format";
 import { ForecastChart } from "@/components/expense-forecast-charts";
@@ -20,7 +20,7 @@ export default async function ExpensePlanningPage({ searchParams }: { searchPara
   const params = await searchParams;
   if (params.bereich === "familie") return <FamilyFinancePage params={params} planning />;
   const [expenses, categories] = await Promise.all([
-    getVisibleExpenses(session.family.id, session.user.id),
+    getVisibleExpenseSummaries(session.family.id, session.user.id),
     getVisibleCategories(session.family.id, session.user.id, "EXPENSE")
   ]);
   const reference = forecastReference(expenses, allowedForecastYear(session, params.year));

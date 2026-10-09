@@ -10,7 +10,7 @@ export function FinanceAreaIndicator() {
   const family = params.get("bereich") === "familie";
   const href = (area: "persoenlich" | "familie") => financeAreaHref(pathname, params.toString(), area);
   const nextArea = family ? "persoenlich" : "familie";
-  return <Link className="finance-area-indicator" href={href(nextArea)} aria-label={`Zu ${family ? "persönlichen" : "Familien"} Finanzen wechseln`}>{family ? "Familie" : "Persönlich"}</Link>;
+  return <Link className="finance-area-indicator" href={href(nextArea)} prefetch={false} aria-label={`Zu ${family ? "persönlichen" : "Familien"} Finanzen wechseln`}>{family ? "Familie" : "Persönlich"}</Link>;
 }
 
 // Kept as a compatibility export for planning/setup routes; those routes now

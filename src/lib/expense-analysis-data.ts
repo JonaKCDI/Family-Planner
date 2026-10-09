@@ -1,6 +1,6 @@
 import { requireSession } from "@/lib/auth";
 import { ensureDueContractExpenses } from "@/lib/contract-auto-expenses";
-import { getVisibleExpenses, getVisibleCategories, getExpenseLabels, getDocumentsForLinkedEntities } from "@/lib/queries";
+import { getVisibleExpenseSummaries, getVisibleExpenses, getVisibleCategories, getExpenseLabels, getDocumentsForLinkedEntities } from "@/lib/queries";
 import { getFamilyFinance } from "@/lib/family-finance";
 import { filterFamilyExpenses, getFamilyExpenseRange } from "@/lib/family-finance-filters";
 import { filterExpenseAssignments, filterExpenseFacets } from "@/lib/expense-filters";
@@ -21,8 +21,9 @@ export async function loadExpenseAnalysis(params: ExpenseFilterParams, dimension
   }
   const session = await requireSession();
   await ensureDueContractExpenses(session.family.id, session.user.id);
+  const query = (params.q || "").trim().toLowerCase();
   const [expenses, categories, labels] = await Promise.all([
-    getVisibleExpenses(session.family.id, session.user.id),
+    query ? getVisibleExpenses(session.family.id, session.user.id) : getVisibleExpenseSummaries(session.family.id, session.user.id),
     getVisibleCategories(session.family.id, session.user.id, "EXPENSE"),
     getExpenseLabels(session.family.id, session.user.id, { includeArchived: true })
   ]);
@@ -33,7 +34,6 @@ export async function loadExpenseAnalysis(params: ExpenseFilterParams, dimension
   const selectedParams = analysisEntryParams(context, dimension, id);
   const candidates = filterExpenseFacets(filterExpenseAssignments(expenses, selectedParams), selectedParams)
     .filter(entry => entry.date >= range.from && entry.date <= range.to);
-  const query = (params.q || "").trim().toLowerCase();
   const documents = query ? await getDocumentsForLinkedEntities(session.family.id, session.user.id, "EXPENSE", candidates.map(e => e.id)) : [];
   const docs = new Map<string, typeof documents>();
   for (const document of documents) if (document.linkedEntityId) {
