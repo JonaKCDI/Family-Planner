@@ -6460,6 +6460,93 @@ body { font-family: var(--app-font-family); }
   align-items: center;
 }
 
+@media (min-width: 701px) {
+  .finance-page-head .finance-toolbar {
+    display: flex;
+    gap: .25rem;
+  }
+
+  .finance-page-head .finance-search.is-open {
+    position: absolute;
+    z-index: 12;
+    top: 50%;
+    right: 48px;
+    width: min(560px, calc(100% - 260px));
+    translate: 0 -50%;
+  }
+
+  .finance-page-head .finance-search.is-open > .task-search-toggle {
+    display: none;
+  }
+
+  .finance-page-head .finance-inline-search {
+    display: grid;
+    grid-template-columns: 40px minmax(0, 1fr) 44px;
+    align-items: center;
+    gap: .35rem;
+    width: 100%;
+    min-height: 44px;
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    background: #fff;
+    padding: 0 .2rem 0 .1rem;
+    box-shadow: 0 10px 28px rgba(22, 35, 42, .12);
+    transform-origin: right center;
+    animation: task-search-open .18s ease-out;
+  }
+
+  .finance-page-head .finance-search.is-closing .finance-inline-search {
+    pointer-events: none;
+    animation: task-search-close .18s ease-in forwards;
+  }
+
+  .finance-page-head .finance-inline-search label {
+    min-width: 0;
+  }
+
+  .finance-page-head .finance-inline-search label span,
+  .finance-page-head .finance-inline-search .button span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+
+  .finance-page-head .finance-inline-search input {
+    width: 100%;
+    min-height: 42px;
+    border: 0;
+    background: transparent;
+    padding: .45rem .2rem;
+    outline: 0;
+  }
+
+  .finance-page-head .finance-inline-search input:focus-visible {
+    box-shadow: none;
+  }
+
+  .finance-page-head .finance-inline-search .task-search-close,
+  .finance-page-head .finance-inline-search .button {
+    display: inline-flex;
+    width: 40px;
+    height: 40px;
+    min-height: 40px;
+    align-items: center;
+    justify-content: center;
+    border: 0;
+    background: transparent;
+    color: var(--muted);
+    padding: 0;
+  }
+
+  .finance-page-head .finance-inline-search .button {
+    width: 44px;
+    color: var(--foreground);
+  }
+}
+
 .finance-primary-tabs,
 .finance-analysis-subtabs {
   display: flex;

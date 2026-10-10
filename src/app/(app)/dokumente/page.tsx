@@ -41,10 +41,7 @@ export default async function DocumentsPage({ searchParams }: DocumentsPageProps
   const visibleDocuments = filterDocumentsByTab(searchedDocuments, tab);
   const activeFilterCount = tab === "all" ? 0 : 1;
   const normalizedParams = normalizeDocumentParams(params);
-  const desktopRecords = [
-    ...visibleDocuments.map((document) => ({ id: `ref:${document.id}`, kind: "reference" as const, document })),
-    ...(tab === "all" || tab === "files" ? explorerEntries.filter((entry) => entry.kind === "file" && (!query || entry.name.toLocaleLowerCase("de-DE").includes(query))) : []).map((entry) => ({ id: `file:${selectedRoot?.id ?? ""}:${entry.relativePath}`, kind: "file" as const, entry }))
-  ];
+  const desktopRecords = visibleDocuments.map((document) => ({ id: `ref:${document.id}`, document }));
   const desktopSelected = desktopSelectedRecord(desktopRecords, params.selected);
 
   return (
@@ -75,16 +72,15 @@ export default async function DocumentsPage({ searchParams }: DocumentsPageProps
 
       <DesktopWorkspace
         className="desktop-document-workspace"
-        ariaLabel="Dokumente und Details"
+        ariaLabel="Gespeicherte Dokumentverweise und Details"
         title="Dokumente"
-        description="Gespeicherte Verweise und Dateien im aktuellen Ordner"
-        rows={desktopRecords.map((record) => record.kind === "reference"
-          ? { id: record.id, title: record.document.title, subtitle: record.document.documentRoot?.name ?? (record.document.referenceType === "LOCAL_FILE" ? "NAS-Datei" : "HTTPS-Link"), meta: formatDate(record.document.createdAt) }
-          : { id: record.id, title: record.entry.name, subtitle: selectedRoot?.name ?? "Datei", meta: formatFileSize(record.entry.fileSize) })}
+        description="In der App gespeicherte Verweise"
+        rows={desktopRecords.map((record) => ({ id: record.id, title: record.document.title, subtitle: record.document.documentRoot?.name ?? (record.document.referenceType === "LOCAL_FILE" ? "NAS-Datei" : "HTTPS-Link"), meta: formatDate(record.document.createdAt) }))}
         selectedId={desktopSelected?.id}
         pathname="/dokumente"
         params={params}
-        detail={desktopSelected?.kind === "reference" ? <DesktopDetail title={desktopSelected.document.title} eyebrow="Gespeicherter Verweis" actions={<>
+        empty="Noch keine Dokumentverweise gespeichert."
+        detail={desktopSelected ? <DesktopDetail title={desktopSelected.document.title} eyebrow="Gespeicherter Verweis" actions={<>
           <DocumentEditModal document={desktopSelected.document} documentRoots={roots} />
           <form action={deleteDocumentReference}><input type="hidden" name="id" value={desktopSelected.document.id} /><ConfirmSubmitButton className="task-detail-edit-button danger-icon-button" title="Dokument löschen?" message="Die Referenz wird entfernt. Die Datei selbst bleibt auf dem NAS erhalten."><Trash2 size={18} aria-hidden="true" /><span className="sr-only">Dokument löschen</span></ConfirmSubmitButton></form>
         </>}>
@@ -99,15 +95,6 @@ export default async function DocumentsPage({ searchParams }: DocumentsPageProps
           ]} />
           {desktopSelected.document.description && <p className="desktop-detail-note">{desktopSelected.document.description}</p>}
           {desktopSelected.document.referenceType === "LOCAL_FILE" ? <div className="document-detail-actions"><DocumentFilePreview href={`/api/documents/file?id=${encodeURIComponent(desktopSelected.document.id)}`} downloadHref={`/api/documents/file?id=${encodeURIComponent(desktopSelected.document.id)}&download=1`} fileName={desktopSelected.document.fileName ?? desktopSelected.document.title} mimeType={desktopSelected.document.mimeType} disabled={!isPreviewableMimeType(desktopSelected.document.mimeType)} /><a className="button secondary" href={`/api/documents/file?id=${encodeURIComponent(desktopSelected.document.id)}&download=1`}>Download</a></div> : <a className="button" href={desktopSelected.document.url} target="_blank" rel="noreferrer">Link öffnen</a>}
-        </DesktopDetail> : desktopSelected?.kind === "file" && selectedRoot ? <DesktopDetail title={desktopSelected.entry.name} eyebrow="NAS-Datei">
-          <DesktopFacts items={[
-            { label: "Bereich", value: selectedRoot.name },
-            { label: "Größe", value: formatFileSize(desktopSelected.entry.fileSize) },
-            { label: "Aktualisiert", value: formatDate(desktopSelected.entry.updatedAt) },
-            { label: "Pfad", value: desktopSelected.entry.relativePath }
-          ]} />
-          <div className="document-detail-actions"><DocumentFilePreview href={`/api/documents/file?rootId=${encodeURIComponent(selectedRoot.id)}&path=${encodeURIComponent(desktopSelected.entry.relativePath)}`} downloadHref={`/api/documents/file?rootId=${encodeURIComponent(selectedRoot.id)}&path=${encodeURIComponent(desktopSelected.entry.relativePath)}&download=1`} fileName={desktopSelected.entry.name} mimeType={desktopSelected.entry.mimeType} disabled={!desktopSelected.entry.previewable} /><a className="button secondary" href={`/api/documents/file?rootId=${encodeURIComponent(selectedRoot.id)}&path=${encodeURIComponent(desktopSelected.entry.relativePath)}&download=1`}>Download</a></div>
-          <ActionModal title="Datei als Verweis speichern" trigger="Als Verweis speichern" triggerClassName="button" sheetVariant="create" wide modalId={`desktop-save-file-${safeModalId(desktopSelected.entry.relativePath)}`}><form action={createLocalDocumentReference} className="form form-grid modal-form document-edit-form"><input type="hidden" name="documentRootId" value={selectedRoot.id} /><input type="hidden" name="relativePath" value={desktopSelected.entry.relativePath} /><label>Titel<input name="title" defaultValue={desktopSelected.entry.name} required /></label><LinkedEntityFields /><ScopeSelect /><label className="full-span">Beschreibung<textarea name="description" /></label><div className="modal-submit-row modal-footer"><button className="button" type="submit">Verweis speichern</button></div></form></ActionModal>
         </DesktopDetail> : null}
       />
 
