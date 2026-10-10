@@ -213,7 +213,11 @@ export function summarizeCategoryBudgets(rows: Array<{ budget: number; netConsum
   return { budget, consumption, remaining: budget - consumption };
 }
 
-export function buildLabelRows(entries: AnalyticsExpense[], labels: AnalyticsLabel[], range?: BudgetRange, allEntries: AnalyticsExpense[] = entries) {
+export function buildLabelRows(
+  entries: AnalyticsExpense[], labels: AnalyticsLabel[], range?: BudgetRange,
+  allEntries: AnalyticsExpense[] = entries,
+  allTimeTotals?: ReadonlyMap<string, { income: number; spending: number }>
+) {
   const rows = new Map<string, { income: number; spending: number; color: string; budget: number; budgetPeriod: BudgetCadence; neverUsed: boolean; id?: string; name: string }>();
   const labelsByName = new Map(labels.map((label) => [label.id ?? label.name, label]));
   for (const label of labels) {
@@ -245,10 +249,13 @@ export function buildLabelRows(entries: AnalyticsExpense[], labels: AnalyticsLab
     const amount = row.spending;
     const saldo = row.income - row.spending;
     const netConsumption = Math.max(0, row.spending - row.income);
-    const comparisonEntries = range && row.budgetPeriod === "ALL_TIME"
+    const comparisonEntries = !allTimeTotals && range && row.budgetPeriod === "ALL_TIME"
       ? allEntries.filter((entry) => (entry.label?.id ?? entry.label?.name) === (row.id ?? row.name))
       : entries.filter((entry) => (entry.label?.id ?? entry.label?.name) === (row.id ?? row.name));
-    const budgetConsumption = Math.max(0, sumByKind(comparisonEntries, "EXPENSE") - sumByKind(comparisonEntries, "INCOME"));
+    const storedTotals = allTimeTotals?.get(row.id ?? row.name);
+    const budgetConsumption = Math.max(0, storedTotals
+      ? storedTotals.spending - storedTotals.income
+      : sumByKind(comparisonEntries, "EXPENSE") - sumByKind(comparisonEntries, "INCOME"));
     const budget = range && row.budgetPeriod !== "ALL_TIME"
       ? range.mode === "custom" || range.mode === "all" ? 0 : budgetForRange(row.budget, row.budgetPeriod, range)
       : row.budget;

@@ -73,10 +73,13 @@ try {
     const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
     await context.addCookies([{ name: process.env.SESSION_COOKIE_NAME || "family_app_session", value: token, url: baseURL }]);
     const page = await context.newPage();
+    let bootstrapRequests = 0;
+    page.on("request", request => { if (new URL(request.url()).pathname === "/api/sync/bootstrap") bootstrapRequests += 1; });
     page.on("pageerror", error => errors.push(`${page.url()}: ${error.message}`));
     const goto = async path => { const response = await page.goto(`${baseURL}${path}`); expect(response.status(), path).toBe(200); };
     const noOverflow = async () => expect(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)).toBe(false);
     await goto("/einstellungen");
+    await expect.poll(() => bootstrapRequests).toBe(1);
     if (userId === "member") {
       await expect(page.getByRole("link", { name: /Entwicklerfunktionen/ })).toHaveCount(0);
       // Even a stale enabled preference cannot grant developer behavior to a member.
@@ -131,8 +134,17 @@ try {
     await expect(page.getByText(/Testansicht/)).toHaveCount(0);
     await goto("/ausgaben?month=2026-09&view=categories&label=label");
     const row = page.locator(".finance-drill-row").first();
+    await expect(row).toBeVisible();
     expect(await row.locator("a a").count()).toBe(0);
-    for (const link of await row.locator(".finance-analysis-icon").all()) { const box = await link.boundingBox(); expect(box.width).toBeGreaterThanOrEqual(44); expect(box.height).toBeGreaterThanOrEqual(44); }
+    const visibleIcons = [];
+    for (const link of await row.locator(".finance-analysis-icon").all()) {
+      const box = await link.boundingBox();
+      if (!box) continue;
+      visibleIcons.push(box);
+      expect(box.width).toBeGreaterThanOrEqual(44);
+      expect(box.height).toBeGreaterThanOrEqual(44);
+    }
+    expect(visibleIcons.length).toBeGreaterThan(0);
     await noOverflow();
     await page.screenshot({ path: ".next/analysis-smoke/categories-mobile.png", fullPage: true });
     await row.getByRole("link", { name: /^Analyse:/ }).click();
@@ -144,6 +156,52 @@ try {
     const listParams = new URL(listHref, baseURL).searchParams;
     const payload = await (await context.request.get(`${baseURL}/api/expenses/list?${listParams}`)).json();
     expect(payload.entries.filter(e => e.kind === "EXPENSE").reduce((sum, e) => sum + e.amountCents, 0)).toBe(24375);
+    const allList = `${baseURL}/api/expenses/list?from=2022-01-01&to=2026-09-30&sort=date-desc`;
+    const expected = await (await context.request.get(`${allList}&limit=100`)).json();
+    const paged = [];
+    for (let offset = 0; offset < expected.totalCount; offset += 7) {
+      const slice = await (await context.request.get(`${allList}&offset=${offset}&limit=7`)).json();
+      expect(slice.totalCount).toBe(expected.totalCount);
+      paged.push(...slice.entries.map(entry => entry.id));
+    }
+    expect(paged).toEqual(expected.entries.map(entry => entry.id));
+    expect(new Set(paged).size).toBe(expected.totalCount);
+    const familyList = `${baseURL}/api/expenses/list?bereich=familie&from=2022-01-01&to=2026-09-30`;
+    const familyExpected = await (await context.request.get(`${familyList}&limit=100`)).json();
+    const familyPaged = [];
+    for (let offset = 0; offset < familyExpected.totalCount; offset += 7) {
+      const slice = await (await context.request.get(`${familyList}&offset=${offset}&limit=7`)).json();
+      expect(slice.totalCount).toBe(familyExpected.totalCount);
+      familyPaged.push(...slice.entries.map(entry => entry.id));
+    }
+    expect(familyPaged).toEqual(familyExpected.entries.map(entry => entry.id));
+    expect(new Set(familyPaged).size).toBe(familyExpected.totalCount);
+    expect(familyExpected.entries.map(entry => entry.id)).not.toContain("private");
+    const documentSearch = await (await context.request.get(`${baseURL}/api/expenses/list?q=Suchbeleg`)).json();
+    expect(documentSearch.entries.map(entry => entry.id)).toContain("e-2026-9");
+    const analysisUrl = page.url();
+    // Keep the first browser open while another client changes server data.
+    const secondContext = await browser.newContext();
+    await secondContext.addCookies([{ name: process.env.SESSION_COOKIE_NAME || "family_app_session", value: token, url: baseURL }]);
+    const secondPage = await secondContext.newPage();
+    await secondPage.goto(`${baseURL}/ausgaben?month=2026-09&view=entries`);
+    await expect(secondPage.getByRole("button", { name: "Neu erstellen" })).toBeVisible();
+    await page.goto(`${baseURL}/ausgaben?month=2026-09&view=overview`);
+    await expect(page.getByRole("link", { name: "Einträge", exact: true })).toBeVisible();
+    await secondPage.getByRole("button", { name: "Neu erstellen" }).click();
+    await secondPage.locator('input[name="amount"]').fill("7,77");
+    await secondPage.locator('input[name="date"]').fill("2026-09-30");
+    await secondPage.locator('input[name="description"]').fill("Zweitgerät aktuell");
+    await secondPage.getByRole("button", { name: "Buchung speichern" }).click();
+    await expect.poll(() => db.expense.count({ where: { familyId: "f", ownerUserId: "admin", description: "Zweitgerät aktuell" } })).toBe(1);
+    const refreshed = await (await context.request.get(`${baseURL}/api/expenses/list?month=2026-09`)).json();
+    expect(refreshed.entries.some(entry => entry.description === "Zweitgerät aktuell")).toBe(true);
+    await page.getByRole("link", { name: "Einträge", exact: true }).click();
+    await expect(page.getByRole("button", { name: /Zweitgerät aktuell/ })).toBeVisible();
+    await secondContext.close();
+    console.log("PASS: paged list has no missing or duplicate rows; document search and a second-client change stay current.");
+    await page.goto(analysisUrl);
+    await expect(page.getByRole("link", { name: "Zurück zur Analyse", exact: true })).toBeVisible();
     const backLink = page.getByRole("link", { name: "Zurück zur Analyse", exact: true });
     expect(new URL(await backLink.getAttribute("href"), baseURL).searchParams.get("month")).toBe("2026-09");
     await backLink.click();
@@ -165,10 +223,39 @@ try {
     await goto("/ausgaben/analyse/kategorie/food?year=2026");
     await page.setViewportSize({ width: 1366, height: 900 });
     await noOverflow();
+    await expect(page.locator(".finance-detail-chart")).toBeVisible();
     expect((await page.locator(".finance-detail-chart").boundingBox()).height).toBeLessThan(400);
     await page.screenshot({ path: ".next/analysis-smoke/detail-desktop.png", fullPage: true });
     await goto("/ausgaben/analyse/kategorie/food?year=2020");
     await expect(page.getByText(/Keine Buchungen in diesem Zeitraum/)).toBeVisible();
+    await db.expense.createMany({ data: Array.from({ length: 110 }, (_, index) => ({
+      id: `bulk-${index}`, familyId: "f", ownerUserId: "admin", kind: "EXPENSE", amountCents: 100,
+      date: new Date("2024-10-10"), description: `Bulk ${index}`
+    })) });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await goto("/ausgaben?month=2024-10&view=entries");
+    const loadMore = page.getByRole("button", { name: "Mehr laden" });
+    await expect(loadMore).toBeVisible();
+    await context.route("**/api/expenses/list?**", route => route.abort());
+    await loadMore.click();
+    await expect(page.getByRole("alert").filter({ hasText: "Einträge konnten nicht geladen werden" })).toBeVisible();
+    await context.unroute("**/api/expenses/list?**");
+    await loadMore.click();
+    await expect(loadMore).toHaveCount(0);
+    expect(await page.locator(".expense-list .expense-row-trigger").count()).toBeGreaterThanOrEqual(110);
+    console.log("PASS: failed page request can be retried; 110 entries load without a missing page.");
+    await goto("/ausgaben?month=2026-09");
+    await expect(page.getByRole("button", { name: "Neu erstellen" })).toBeVisible();
+    await context.setOffline(true);
+    await page.getByRole("button", { name: "Neu erstellen" }).click();
+    await page.locator('input[name="amount"]').fill("4,56");
+    await page.locator('input[name="date"]').fill("2026-09-14");
+    await page.locator('input[name="description"]').fill("Offline Testbuchung");
+    await page.getByRole("button", { name: "Buchung speichern" }).click();
+    expect(await db.expense.count({ where: { description: "Offline Testbuchung" } })).toBe(0);
+    await context.setOffline(false);
+    await expect.poll(() => db.expense.count({ where: { familyId: "f", ownerUserId: "admin", description: "Offline Testbuchung" } }), { timeout: 10000 }).toBe(1);
+    console.log("PASS: offline expense creation stays queued and syncs once connectivity returns.");
     console.log("PASS: admin toggle on/off, personal/family/category/label routes, filters, weekly/monthly/yearly views, amounts, empty state, mobile and desktop.");
     await context.close();
   }

@@ -26,6 +26,8 @@ import { buildExpensesHref, buildMonthNavigationHref, buildPeriodHref, buildYear
 import { expenseSource, filterExpenseFacets, normalizeList, sourceLabel } from "@/lib/expense-filters";
 import { formatMonthKeyLabel } from "@/lib/month-options";
 import { getVisibleDocumentRoots, getDocumentsForLinkedEntities, getExpenseLabels, getVisibleCategories, getVisibleContracts, getVisibleExpenses } from "@/lib/queries";
+import { getVisibleExpensesByIds } from "@/lib/queries";
+import { getPersonalExpenseCandidates, getPersonalFinanceMetadata, getPersonalLabelBudgetTotals, type FinanceExpenseCandidate } from "@/lib/finance-read";
 import { ActionModal } from "@/components/action-modal";
 import { ArrowDownRight, ArrowRight, ArrowUpRight, BanknoteArrowUp, CalendarCheck, ListFilter, ReceiptText, Scale, WalletCards } from "lucide-react";
 import { ExpenseEntryList } from "@/components/expense-entry-list";
@@ -52,8 +54,15 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
   const canonicalHref = getCanonicalExpensesHref(params);
   if (canonicalHref !== getRawExpensesHref(params)) redirect(canonicalHref);
   await ensureDueContractExpenses(session.family.id, session.user.id);
+  const optimizedReads = process.env.FINANCE_OPTIMIZED_READS !== "0";
+  const currentMonthKey = getMonthKey();
+  const metadata = optimizedReads ? await getPersonalFinanceMetadata(session.family.id, session.user.id) : null;
+  const historicalExpenses = optimizedReads ? null : await getVisibleExpenses(session.family.id, session.user.id);
+  const range = getRange(params, currentMonthKey, metadata?.rangeEntries ?? historicalExpenses ?? []);
   const [expenses, categories, labels, allLabels, contracts] = await Promise.all([
-    getVisibleExpenses(session.family.id, session.user.id),
+    optimizedReads
+      ? getPersonalExpenseCandidates(session.family.id, session.user.id, range)
+      : Promise.resolve(historicalExpenses!),
     getVisibleCategories(session.family.id, session.user.id, "EXPENSE"),
     getExpenseLabels(session.family.id, session.user.id),
     getExpenseLabels(session.family.id, session.user.id, { includeArchived: true }),
@@ -61,10 +70,8 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
   ]);
   const documentRoots = (await getVisibleDocumentRoots(session.family.id, session.user.id, session.role)).map(({ id, name }) => ({ id, name }));
   const query = normalizeSearch(params.q);
-  const currentMonthKey = getMonthKey();
   const currentYear = Number(currentMonthKey.slice(0, 4));
-  const years = [...new Set([currentYear, ...expenses.map((entry) => new Date(entry.date).getFullYear())])].sort((a, b) => b - a);
-  const range = getRange(params, currentMonthKey, expenses);
+  const years = [...new Set([currentYear, ...(metadata?.years ?? expenses.map((entry) => new Date(entry.date).getFullYear()))])].sort((a, b) => b - a);
   const rangeFilteredEntries = filterExpenseAssignments(expenses, params)
     .filter((entry) => isInRange(entry.date, range.from, range.to));
   const facetFilteredEntries = filterExpenseFacets(rangeFilteredEntries, params);
@@ -86,10 +93,13 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
   const showBudget = range.mode !== "all" && (!params.currency || params.currency === "EUR");
   const needsCategoryRows = view === "overview" || view === "categories" || view === "budgets";
   const needsLabelRows = view === "overview" || view === "labels" || view === "budgets";
-  const budgetHistoryEntries = needsLabelRows ? expenses.filter((entry) => entry.currency === (params.currency || "EUR")) : [];
+  const budgetHistoryEntries = needsLabelRows && !optimizedReads ? expenses.filter((entry) => entry.currency === (params.currency || "EUR")) : [];
+  const labelBudgetTotals = needsLabelRows && optimizedReads
+    ? await getPersonalLabelBudgetTotals(session.family.id, session.user.id, params.currency || "EUR")
+    : undefined;
   const categoryRows = needsCategoryRows ? buildCategoryRows(selectedEntries, categories, spending, showBudget ? range : false) : [];
   const desktopMixedCurrencies = !params.currency && new Set(selectedEntries.map((entry) => entry.currency)).size > 1;
-  const labelRows = needsLabelRows ? buildLabelRows(selectedEntries, labels, range, budgetHistoryEntries) : [];
+  const labelRows = needsLabelRows ? buildLabelRows(selectedEntries, labels, range, budgetHistoryEntries, labelBudgetTotals) : [];
   const overviewLabelRows = view === "overview" ? recentLabelRows(selectedEntries, labelRows) : [];
   const categoryAnalysisRows = categoryRows.filter((row) => row.spending > 0 || row.income > 0);
   const labelAnalysisRows = labelRows.filter((row) => row.spending > 0 || row.income > 0 || row.budget > 0);
@@ -98,22 +108,33 @@ export default async function ExpensesPage({ searchParams }: ExpensesPageProps) 
   const monthlyRows = view === "budgets" ? buildPeriodRows(selectedEntries, categories, "month") : [];
   const analysisParams = explicitExpensePeriod(params, range);
   const comparisonRange = view === "compare" ? getComparisonRange(params, range) : null;
-  const comparisonEntries = comparisonRange ? buildComparableEntries(expenses, params, comparisonRange, query) : [];
+  const comparisonPool = comparisonRange && optimizedReads
+    ? await getPersonalExpenseCandidates(session.family.id, session.user.id, comparisonRange)
+    : expenses;
+  const comparisonEntries = comparisonRange ? buildComparableEntries(comparisonPool, params, comparisonRange, query) : [];
   const comparison = comparisonRange ? buildPeriodComparison(selectedEntries, comparisonEntries, categories, range, comparisonRange) : null;
   const activeFilterChips = buildActiveFilterChips(params, categories, allLabels, range);
-  const paymentMethods = buildPaymentMethodOptions(expenses);
+  const paymentMethods = metadata
+    ? metadata.paymentMethods.filter(isUsefulFilterValue).sort((a, b) => a.localeCompare(b, "de-DE"))
+    : buildPaymentMethodOptions(expenses);
   const activeFilterCount = countActiveFinanceFilters(params);
   const initialEntryLimit = view === "entries" ? getInitialEntryLimit(range.mode) : 0;
   const initialEntries = view === "entries" ? sortedEntries.slice(0, initialEntryLimit) : view === "overview" ? recentEntries : [];
   const desktopEntries = view === "overview" ? recentEntries : sortedEntries;
-  const desktopSelectedExpense = desktopSelectedRecord(desktopEntries, params.selected ?? undefined);
-  const initialEntryIds = new Set([...initialEntries.map((expense) => expense.id), ...(desktopSelectedExpense && (view === "overview" || view === "entries") ? [desktopSelectedExpense.id] : [])]);
+  const desktopSelectedCandidate = desktopSelectedRecord(desktopEntries, params.selected ?? undefined);
+  const initialEntryIds = new Set([...initialEntries.map((expense) => expense.id), ...(desktopSelectedCandidate && (view === "overview" || view === "entries") ? [desktopSelectedCandidate.id] : [])]);
+  const fullInitialEntries = await getVisibleExpensesByIds(session.family.id, session.user.id, [...initialEntryIds]);
+  const fullEntriesById = new Map(fullInitialEntries.map(entry => [entry.id, entry]));
+  const desktopSelectedExpense = desktopSelectedCandidate ? fullEntriesById.get(desktopSelectedCandidate.id) : undefined;
   const shouldLoadEntryDocuments = view === "entries" || view === "overview";
   const documents = shouldLoadEntryDocuments ? (query
     ? searchableDocuments.filter((document) => document.linkedEntityId ? initialEntryIds.has(document.linkedEntityId) : false)
     : await getDocumentsForLinkedEntities(session.family.id, session.user.id, "EXPENSE", [...initialEntryIds])) : [];
   const documentsByExpense = groupBy(documents.map(toExpenseDocumentItem), (document) => document.linkedEntityId ?? "");
-  const expenseListEntries = initialEntries.map(toExpenseListItem);
+  const expenseListEntries = initialEntries.flatMap(entry => {
+    const full = fullEntriesById.get(entry.id);
+    return full ? [toExpenseListItem(full)] : [];
+  });
   const expenseListLoadUrl = buildExpenseListLoadUrl(params);
   const returnTo = getRawExpensesHref(params);
   const euroBudgetRows = showBudget ? buildCategoryRows(selectedEntries.filter((entry) => entry.currency === "EUR"), categories, 0, range) : [];
@@ -1258,7 +1279,7 @@ function isUsefulFilterValue(value: string | null | undefined) {
 }
 
 
-type ExpenseLike = Awaited<ReturnType<typeof getVisibleExpenses>>[number];
+type ExpenseLike = FinanceExpenseCandidate;
 type CategoryLike = Awaited<ReturnType<typeof getVisibleCategories>>[number];
 type LabelLike = Awaited<ReturnType<typeof getExpenseLabels>>[number];
 
