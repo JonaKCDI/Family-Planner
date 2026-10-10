@@ -64,39 +64,54 @@ export function ExpenseEntryList({
   const [state, setState] = useState({
     initialEntries,
     initialDocumentsByExpense,
+    initialTotalCount: totalCount,
     entries: initialEntries,
     documentsByExpense: initialDocumentsByExpense,
-    loading: false
+    loadedCount: initialEntries.length,
+    totalCount,
+    loading: false,
+    error: ""
   });
-  const currentState = state.initialEntries === initialEntries && state.initialDocumentsByExpense === initialDocumentsByExpense
+  const currentState = state.initialEntries === initialEntries && state.initialDocumentsByExpense === initialDocumentsByExpense && state.initialTotalCount === totalCount
     ? state
     : {
       initialEntries,
       initialDocumentsByExpense,
+      initialTotalCount: totalCount,
       entries: initialEntries,
       documentsByExpense: initialDocumentsByExpense,
-      loading: false
+      loadedCount: initialEntries.length,
+      totalCount,
+      loading: false,
+      error: ""
     };
   if (currentState !== state) setState(currentState);
 
-  const { entries, documentsByExpense, loading } = currentState;
-  const hasMore = entries.length < totalCount;
+  const { entries, documentsByExpense, loading, loadedCount, error } = currentState;
+  const hasMore = loadedCount < currentState.totalCount;
 
   async function loadMore() {
     if (loading || !hasMore) return;
-    setState((current) => ({ ...current, loading: true }));
+    setState((current) => ({ ...current, loading: true, error: "" }));
     try {
       const url = new URL(loadUrl, window.location.origin);
-      url.searchParams.set("offset", String(entries.length));
+      url.searchParams.set("offset", String(loadedCount));
       url.searchParams.set("limit", String(pageSize));
       const response = await fetch(url, { cache: "no-store" });
       if (!response.ok) throw new Error("Nachladen fehlgeschlagen.");
-      const payload = await response.json() as { entries: ExpenseListItem[]; documentsByExpense: Record<string, ExpenseDocumentItem[]> };
-      setState((current) => ({
-        ...current,
-        entries: [...current.entries, ...payload.entries],
-        documentsByExpense: { ...current.documentsByExpense, ...payload.documentsByExpense }
-      }));
+      const payload = await response.json() as { entries: ExpenseListItem[]; totalCount: number; documentsByExpense: Record<string, ExpenseDocumentItem[]> };
+      setState((current) => {
+        const seen = new Set(current.entries.map(entry => entry.id));
+        return {
+          ...current,
+          entries: [...current.entries, ...payload.entries.filter(entry => !seen.has(entry.id))],
+          loadedCount: payload.entries.length ? current.loadedCount + payload.entries.length : payload.totalCount,
+          totalCount: payload.totalCount,
+          documentsByExpense: { ...current.documentsByExpense, ...payload.documentsByExpense }
+        };
+      });
+    } catch {
+      setState((current) => ({ ...current, error: "Einträge konnten nicht geladen werden. Bitte erneut versuchen." }));
     } finally {
       setState((current) => ({ ...current, loading: false }));
     }
@@ -119,6 +134,7 @@ export function ExpenseEntryList({
           key={expense.id}
         />
       ))}
+      {error ? <p role="alert" className="form-error">{error}</p> : null}
       {hasMore ? (
         <button className="button secondary expense-load-more" type="button" onClick={() => void loadMore()} disabled={loading}>
           {loading ? "Lädt ..." : "Mehr laden"}

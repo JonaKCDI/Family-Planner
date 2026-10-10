@@ -34,6 +34,8 @@ describe("budget cadence", () => {
     ];
     const [row] = buildLabelRows(selected, [label], range("custom", "2026-02-01", "2026-02-28"), history);
     expect(row).toMatchObject({ spending: 3_000, budget: 10_000, budgetConsumption: 9_000, remaining: 1_000, budgetUsage: 90 });
+    const [aggregatedRow] = buildLabelRows(selected, [label], range("custom", "2026-02-01", "2026-02-28"), [], new Map([["label-1", { income: 1_000, spending: 10_000 }]]));
+    expect(aggregatedRow).toEqual(row);
   });
 
   test("hides recurring label budgets in custom windows but keeps all-time budgets", () => {

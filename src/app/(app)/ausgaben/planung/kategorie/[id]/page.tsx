@@ -5,6 +5,7 @@ import { CategoryIcon } from "@/components/category-icon";
 import { notFound } from "next/navigation";
 import { requireSession } from "@/lib/auth";
 import { getVisibleCategories, getVisibleExpenseSummaries } from "@/lib/queries";
+import { getPersonalForecastRows } from "@/lib/finance-read";
 import { monthlySaldo, fitForecast, recordedMonths, forecastReference } from "@/lib/expense-forecast";
 import { ExpenseBoxPlot, ForecastChart, monthLabel } from "@/components/expense-forecast-charts";
 import { formatMoney } from "@/lib/format";
@@ -16,7 +17,9 @@ export default async function CategoryForecastPage({ params, searchParams }: { p
   const { id } = await params;
   const [categories, expenses] = await Promise.all([
     getVisibleCategories(session.family.id, session.user.id, "EXPENSE"),
-    getVisibleExpenseSummaries(session.family.id, session.user.id)
+    process.env.FINANCE_OPTIMIZED_READS !== "0"
+      ? getPersonalForecastRows(session.family.id, session.user.id)
+      : getVisibleExpenseSummaries(session.family.id, session.user.id)
   ]);
   const category = categories.find((c) => c.id === id);
   if (!category && id !== "ohne-kategorie") notFound();

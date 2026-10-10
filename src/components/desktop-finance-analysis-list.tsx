@@ -1,13 +1,14 @@
 import Link from "@/components/finance-link";
 import { requireSession } from "@/lib/auth";
-import { getFamilyFinance } from "@/lib/family-finance";
-import { filterFamilyExpenses } from "@/lib/family-finance-filters";
+import { getFamilyFinance, getFamilyFinanceBounds, getFamilyFinanceForRange, requireFinanceMember } from "@/lib/family-finance";
+import { filterFamilyExpenses, getFamilyExpenseRange } from "@/lib/family-finance-filters";
 import { buildCategoryRows, buildLabelRows, sumByKind } from "@/lib/expense-analytics";
 import { getExpenseRange } from "@/lib/expense-range";
 import { filterExpenseAssignments, filterExpenseFacets } from "@/lib/expense-filters";
 import { buildAnalysisHref, type AnalysisDimension } from "@/lib/expense-detail-analysis";
 import { buildExpensesHref } from "@/lib/expense-filter-url";
 import { getVisibleExpenseSummaries, getVisibleExpenses, getVisibleCategories, getExpenseLabels, getDocumentsForLinkedEntities } from "@/lib/queries";
+import { getPersonalExpenseCandidates, getPersonalFinanceMetadata, type FinanceExpenseCandidate } from "@/lib/finance-read";
 import { matchesExpenseSearch } from "@/lib/expense-search";
 import { getMonthKey } from "@/lib/expense-filter-url";
 import { formatMoney } from "@/lib/format";
@@ -18,7 +19,13 @@ export async function DesktopFinanceAnalysisList({ params, dimension, selectedId
   let rows: Array<{ id?: string; name: string; spending: number; income: number; saldo: number }>;
   let amounts: Array<{ categoryId: string | null; labelId: string | null; currency: string; kind: string; amountCents: number }> = [];
   if (params.bereich === "familie") {
-    const { expenses, categories, labels } = await getFamilyFinance();
+    const optimizedReads = process.env.FINANCE_OPTIMIZED_READS !== "0";
+    const range = optimizedReads
+      ? getFamilyExpenseRange(await getFamilyFinanceBounds((await requireFinanceMember()).family.id), listParams)
+      : null;
+    const { expenses, categories, labels } = range
+      ? await getFamilyFinanceForRange(range)
+      : await getFamilyFinance();
     const selected = filterFamilyExpenses(expenses, listParams);
     amounts = selected;
     rows = dimension === "category"
@@ -27,13 +34,17 @@ export async function DesktopFinanceAnalysisList({ params, dimension, selectedId
   } else {
     const session = await requireSession();
     const query = (listParams.q || "").trim().toLowerCase();
+    const optimizedReads = process.env.FINANCE_OPTIMIZED_READS !== "0";
+    const metadata = optimizedReads ? await getPersonalFinanceMetadata(session.family.id, session.user.id) : null;
+    const scopedRange = metadata ? getExpenseRange(listParams, getMonthKey(), metadata.rangeEntries) : null;
     const [expenses, categories, labels] = await Promise.all([
-      query ? getVisibleExpenses(session.family.id, session.user.id) : getVisibleExpenseSummaries(session.family.id, session.user.id),
+      scopedRange ? getPersonalExpenseCandidates(session.family.id, session.user.id, scopedRange)
+        : query ? getVisibleExpenses(session.family.id, session.user.id) : getVisibleExpenseSummaries(session.family.id, session.user.id),
       getVisibleCategories(session.family.id, session.user.id, "EXPENSE"),
       getExpenseLabels(session.family.id, session.user.id, { includeArchived: true })
     ]);
-    const range = getExpenseRange(listParams, getMonthKey(), expenses);
-    const candidates = filterExpenseFacets(filterExpenseAssignments(expenses, listParams), listParams)
+    const range = scopedRange ?? getExpenseRange(listParams, getMonthKey(), expenses);
+    const candidates = filterExpenseFacets(filterExpenseAssignments(expenses as FinanceExpenseCandidate[], listParams), listParams)
       .filter((entry) => entry.date >= range.from && entry.date <= range.to);
     const documents = query ? await getDocumentsForLinkedEntities(session.family.id, session.user.id, "EXPENSE", candidates.map((entry) => entry.id)) : [];
     const docs = new Map<string, typeof documents>();

@@ -2,7 +2,7 @@ import Link from "@/components/finance-link";
 import { CalendarCheck, Download, ReceiptText, UsersRound } from "lucide-react";
 import { normalizeFamilyFinanceParams } from "@/lib/family-finance-params";
 import { allowedForecastYear, developerFeaturesEnabled } from "@/lib/developer-features";
-import { getFamilyFinance } from "@/lib/family-finance";
+import { getFamilyFinance, getFamilyFinanceBounds, getFamilyFinanceForRange, requireFinanceMember } from "@/lib/family-finance";
 import { familyPersonPositions, filterFamilyExpenses, getFamilyExpenseRange } from "@/lib/family-finance-filters";
 import { buildExpensesHref, getMonthKey, addMonthsToMonthKey, type ExpenseFilterParams } from "@/lib/expense-filter-url";
 import { buildCategoryRows, buildLabelRows, buildPeriodRows, budgetCadenceLabel } from "@/lib/expense-analytics";
@@ -28,12 +28,18 @@ type Position = { id: string; name: string; spending: number; sent: number; rece
 
 export async function FamilyFinancePage({ params: rawParams, planning = false }: { params: ExpenseFilterParams; planning?: boolean }) {
   let params = normalizeFamilyFinanceParams(rawParams);
-  const { session, expenses, categories, labels, transfers, members } = await getFamilyFinance();
   const currency = /^[A-Z]{3}$/.test(params.currency || "") ? params.currency! : "EUR";
-  const selected = filterFamilyExpenses(expenses, params);
-  const range = getFamilyExpenseRange(expenses, params);
-  const analysisParams = { ...params, bereich: "familie", from: range.from.toISOString().slice(0, 10), to: range.to.toISOString().slice(0, 10) };
   const view = params.view || "overview";
+  const optimizedReads = process.env.FINANCE_OPTIMIZED_READS !== "0";
+  const scopedRange = optimizedReads && !planning && view !== "compare"
+    ? getFamilyExpenseRange(await getFamilyFinanceBounds((await requireFinanceMember()).family.id), params)
+    : null;
+  const { session, expenses, categories, labels, transfers, members, labelBudgetTotals } = scopedRange
+    ? await getFamilyFinanceForRange(scopedRange, ["overview", "labels", "budgets"].includes(view) ? currency : undefined)
+    : await getFamilyFinance();
+  const selected = filterFamilyExpenses(expenses, params);
+  const range = scopedRange ?? getFamilyExpenseRange(expenses, params);
+  const analysisParams = { ...params, bereich: "familie", from: range.from.toISOString().slice(0, 10), to: range.to.toISOString().slice(0, 10) };
   const needsEntries = !planning && (view === "overview" || view === "entries");
   const initialEntryIds = needsEntries ? selected.slice(0, view === "overview" ? 10 : 100).map(item => item.id) : [];
   const visibleEntryIds = [...new Set([...initialEntryIds, ...(needsEntries && params.selected ? [params.selected] : [])])];
@@ -64,7 +70,7 @@ export async function FamilyFinancePage({ params: rawParams, planning = false }:
   const needsCategoryRows = !planning && (view === "overview" || view === "categories" || view === "budgets");
   const needsLabelRows = !planning && (view === "overview" || view === "labels" || view === "budgets");
   const categoryRows = needsCategoryRows ? buildCategoryRows(selected, categories.filter(item => !item.archivedAt), total, range) : [];
-  const labelRows = needsLabelRows ? buildLabelRows(selected, labels, range, expenses.filter(item => item.currency === currency)) : [];
+  const labelRows = needsLabelRows ? buildLabelRows(selected, labels, range, scopedRange ? [] : expenses.filter(item => item.currency === currency), scopedRange ? labelBudgetTotals : undefined) : [];
   const budgetRows = [
     ...categoryRows.map(row => ({ ...row, dimension: "category" as const })),
     ...labelRows.map(row => ({ ...row, dimension: "label" as const }))

@@ -16,21 +16,28 @@ export function OfflineSyncStatus() {
 
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => setMounted(true));
-    const refresh = async () => setSummary(await getOfflineSummary());
+    let syncInFlight: Promise<void> | null = null;
+    let scheduledSync: number | null = null;
+    let rerunAfterCurrent = false;
+    let disposed = false;
+    const refresh = async () => {
+      try { setSummary(await getOfflineSummary()); } catch { /* IndexedDB may be unavailable. */ }
+    };
     const refreshFromEvent = () => {
       void refresh();
     };
     const sync = async () => {
-      const reachable = await probeSyncServer();
-      setServerReachable(reachable);
-      if (!reachable) {
+      try {
+        const reachable = await bootstrapOfflineCache();
+        setServerReachable(reachable);
+        if (!reachable) {
+          await refresh();
+          return;
+        }
+      } catch {
+        setServerReachable(false);
         await refresh();
         return;
-      }
-      try {
-        await bootstrapOfflineCache();
-      } catch {
-        // IndexedDB or payload issues should not make the app look offline.
       }
       try {
         await syncPendingChanges();
@@ -43,29 +50,44 @@ export function OfflineSyncStatus() {
         // Local offline storage may be unavailable in private/locked-down browsers.
       }
     };
+    const scheduleSync = () => {
+      if (disposed) return;
+      if (syncInFlight) { rerunAfterCurrent = true; return; }
+      if (scheduledSync !== null) return;
+      // Let the visible route paint before reconciling the full offline dataset.
+      scheduledSync = window.setTimeout(() => {
+        scheduledSync = null;
+        syncInFlight = sync().finally(() => {
+          syncInFlight = null;
+          if (rerunAfterCurrent) { rerunAfterCurrent = false; scheduleSync(); }
+        });
+      }, 250);
+    };
     const onOnline = () => {
-      void sync();
+      scheduleSync();
     };
     const onOffline = () => {
-        setServerReachable(false);
+      setServerReachable(false);
       void refresh();
     };
     const onVisible = () => {
-      if (document.visibilityState === "visible") void sync();
+      if (document.visibilityState === "visible") scheduleSync();
     };
 
     window.addEventListener("online", onOnline);
     window.addEventListener("offline", onOffline);
     window.addEventListener("family-app-sync", refreshFromEvent);
     document.addEventListener("visibilitychange", onVisible);
-    void sync();
+    scheduleSync();
 
     return () => {
+      disposed = true;
       window.removeEventListener("online", onOnline);
       window.removeEventListener("offline", onOffline);
       window.removeEventListener("family-app-sync", refreshFromEvent);
       document.removeEventListener("visibilitychange", onVisible);
       window.cancelAnimationFrame(frame);
+      if (scheduledSync !== null) window.clearTimeout(scheduledSync);
     };
   }, []);
 
@@ -86,13 +108,4 @@ export function OfflineSyncStatus() {
       {serverReachable && summary.pending > 0 ? <button type="button" onClick={() => void syncPendingChanges()}>Jetzt syncen</button> : null}
     </div>
   );
-}
-
-async function probeSyncServer() {
-  try {
-    await fetch("/api/sync/bootstrap", { cache: "no-store" });
-    return true;
-  } catch {
-    return false;
-  }
 }

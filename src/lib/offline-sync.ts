@@ -30,12 +30,13 @@ const DB_NAME = "family-app-offline";
 const DB_VERSION = 1;
 
 export async function bootstrapOfflineCache() {
-  if (!canUseIndexedDb()) return;
+  if (!canUseIndexedDb()) return (await fetch("/api/health", { cache: "no-store" })).ok;
   const response = await fetch("/api/sync/bootstrap", { cache: "no-store" });
-  if (!response.ok) return;
+  if (!response.ok) return false;
   const payload = await response.json() as OfflineState;
   await setState({ ...payload, lastSyncAt: payload.serverTime });
   emitSyncEvent();
+  return true;
 }
 
 export async function syncPendingChanges() {

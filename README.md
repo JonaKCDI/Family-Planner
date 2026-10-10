@@ -75,6 +75,12 @@ BACKUP_TIME="01:00"
 TZ="Europe/Berlin"
 ```
 
+Die optimierten Finanzabfragen sind standardmäßig aktiv. Für den ersten Rollout kann
+`FINANCE_OPTIMIZED_READS=0` in der Synology-`.env` den bisherigen Leseweg
+vorübergehend wiederherstellen; danach den App-Container neu starten. Vor dem
+Update ein PostgreSQL-Backup erstellen und Finanzansichten sowie Exportwerte
+vergleichen. Die Einstellung ändert keine Datenbankdaten.
+
 Empfohlen:
 
 - App nur im Heimnetz/VPN starten.
